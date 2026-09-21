@@ -1,0 +1,13 @@
+{
+  "id": "dark",
+  "name": "Dark",
+  "brightness": "dark",
+  "seedColor": "#4C6FFF",
+  "surfaces": {
+    "rail": "#16171F",
+    "sidebar": "#1C1E29",
+    "chat": "#23252F",
+    "raised": "#2B2D3A",
+    "onlineIndicator": "#3BD16F"
+  }
+}

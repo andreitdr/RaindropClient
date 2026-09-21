@@ -1,0 +1,13 @@
+{
+  "id": "light",
+  "name": "Light",
+  "brightness": "light",
+  "seedColor": "#4C6FFF",
+  "surfaces": {
+    "rail": "#E7E9F5",
+    "sidebar": "#F1F2FA",
+    "chat": "#FAFAFF",
+    "raised": "#FFFFFF",
+    "onlineIndicator": "#2FB765"
+  }
+}

@@ -1,0 +1,168 @@
+# Voice
+
+Voice channels are group calls. You join one and everybody in it hears everybody else. You can
+**mute** your microphone, **deafen** yourself (you stop hearing anyone, which also mutes you), turn
+any member **up or down** or **mute them just for you**, and, with the `mute_members` permission,
+**mute them for everyone**. The server side is in the server's
+[Voice doc](../../RaindropServer/docs/voice.md). This file covers what the client does.
+
+## How a call is carried
+
+The server decides who may join, speak and moderate. The audio travels over a **media transport**
+the server names when you join (`VoiceJoinResult.transport`), which today is `livekit`. The code is
+split the same way:
+
+- `core/voice/voice_engine.dart` defines `VoiceEngine`, which is everything the app needs from a
+  call's audio: connect, microphone on/off, per-member volume, a default volume, devices, audio
+  processing, and streams for connection state, active speakers, disconnects and permission changes.
+  `createVoiceEngine(transport)` picks the implementation by name, and returns null for a transport
+  this build does not speak, so a server added later with a different transport fails with a clear
+  message instead of a crash.
+- `core/voice/livekit_voice_engine.dart` is the LiveKit implementation. It is the **only** file that
+  imports `livekit_client` or `flutter_webrtc`. It sends speech-bitrate Opus with DTX (silence is sent
+  as nothing), and has no adaptive stream or dynacast since calls are audio-only.
+
+**The connection goes through the server you already pin.** The join response has `path:
+/api/channels/voice/signal` and no `url`, so `VoiceJoinResult.signalUri` builds
+`wss://<host>:<port>/api/channels/voice/signal` from the server profile. LiveKit's SDK opens `/rtc`
+under it, and the server relays that to LiveKit. The server's self-signed certificate therefore has to
+be trusted by LiveKit's own sockets, which `ApiClient`'s pinning does not reach. Two things handle it:
+
+- **`PinRegistry`** (`core/network/pin_registry.dart`) holds the pinned fingerprint of every server
+  with a session. `ServerSessionController` registers it on cold start and on `adopt` after a first
+  connection.
+- **`PinnedHttpOverrides`**, installed as `HttpOverrides.global` in `main.dart`, gives every
+  `HttpClient` in the process a `badCertificateCallback` that accepts exactly those fingerprints and
+  nothing else. It only runs when the platform's own check fails, the same way `CertificatePinner`
+  does.
+
+LiveKit's own `CertificatePinningOptions` is deliberately not used. It checks the chain and hostname
+before it looks at any pin, and a self-signed certificate reached by an address it does not name
+never passes.
+
+The audio itself is DTLS-SRTP to the LiveKit server, over UDP 7882 or the TCP 7881 fallback.
+
+## State
+
+| Provider | What | Lifetime |
+|---|---|---|
+| `voiceCallProvider` (`features/voice/controllers/voice_call_controller.dart`) | The **one** call this client is in, across all servers: server and channel, `joining`/`connected`/`reconnecting`, who is speaking, whether you are muted for everyone or suppressed, and a one-shot `notice` for why a call ended | global, kept alive |
+| `voiceRosterProvider(serverId)` (`voice_roster_controller.dart`) | Who is in every call on a server, plus `available` and `maximumParticipants`; drives the sidebar and the voice view | per server |
+| `voiceSettingsProvider` (`voice_settings_controller.dart`) | Your mute/deafen, output volume, devices, and echo cancellation / noise suppression / auto gain | global, persisted |
+| `memberAudioProvider` (`member_audio_controller.dart`) | Per-member volume and local mute, keyed `serverId/userId` | global, persisted |
+
+**The roster** follows the event stream through `LiveSync`, like every other list. It applies:
+
+- `voice.state` as an upsert (a member is in one call at a time, so this also moves them);
+- `voice.left` as a removal;
+- `channel.deleted` as dropping that call.
+
+It re-reads after `ready` and after any role event, and polls every 15 s while the stream is down. A
+server from before voice (`404` on `GET /api/channels/voice`) reads as an empty, unavailable roster.
+
+**The call controller** joins with `VoiceApi.join`, sending your current mute and deafen so nobody
+sees you unmuted for a moment. It then creates the engine and connects.
+
+- **It follows the session with `ref.listen`, not `watch`.** Renaming a server rebuilds its session,
+  and a watch would tear the call down. It only ends the call when the session is really gone or its
+  token changed, and otherwise switches to the rebuilt session's live client.
+- **It never rejoins automatically.** It ends the call with a notice when:
+  - the engine reports the same account joining from another device;
+  - the server removed this participant, or the call itself ended;
+  - `voice.left` arrives for this client, with its reason (`permission_lost`, `channel_deleted`,
+    `session_ended`, …).
+
+  A network failure also ends the call with a notice. The shell shows each notice once, as a snackbar.
+- **Moderator mutes come from `voice.state`.** A mute for everyone, or losing `speak`, arrives as
+  `voice.state` for you: the controls show you as muted and explain why. When `canPublish` comes back,
+  the engine republishes your microphone if you had it on.
+
+**Mute and deafen are settings, not call state.** They persist between calls and across restarts, the
+way a headset's mute switch would. The rules:
+
+- Deafening mutes. Undeafening restores the microphone to how it was before (`mutedBeforeDeafen`).
+- Unmuting while deafened undeafens too.
+- Every change is applied to the engine straight away and reported with `VoiceApi.setSelfState`, so
+  everybody's icons follow.
+
+**Volume.** Each remote member plays at `effectiveVolume` (`features/voice/models/member_audio.dart`):
+their own volume times the output volume, capped at `maximumVolume` (2.0, i.e. 200%), or 0 while
+deafened or locally muted. The controller re-applies it whenever:
+
+- the settings or member audio change;
+- the roster changes.
+
+Somebody whose audio arrives before the roster names them plays at the default volume instead. Volume
+is applied with flutter_webrtc's `Helper.setVolume` on each remote track, which sets the libwebrtc
+source gain: 0 silent, 1 as sent, up to 10. That range is why a report of distortion "at 80" was a
+units mistake, and why the cap is 2.
+
+## UI
+
+- **Sidebar** (`features/channels/widgets/channel_sidebar.dart`):
+  - Voice channels have their own "+" (the Voice heading shows even when empty if you may create
+    channels), and the empty-server state offers both kinds.
+  - Each voice channel lists who is in its call underneath (`VoiceParticipantRow`), for everybody who
+    can see the channel, with mute/deafen/"muted for everyone" icons and a speaking ring for the call
+    you are in.
+  - Above your name, `VoiceConnectionBar` shows "Voice connected · channel / server" with a hang-up
+    button, whichever server the call is on.
+  - Your panel has **mic** and **headset** buttons (`VoiceSelfControls`) that work in or out of a call.
+- **Voice view** (`features/voice/widgets/voice_channel_view.dart`) replaces the chat pane when a voice
+  channel is selected (`HomeShell` switches on `ChannelType.voice`). It shows:
+  - the participants as tiles (`VoiceParticipantTile`), with a green ring on whoever is speaking;
+  - a capacity count;
+  - a **Join voice** button, or "Switch to this call" if you are in another one. The button is disabled,
+    with the reason, without `connect`, when voice is unavailable, or when the call is full;
+  - once you are in the call: mute, deafen and **Disconnect**, and a banner when a moderator muted you
+    or you can only listen.
+
+  **Selecting a channel never joins it**: joining is the button.
+- **Narrow layout**: the sidebar lives in a drawer, so a call in progress gets a thin
+  `VoiceConnectionBar(compact: true)` above the pane, with mute, deafen and hang-up in it.
+- **Member menu** (`voice_member_menu.dart`) opens on right-click on desktop and long press on touch
+  (a bottom sheet), on a participant tile or sidebar row. It is not offered on your own entry. It has:
+  - **Volume** (0–200%, 5% steps);
+  - **Mute** ("only for you");
+  - **Mute / Unmute for everyone**, shown only with server-wide `mute_members` (from
+    `serverPermissionsProvider`).
+
+  The menu entry is a custom `PopupMenuEntry` rather than a `PopupMenuItem`, so dragging the slider
+  does not close the menu.
+- **Settings → Voice & audio** (`voice_settings_section.dart`):
+  - microphone and speakers (desktop only; on phones the OS routes audio);
+  - output volume;
+  - echo cancellation, noise suppression and automatic gain.
+
+  There is **no microphone volume**. Neither LiveKit's SDK nor flutter_webrtc offers an input gain on
+  desktop, so automatic gain control is how a quiet microphone gets evened out.
+
+Speaking and "connected" colours reuse `AppSurfaces.onlineIndicator`, so no theme JSON had to change.
+
+## Platform setup
+
+| Platform | What voice needed |
+|---|---|
+| macOS | `com.apple.security.device.audio-input` in both entitlements files; `NSMicrophoneUsageDescription` in `Info.plist` |
+| iOS | `NSMicrophoneUsageDescription`. **No** background audio mode: calls are foreground-only for now |
+| Android | `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `BLUETOOTH_CONNECT` (+ legacy `BLUETOOTH` ≤ API 30), and `INTERNET`/`ACCESS_NETWORK_STATE` in the **main** manifest (release builds had no network access before). No foreground service yet |
+| Windows, Linux | nothing |
+
+flutter_webrtc and livekit_client ship Swift Package Manager manifests, so the Apple builds stay on
+SPM with no Podfile.
+
+## Not yet
+
+- Background audio on phones (iOS background mode, Android microphone foreground service).
+- Push-to-talk.
+- Rejoining automatically after a network drop (the call ends with a notice; you join again).
+- Camera and screen sharing.
+- Microphone volume (no API for it; see above).
+
+## Related
+
+- The server's [Voice doc](../../RaindropServer/docs/voice.md): permissions, reconciliation, the relay,
+  the Voice API.
+- [Channels](channels.md): the sidebar the calls are listed in.
+- [Live updates](live-updates.md): how `voice.*` events arrive.
+- [Settings](settings.md) and [Storage](storage.md): where voice preferences live.

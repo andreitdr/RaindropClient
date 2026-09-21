@@ -1,0 +1,108 @@
+import '../../../core/voice/voice_engine.dart';
+
+/// This client's own voice preferences — the "Voice & audio" settings, plus
+/// whether it is muted or deafened, which carries over from one call to the
+/// next the way a headset's mute switch would.
+class VoiceSettings {
+  const VoiceSettings({
+    this.outputVolume = 1.0,
+    this.inputDeviceId,
+    this.outputDeviceId,
+    this.echoCancellation = true,
+    this.noiseSuppression = true,
+    this.autoGainControl = true,
+    this.selfMute = false,
+    this.selfDeaf = false,
+    this.mutedBeforeDeafen = false,
+  });
+
+  /// Everybody's volume here, multiplied into each member's own: 1 as sent.
+  final double outputVolume;
+
+  /// The microphone to use, or null for the system default.
+  final String? inputDeviceId;
+
+  /// The speakers or headset to use, or null for the system default.
+  final String? outputDeviceId;
+
+  final bool echoCancellation;
+  final bool noiseSuppression;
+  final bool autoGainControl;
+
+  /// The microphone is off.
+  final bool selfMute;
+
+  /// Nobody is heard, and the microphone is off with it.
+  final bool selfDeaf;
+
+  /// Whether the microphone was already off when deafening, so undeafening
+  /// puts it back how it was rather than always switching it on.
+  final bool mutedBeforeDeafen;
+
+  /// Whether the microphone should be sending.
+  bool get micOn => !selfMute && !selfDeaf;
+
+  VoiceAudioProcessing get processing => VoiceAudioProcessing(
+    echoCancellation: echoCancellation,
+    noiseSuppression: noiseSuppression,
+    autoGainControl: autoGainControl,
+  );
+
+  VoiceSettings copyWith({
+    double? outputVolume,
+    String? Function()? inputDeviceId,
+    String? Function()? outputDeviceId,
+    bool? echoCancellation,
+    bool? noiseSuppression,
+    bool? autoGainControl,
+    bool? selfMute,
+    bool? selfDeaf,
+    bool? mutedBeforeDeafen,
+  }) => VoiceSettings(
+    outputVolume: outputVolume ?? this.outputVolume,
+    inputDeviceId: inputDeviceId != null ? inputDeviceId() : this.inputDeviceId,
+    outputDeviceId: outputDeviceId != null
+        ? outputDeviceId()
+        : this.outputDeviceId,
+    echoCancellation: echoCancellation ?? this.echoCancellation,
+    noiseSuppression: noiseSuppression ?? this.noiseSuppression,
+    autoGainControl: autoGainControl ?? this.autoGainControl,
+    selfMute: selfMute ?? this.selfMute,
+    selfDeaf: selfDeaf ?? this.selfDeaf,
+    mutedBeforeDeafen: mutedBeforeDeafen ?? this.mutedBeforeDeafen,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'outputVolume': outputVolume,
+    'inputDeviceId': inputDeviceId,
+    'outputDeviceId': outputDeviceId,
+    'echoCancellation': echoCancellation,
+    'noiseSuppression': noiseSuppression,
+    'autoGainControl': autoGainControl,
+    'selfMute': selfMute,
+    'selfDeaf': selfDeaf,
+    'mutedBeforeDeafen': mutedBeforeDeafen,
+  };
+
+  /// Reads what [toJson] wrote, falling back to the defaults for anything
+  /// missing or malformed — a settings file from an older build included.
+  factory VoiceSettings.fromJson(Map<String, dynamic> j) {
+    const defaults = VoiceSettings();
+    double volume(Object? v) => v is num
+        ? v.toDouble().clamp(0.0, maximumVolume).toDouble()
+        : defaults.outputVolume;
+    bool flag(Object? v, bool fallback) => v is bool ? v : fallback;
+
+    return VoiceSettings(
+      outputVolume: volume(j['outputVolume']),
+      inputDeviceId: j['inputDeviceId'] as String?,
+      outputDeviceId: j['outputDeviceId'] as String?,
+      echoCancellation: flag(j['echoCancellation'], defaults.echoCancellation),
+      noiseSuppression: flag(j['noiseSuppression'], defaults.noiseSuppression),
+      autoGainControl: flag(j['autoGainControl'], defaults.autoGainControl),
+      selfMute: flag(j['selfMute'], false),
+      selfDeaf: flag(j['selfDeaf'], false),
+      mutedBeforeDeafen: flag(j['mutedBeforeDeafen'], false),
+    );
+  }
+}
