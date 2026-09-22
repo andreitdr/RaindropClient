@@ -4,6 +4,9 @@
 /// keeps `Channels/Text/` apart from `Channels/`.
 library;
 
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'api_client.dart';
 
 /// A message as the server stored it.
@@ -26,6 +29,9 @@ class ChannelMessage {
     required this.deleted,
     this.deletedAtUtc,
     this.deletedBy,
+    this.ciphertext,
+    this.epoch,
+    this.senderDeviceId,
   });
 
   final String messageId;
@@ -36,6 +42,20 @@ class ChannelMessage {
   final bool deleted;
   final DateTime? deletedAtUtc;
   final String? deletedBy;
+
+  /// For an end-to-end encrypted message: the MLS ciphertext, which only the
+  /// channel group's members can decrypt. [content] is null for these. Null
+  /// again once the message is deleted.
+  final Uint8List? ciphertext;
+
+  /// The MLS epoch an encrypted message was sent in; null for plaintext.
+  final int? epoch;
+
+  /// Which of the author's devices sent an encrypted message.
+  final String? senderDeviceId;
+
+  /// Whether the message was end-to-end encrypted (deleted or not).
+  bool get encrypted => epoch != null;
 
   factory ChannelMessage.fromJson(Map<String, dynamic> j) => ChannelMessage(
     messageId: j['messageId'] as String,
@@ -48,6 +68,43 @@ class ChannelMessage {
         ? null
         : DateTime.parse(j['deletedAtUtc'] as String),
     deletedBy: j['deletedBy'] as String?,
+    ciphertext: j['ciphertext'] is String
+        ? base64.decode(j['ciphertext'] as String)
+        : null,
+    epoch: (j['epoch'] as num?)?.toInt(),
+    senderDeviceId: j['senderDeviceId'] as String?,
+  );
+}
+
+/// A reported message, for moderators. [body] was revealed by the reporter
+/// and verified by the server against the author's device attestation.
+class MessageReport {
+  const MessageReport({
+    required this.reportId,
+    required this.messageId,
+    required this.authorId,
+    required this.reporterId,
+    required this.body,
+    required this.reason,
+    required this.reportedAtUtc,
+  });
+
+  final String reportId;
+  final String messageId;
+  final String authorId;
+  final String reporterId;
+  final String body;
+  final String? reason;
+  final DateTime reportedAtUtc;
+
+  factory MessageReport.fromJson(Map<String, dynamic> j) => MessageReport(
+    reportId: j['reportId'] as String,
+    messageId: j['messageId'] as String,
+    authorId: j['authorId'] as String,
+    reporterId: j['reporterId'] as String,
+    body: j['body'] as String,
+    reason: j['reason'] as String?,
+    reportedAtUtc: DateTime.parse(j['reportedAtUtc'] as String),
   );
 }
 
@@ -101,6 +158,65 @@ class TextMessagesApi {
       token: token,
     ),
   );
+
+  /// Posts an end-to-end encrypted message — the MLS ciphertext this
+  /// device's group produced — and returns it as the server stored it. Throws
+  /// `stale_epoch` when the group has moved on: catch up and encrypt again.
+  Future<ChannelMessage> sendEncrypted(
+    String token, {
+    required String channelId,
+    required Uint8List message,
+  }) async => ChannelMessage.fromJson(
+    await _client.post(
+      '/api/channels/text/messages/send-encrypted',
+      body: {'channelId': channelId, 'message': base64.encode(message)},
+      token: token,
+    ),
+  );
+
+  /// Reports an end-to-end encrypted message to the channel's moderators,
+  /// revealing its text. [attestation] is the author's device signature from
+  /// the message's payload over the other fields, which the server checks
+  /// against that device's key — `invalid_attestation` if it does not match.
+  Future<void> report(
+    String token, {
+    required String messageId,
+    required String body,
+    required String clientMessageId,
+    required DateTime clientSentAt,
+    required String type,
+    required Uint8List attestation,
+    String? reason,
+  }) => _client.post(
+    '/api/channels/text/messages/report',
+    body: {
+      'messageId': messageId,
+      'body': body,
+      'clientMessageId': clientMessageId,
+      'clientSentAtUnixMs': clientSentAt.millisecondsSinceEpoch,
+      'type': type,
+      'attestation': base64.encode(attestation),
+      'reason': reason,
+    },
+    token: token,
+  );
+
+  /// A channel's reported messages, newest first. Needs `manage_messages` in
+  /// the channel.
+  Future<List<MessageReport>> reports(
+    String token, {
+    required String channelId,
+  }) async {
+    final body = await _client.post(
+      '/api/channels/text/messages/reports',
+      body: {'channelId': channelId},
+      token: token,
+    );
+    return [
+      for (final r in body['reports'] as List? ?? const [])
+        MessageReport.fromJson(Map<String, dynamic>.from(r as Map)),
+    ];
+  }
 
   /// One page of history. [before] is a `nextCursor` from a previous page —
   /// null asks for the newest messages. The cursor is opaque: pass it back

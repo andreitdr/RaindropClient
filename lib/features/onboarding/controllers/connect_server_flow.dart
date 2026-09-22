@@ -3,6 +3,8 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/models/server_profile.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../core/network/server_trust.dart';
 import '../../../core/network/users_api.dart';
 import '../../../core/storage/secure_store.dart';
 import '../../servers/controllers/servers_controller.dart';
@@ -56,7 +58,20 @@ class ConnectServerFlow {
   );
   late final UsersApi usersApi = UsersApi(client);
 
-  Future<ServerInfo> probe() => usersApi.serverInfo();
+  ServerInfo? _probed;
+
+  /// Fetches the server's identity. On a first connection the certificate is
+  /// taken on trust, so this at least checks the server's story is
+  /// consistent: the fingerprint it advertises is the certificate the
+  /// handshake presented, and its identity key signed that certificate.
+  Future<ServerInfo> probe() async {
+    final info = await usersApi.serverInfo();
+    final presented = client.pinner.observedFingerprint;
+    if (presented != null && !ServerTrust.isConsistent(info, presented)) {
+      throw ApiException.certificateMismatch();
+    }
+    return _probed = info;
+  }
 
   Future<UserStateResult> checkStatus() => usersApi.status(guid);
 
@@ -86,6 +101,15 @@ class ConnectServerFlow {
     final observed = client.pinner.observedFingerprint;
     if (observed != null && await secure.pinnedFingerprint(guid) == null) {
       await secure.pinFingerprint(guid, observed);
+    }
+    final pinned = await secure.pinnedFingerprint(guid);
+    final info = _probed;
+    if (info != null && pinned != null) {
+      await ServerTrust.pinIdentityIfMissing(
+        serverId: guid,
+        info: info,
+        presentedFingerprint: pinned,
+      );
     }
     await secure.saveSessionToken(guid, session.token);
 

@@ -25,6 +25,23 @@ class LiveKitVoiceEngine implements VoiceEngine {
   final _activeSpeakers = StreamController<Set<String>>.broadcast();
   final _disconnects = StreamController<VoiceDisconnectReason>.broadcast();
   final _canSpeak = StreamController<bool>.broadcast();
+  final _encryption = StreamController<VoiceEncryption>.broadcast();
+
+  /// Set when the call is end-to-end encrypted.
+  BaseKeyProvider? _keyProvider;
+
+  /// Participants who published audio without encryption in an encrypted
+  /// call. Kept silent for as long as they are in it, whatever the keys do.
+  final _unencrypted = <String>{};
+
+  /// Participants whose frames currently fail to decrypt. Usually a key
+  /// change one side has not made yet, so this clears on the next key change
+  /// or the first frame that decrypts; the cryptor drops those frames anyway.
+  final _failing = <String>{};
+
+  /// The key ring LiveKit keeps per call: this many past keys stay usable, so
+  /// frames sent just before a key change still decrypt after it.
+  static const keyRingSize = 16;
 
   @override
   Stream<VoiceConnectionState> get connectionStates => _connectionStates.stream;
@@ -39,6 +56,9 @@ class LiveKitVoiceEngine implements VoiceEngine {
   Stream<bool> get canSpeakChanges => _canSpeak.stream;
 
   @override
+  Stream<VoiceEncryption> get encryptionChanges => _encryption.stream;
+
+  @override
   Future<void> connect(
     Uri url,
     String token, {
@@ -46,10 +66,33 @@ class LiveKitVoiceEngine implements VoiceEngine {
     required VoiceAudioProcessing processing,
     String? inputDeviceId,
     String? outputDeviceId,
+    VoiceMediaKey? mediaKey,
   }) async {
     _micWanted = micEnabled;
     _processing = processing;
     _connectionStates.add(VoiceConnectionState.connecting);
+
+    // End-to-end encryption: LiveKit's frame cryptor encrypts every frame
+    // with the group's shared key before it leaves, and decrypts on arrival.
+    // Keys are never ratcheted (window 0): each epoch's key comes fresh from
+    // the MLS group, and a ratchet would let anybody holding an old key
+    // derive the next. Failures never disable encryption (tolerance -1):
+    // undecryptable frames are dropped, not played.
+    E2EEOptions? encryption;
+    if (mediaKey != null) {
+      final provider = await BaseKeyProvider.create(
+        sharedKey: true,
+        ratchetWindowSize: 0,
+        failureTolerance: -1,
+        keyRingSize: keyRingSize,
+      );
+      await provider.setSharedKey(
+        String.fromCharCodes(mediaKey.key),
+        keyIndex: mediaKey.index,
+      );
+      _keyProvider = provider;
+      encryption = E2EEOptions(keyProvider: provider);
+    }
 
     final room = Room(
       roomOptions: RoomOptions(
@@ -64,6 +107,7 @@ class LiveKitVoiceEngine implements VoiceEngine {
           dtx: true,
         ),
         defaultAudioOutputOptions: AudioOutputOptions(deviceId: outputDeviceId),
+        encryption: encryption,
       ),
     );
     _room = room;
@@ -71,9 +115,31 @@ class LiveKitVoiceEngine implements VoiceEngine {
 
     await room.connect(url.toString(), token);
     _connectionStates.add(VoiceConnectionState.connected);
+    if (mediaKey != null) {
+      // Senders start on the key's slot; LiveKit otherwise stays on 0.
+      await room.e2eeManager?.setKeyIndex(mediaKey.index);
+    }
+    _reportEncryption();
 
     if (outputDeviceId != null) await _selectOutput(outputDeviceId);
     await _applyMic();
+  }
+
+  @override
+  Future<void> setMediaKey(VoiceMediaKey key) async {
+    final provider = _keyProvider;
+    if (provider == null) return;
+    await provider.setSharedKey(
+      String.fromCharCodes(key.key),
+      keyIndex: key.index,
+    );
+    // Switch what this participant sends to the new key. Receivers already
+    // hold it too, and still hold the old one for frames in flight.
+    await _room?.e2eeManager?.setKeyIndex(key.index);
+    // A participant whose frames failed may simply have been ahead of us.
+    _failing.clear();
+    await _reapplyVolumes();
+    _reportEncryption();
   }
 
   @override
@@ -98,7 +164,7 @@ class LiveKitVoiceEngine implements VoiceEngine {
 
     for (final publication in participant.audioTrackPublications) {
       final track = publication.track;
-      if (track != null) await _setTrackVolume(track, clamped);
+      if (track != null) await _setTrackVolume(track, _gate(identity, clamped));
     }
   }
 
@@ -111,7 +177,12 @@ class LiveKitVoiceEngine implements VoiceEngine {
       if (_volumes.containsKey(participant.identity)) continue;
       for (final publication in participant.audioTrackPublications) {
         final track = publication.track;
-        if (track != null) await _setTrackVolume(track, _defaultVolume);
+        if (track != null) {
+          await _setTrackVolume(
+            track,
+            _gate(participant.identity, _defaultVolume),
+          );
+        }
       }
     }
   }
@@ -153,6 +224,7 @@ class LiveKitVoiceEngine implements VoiceEngine {
     await _activeSpeakers.close();
     await _disconnects.close();
     await _canSpeak.close();
+    await _encryption.close();
   }
 
   // ── Devices ────────────────────────────────────────────────────────────────
@@ -196,6 +268,11 @@ class LiveKitVoiceEngine implements VoiceEngine {
         _disconnectReported = true;
         _disconnects.add(_reasonOf(event.reason));
       })
+      ..on<ParticipantDisconnectedEvent>((event) {
+        _unencrypted.remove(event.participant.identity);
+        _failing.remove(event.participant.identity);
+        _reportEncryption();
+      })
       ..on<ActiveSpeakersChangedEvent>(
         (event) => _activeSpeakers.add({
           for (final speaker in event.speakers) speaker.identity,
@@ -204,10 +281,33 @@ class LiveKitVoiceEngine implements VoiceEngine {
       ..on<TrackSubscribedEvent>((event) async {
         final track = event.track;
         if (track is! RemoteAudioTrack) return;
+        final identity = event.participant.identity;
+        // Fail closed: in an encrypted call, audio published without
+        // encryption is from somebody not using the group's key — the media
+        // server itself, or a client that is not a member. It stays silent.
+        if (_keyProvider != null &&
+            event.publication.encryptionType == EncryptionType.kNone) {
+          _unencrypted.add(identity);
+          _reportEncryption();
+        }
         await _setTrackVolume(
           track,
-          _volumes[event.participant.identity] ?? _defaultVolume,
+          _gate(identity, _volumes[identity] ?? _defaultVolume),
         );
+      })
+      ..on<TrackE2EEStateEvent>((event) async {
+        final identity = event.participant.identity;
+        switch (event.state) {
+          case E2EEState.kOk:
+            if (_failing.remove(identity)) await _reapplyVolumes();
+          case E2EEState.kDecryptionFailed ||
+              E2EEState.kMissingKey ||
+              E2EEState.kEncryptionFailed ||
+              E2EEState.kInternalError:
+            if (_failing.add(identity)) await _reapplyVolumes();
+          case E2EEState.kNew || E2EEState.kKeyRatcheted:
+        }
+        _reportEncryption();
       })
       ..on<ParticipantPermissionsUpdatedEvent>((event) async {
         if (event.participant != room.localParticipant) return;
@@ -218,6 +318,37 @@ class LiveKitVoiceEngine implements VoiceEngine {
           await _applyMic();
         }
       });
+  }
+
+  /// A participant's volume, or silence while their audio is not trusted.
+  double _gate(String identity, double volume) =>
+      _unencrypted.contains(identity) || _failing.contains(identity)
+      ? 0
+      : volume;
+
+  Future<void> _reapplyVolumes() async {
+    for (final participant
+        in _room?.remoteParticipants.values ?? const <RemoteParticipant>[]) {
+      final volume = _gate(
+        participant.identity,
+        _volumes[participant.identity] ?? _defaultVolume,
+      );
+      for (final publication in participant.audioTrackPublications) {
+        final track = publication.track;
+        if (track != null) await _setTrackVolume(track, volume);
+      }
+    }
+  }
+
+  void _reportEncryption() {
+    if (_encryption.isClosed) return;
+    _encryption.add(
+      _keyProvider == null
+          ? VoiceEncryption.none
+          : _unencrypted.isEmpty && _failing.isEmpty
+          ? VoiceEncryption.active
+          : VoiceEncryption.degraded,
+    );
   }
 
   Future<void> _applyMic() async {

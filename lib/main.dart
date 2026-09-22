@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
+import 'core/crypto/crypto_store.dart';
 import 'core/network/pin_registry.dart';
 import 'core/storage/app_prefs.dart';
 import 'core/theme/theme_controller.dart';
@@ -16,6 +17,10 @@ Future<void> main() async {
   // Before anything opens a connection: voice's own sockets only trust a
   // self-signed server through this — see PinRegistry.
   HttpOverrides.global = PinnedHttpOverrides();
+
+  // The end-to-end encryption core is a Rust library (../RaindropCrypto),
+  // built and linked by native/raindrop_crypto_builder.
+  await CryptoStores.initialize();
 
   final prefs = AppPrefs(await SharedPreferences.getInstance());
   final builtInThemes = await loadBuiltInThemes();

@@ -12,12 +12,21 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_riverpod: ^2.6.1
+  # Must match the Rust crate's flutter_rust_bridge and the installed codegen exactly.
+  flutter_rust_bridge: 2.13.0
   flutter_secure_storage: ^11.0.0
   flutter_webrtc: ^1.6.2+hotfix.3
   go_router: ^18.0.0
   intl: ^0.20.3
   livekit_client: ^2.13.0
+  mobile_scanner: ^7.4.2
   msgpack_dart: ^1.0.1
+  path_provider: ^2.1.6
+  pointycastle: ^4.0.0
+  # Builds and links the Rust crypto core from ../RaindropCrypto.
+  qr_flutter: ^4.1.0
+  raindrop_crypto_ffi:
+    path: native/raindrop_crypto_builder
   shared_preferences: ^2.5.5
   uuid: ^4.6.0
 

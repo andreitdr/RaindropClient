@@ -42,6 +42,10 @@ On success, `flow.persist(ref, session: ..., displayName: ...)`:
    GUID yet** (trust-on-first-use, same model as SSH host keys; see
    [Network layer](network-layer.md#certificatepinner) and the server's
    [Transport security doc](../../RaindropServer/docs/transport-security.md)).
+   It also pins the server's identity key, provided `probe()` found the server's statements consistent
+   (the advertised fingerprint is the presented certificate, and the identity key signed it). The key
+   is what later lets the client follow a replaced certificate. See
+   [Network layer](network-layer.md#servertrust--following-a-certificate-change).
 2. Saves the session token to `SecureStore`.
 3. Registers the server with `ServersController` and makes it the active server.
 4. Adopts the new `ServerSession` immediately via `serverSessionProvider(guid).notifier.adopt(...)`,
@@ -58,7 +62,9 @@ and pinned fingerprint are already on file.
 `ConnectServerFlow.forExisting(profile)` rebuilds a flow for a server already known to
 `ServersController`. Unlike the fresh-connect constructor, **this pins strictly from the start** — a
 fingerprint mismatch here is treated as a real certificate change, not trust-on-first-use, since a
-fingerprint was already pinned for this server.
+fingerprint was already pinned for this server. Before this prompt is reached, session restore
+(`ServerSessionController`) has already tried `ServerTrust.followCertificateChange`, so a certificate
+the owner replaced and signed with the pinned identity key is followed silently.
 
 If login fails with `account_left`, the prompt offers a "Rejoin instead" button
 (`flow.rejoin(...)`) — see the server's

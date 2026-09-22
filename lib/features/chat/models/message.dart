@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 /// Where a message is between the composer and the server.
 enum MessageStatus {
   /// The server has it; [ChatMessage.id] is the real message id.
@@ -9,6 +11,21 @@ enum MessageStatus {
   /// The send failed. The message stays in the timeline so its text isn't
   /// lost, and can be retried or discarded.
   failed,
+}
+
+/// How a message was protected, which the chat pane shows.
+enum MessageSecurity {
+  /// End-to-end encrypted and decrypted on this device.
+  encrypted,
+
+  /// End-to-end encrypted, but this device cannot read it: it was sent before
+  /// this device joined the channel's group (history is forward-only), or it
+  /// is from a newer client.
+  undecryptable,
+
+  /// Posted before the server required end-to-end encryption. The server
+  /// could read it.
+  plaintext,
 }
 
 /// One message as the chat pane renders it.
@@ -24,6 +41,11 @@ class ChatMessage {
     required this.sentAt,
     this.deleted = false,
     this.status = MessageStatus.sent,
+    this.security = MessageSecurity.encrypted,
+    this.senderDeviceId,
+    this.attestation,
+    this.clientMessageId,
+    this.clientSentAt,
   });
 
   final String id;
@@ -38,6 +60,23 @@ class ChatMessage {
 
   final bool deleted;
   final MessageStatus status;
+  final MessageSecurity security;
+
+  /// What reporting an encrypted message needs to prove who sent it: the
+  /// sending device, its attestation, and the fields it signed. Null for a
+  /// message that cannot be reported (plaintext, undecryptable, or from a
+  /// client that does not attest).
+  final String? senderDeviceId;
+  final Uint8List? attestation;
+  final String? clientMessageId;
+  final DateTime? clientSentAt;
+
+  /// Whether the message carries what a report needs.
+  bool get reportable =>
+      !deleted &&
+      security == MessageSecurity.encrypted &&
+      attestation != null &&
+      senderDeviceId != null;
 
   ChatMessage copyWith({MessageStatus? status}) => ChatMessage(
     id: id,
@@ -46,6 +85,11 @@ class ChatMessage {
     sentAt: sentAt,
     deleted: deleted,
     status: status ?? this.status,
+    security: security,
+    senderDeviceId: senderDeviceId,
+    attestation: attestation,
+    clientMessageId: clientMessageId,
+    clientSentAt: clientSentAt,
   );
 }
 

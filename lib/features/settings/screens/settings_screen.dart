@@ -7,6 +7,7 @@ import '../../../core/theme/theme_controller.dart';
 import '../../../core/theme/theme_definition.dart';
 import '../../../core/widgets/adaptive.dart';
 import '../../servers/controllers/servers_controller.dart';
+import '../../security/widgets/encryption_settings_section.dart';
 import '../../servers/controllers/session_controller.dart';
 import '../../voice/widgets/voice_settings_section.dart';
 
@@ -19,6 +20,10 @@ class SettingsScreen extends ConsumerWidget {
     final activeId = ref.watch(activeThemeIdProvider);
     final catalog = ref.watch(themeCatalogProvider);
     final servers = ref.watch(serversControllerProvider);
+    final activeServerId = ref.watch(activeServerIdProvider);
+    final activeServer = servers
+        .where((s) => s.id == (activeServerId ?? servers.firstOrNull?.id))
+        .firstOrNull;
     final platformBrightness = MediaQuery.platformBrightnessOf(context);
     final activeTheme = resolveActiveTheme(
       activeId: activeId,
@@ -85,6 +90,14 @@ class SettingsScreen extends ConsumerWidget {
           _SectionLabel('Voice & audio'),
           const VoiceSettingsSection(),
           const SizedBox(height: 16),
+          if (activeServer != null) ...[
+            _SectionLabel('Encryption'),
+            EncryptionSettingsSection(
+              serverId: activeServer.id,
+              serverName: activeServer.displayName,
+            ),
+            const SizedBox(height: 16),
+          ],
           _SectionLabel('Connected servers'),
           Card(
             margin: EdgeInsets.zero,

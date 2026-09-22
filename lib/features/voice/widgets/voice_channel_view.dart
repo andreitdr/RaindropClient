@@ -282,6 +282,10 @@ class _JoinButton extends ConsumerWidget {
       messenger?.showSnackBar(SnackBar(content: Text(e.message)));
     } on UnsupportedVoiceTransportException catch (e) {
       messenger?.showSnackBar(SnackBar(content: Text(e.toString())));
+    } on VoiceEncryptionUnavailableException catch (e) {
+      // Refused rather than joined unencrypted: this server's calls are
+      // end-to-end encrypted, and this device could not get the key.
+      messenger?.showSnackBar(SnackBar(content: Text(e.toString())));
     } on Object {
       // Connecting failed; the call controller already said so in its
       // notice, which the shell shows.

@@ -19,6 +19,16 @@ Voice channels work (see [Voice](voice.md)). Not yet:
 Server-side fully implemented and negotiable; client sends JSON unconditionally. See
 [Wire format](wire-format.md) for what adopting it would involve.
 
+## End-to-end encrypted messages and calls
+
+Everything underneath is done: the [Rust core](../../RaindropCrypto/docs/README.md), the server's
+[MLS delivery service](../../RaindropServer/docs/e2ee.md#the-delivery-service), and the client's
+`E2eeApi` wrapper, wired and tested against a live server (see [Crypto](crypto.md)). What is missing is
+the app actually driving a channel's group through it — creating/joining the group, encrypting outgoing
+messages, decrypting incoming ones — so text channels and voice calls still run over
+[transport encryption](../../RaindropServer/docs/transport-security.md) only.
+
 ## Related
 
-- [Voice](voice.md), [Wire format](wire-format.md) — the fuller context for each gap above.
+- [Voice](voice.md), [Wire format](wire-format.md), [Crypto](crypto.md) — the fuller context for each
+  gap above.

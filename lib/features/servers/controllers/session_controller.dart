@@ -4,9 +4,11 @@ import '../../../core/models/server_profile.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/channels_api.dart';
+import '../../../core/network/e2ee_api.dart';
 import '../../../core/network/members_api.dart';
 import '../../../core/network/pin_registry.dart';
 import '../../../core/network/roles_api.dart';
+import '../../../core/network/server_trust.dart';
 import '../../../core/network/text_messages_api.dart';
 import '../../../core/network/users_api.dart';
 import '../../../core/network/voice_api.dart';
@@ -38,6 +40,7 @@ class ServerSession {
   late final RolesApi rolesApi = RolesApi(client);
   late final TextMessagesApi textMessagesApi = TextMessagesApi(client);
   late final VoiceApi voiceApi = VoiceApi(client);
+  late final E2eeApi e2eeApi = E2eeApi(client);
 }
 
 /// Resolves whether we already have a valid session for a connected server
@@ -70,8 +73,40 @@ class ServerSessionController
     final token = await _secureStore.sessionToken(serverId);
     if (token == null) return null;
 
-    final fingerprint = await _secureStore.pinnedFingerprint(serverId);
+    var fingerprint = await _secureStore.pinnedFingerprint(serverId);
 
+    try {
+      return await _restore(profile, token, fingerprint);
+    } on ApiException catch (e) {
+      if (e.code == 'invalid_session') {
+        await _secureStore.clearSessionToken(serverId);
+        return null;
+      }
+      if (!e.isCertificateMismatch || fingerprint == null) return null;
+    }
+
+    // The certificate changed. Follow it only if the identity key pinned for
+    // this server signed the new one; otherwise the mismatch stands.
+    try {
+      fingerprint = await ServerTrust.followCertificateChange(
+        serverId: serverId,
+        host: profile.host,
+        port: profile.port,
+      );
+      return await _restore(profile, token, fingerprint);
+    } on ApiException catch (e) {
+      if (e.code == 'invalid_session') {
+        await _secureStore.clearSessionToken(serverId);
+      }
+      return null;
+    }
+  }
+
+  Future<ServerSession> _restore(
+    ServerProfile profile,
+    String token,
+    String? fingerprint,
+  ) async {
     // Voice connects through a library that opens its own sockets; the
     // process-wide override is how those get the same pin as this client.
     if (fingerprint != null) {
@@ -86,20 +121,28 @@ class ServerSessionController
     ref.onDispose(client.close);
     final api = UsersApi(client);
 
-    try {
-      final me = await api.me(token);
-      return ServerSession(
-        profile: profile,
-        client: client,
-        token: token,
-        currentUser: me,
-      );
-    } on ApiException catch (e) {
-      if (e.code == 'invalid_session') {
-        await _secureStore.clearSessionToken(serverId);
+    final me = await api.me(token);
+
+    // Servers pinned before identity keys existed pick theirs up here, over
+    // the connection the pinned certificate already vouches for.
+    if (fingerprint != null) {
+      try {
+        await ServerTrust.pinIdentityIfMissing(
+          serverId: profile.id,
+          info: await api.serverInfo(),
+          presentedFingerprint: fingerprint,
+        );
+      } on ApiException {
+        // Best-effort: the next restore tries again.
       }
-      return null;
     }
+
+    return ServerSession(
+      profile: profile,
+      client: client,
+      token: token,
+      currentUser: me,
+    );
   }
 
   /// Called once onboarding (register/login/rejoin) hands back a fresh

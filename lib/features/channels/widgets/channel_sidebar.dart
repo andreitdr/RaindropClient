@@ -196,7 +196,8 @@ Future<void> _deleteChannel(
         ? 'This deletes the voice channel for everyone, and ends its call for '
               'anybody in it. It can\'t be undone.'
         : 'This deletes the channel and every message in it, for everyone. It '
-              'can\'t be undone. The server owner keeps a copy of the messages.',
+              'can\'t be undone. The server owner keeps a copy of any messages '
+              'sent before end-to-end encryption.',
     confirmLabel: 'Delete',
     destructive: true,
   );

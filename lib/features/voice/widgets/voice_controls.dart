@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/voice/voice_engine.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../channels/controllers/channels_controller.dart';
 import '../../servers/controllers/servers_controller.dart';
@@ -108,6 +110,33 @@ class VoiceConnectionBar extends ConsumerWidget {
       _ => ('Connecting…', theme.colorScheme.onSurfaceVariant),
     };
 
+    // The call's encryption, always visible: a lock when the audio is end-to-
+    // end encrypted, a warning while some of it is not decrypting (and so
+    // kept silent), an open lock where the server does not offer it.
+    final (lockIcon, lockColor, lockTip) = switch (call.encryption) {
+      VoiceEncryption.active => (
+        Icons.lock,
+        context.surfaces.onlineIndicator,
+        'End-to-end encrypted. Not even the server can hear this call.',
+      ),
+      VoiceEncryption.degraded => (
+        Icons.lock_clock,
+        theme.colorScheme.tertiary,
+        'End-to-end encrypted. Somebody\'s audio is not decrypting right now, '
+            'so they are silent until it does.',
+      ),
+      VoiceEncryption.none => (
+        Icons.lock_open,
+        theme.colorScheme.onSurfaceVariant,
+        'Not end-to-end encrypted: this server does not offer it, so its media '
+            'server can hear the call.',
+      ),
+    };
+    final lock = Tooltip(
+      message: lockTip,
+      child: Icon(lockIcon, size: 14, color: lockColor),
+    );
+
     final hangUp = IconButton(
       tooltip: 'Disconnect',
       visualDensity: VisualDensity.compact,
@@ -141,6 +170,8 @@ class VoiceConnectionBar extends ConsumerWidget {
               Icon(Icons.graphic_eq, size: 18, color: color),
               const SizedBox(width: 8),
               status,
+              const SizedBox(width: 4),
+              lock,
               const SizedBox(width: 8),
               Expanded(child: where),
               const VoiceSelfControls(iconSize: 18),
@@ -158,7 +189,10 @@ class VoiceConnectionBar extends ConsumerWidget {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [status, where],
+              children: [
+                Row(children: [status, const SizedBox(width: 4), lock]),
+                where,
+              ],
             ),
           ),
           hangUp,

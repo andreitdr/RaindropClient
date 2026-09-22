@@ -4,7 +4,7 @@ Feature folder: [`lib/features/chat/`](../lib/features/chat/). Server-side refer
 [Messages](../../RaindropServer/docs/messages.md).
 
 Text channels are real: `ChannelsApi` fetches the channel list (see [Channels](channels.md)) and
-`TextMessagesApi` wraps `/api/channels/text/messages/{send,history}` (see
+`TextMessagesApi` wraps `/api/channels/text/messages/{send-encrypted,send,history,delete}` (see
 [Network layer](network-layer.md)).
 [`ChatController`](../lib/features/chat/controllers/chat_controller.dart) owns one channel's timeline,
 keyed by a `(serverId, channelId)` pair — the same client can be signed into several servers at once,
@@ -13,6 +13,53 @@ and channel ids are only unique within one server.
 `chatProvider` is `AsyncNotifierProvider.autoDispose.family<ChatController, ChatTimeline, ChatScope>`.
 `autoDispose` matters here: the event subscription and any fallback poll (below) live as long as the
 provider, so leaving a channel actually stops listening to it rather than leaking a timer.
+
+## End-to-end encryption
+
+Messages are end-to-end encrypted (server side: [Messages](../../RaindropServer/docs/messages.md#end-to-end-encryption)).
+`ChatController` gets the server's `ChannelGroups` (`features/security/controllers/channel_groups.dart`,
+`channelGroupsProvider`). It is null against a server without `e2ee.delivery.v1` or before this device
+is set up, and then messages stay plaintext as before.
+
+- **Opening a channel** joins its MLS group before the first page is decoded (`ensureJoined`). A device
+  that cannot join still sees the timeline, with placeholders.
+- **Sending:**
+  1. The text goes into a `MessagePayload` (`core/crypto/message_payload.dart`, MessagePack
+     `{v, t: type, b: body, c: clientMessageId, s, x}`, `type` an open string).
+  2. It is encrypted in the channel's group and posted to `send-encrypted`.
+  3. It is then kept in the local cache (`rememberSent`), because a device cannot decrypt what it sent.
+  4. On `stale_epoch` the group catches up and the message is encrypted once more.
+  5. The server's echo can arrive before the send returns. `ChannelGroups` keeps the plaintext of
+     in-flight ciphertext for exactly that case, so `_withoutEchoOf` still matches it.
+- **Receiving and history.** `_decode` turns every `ChannelMessage` into a `ChatMessage` with a
+  `MessageSecurity`:
+  - `encrypted`: decrypted, or read from the local cache (the only copy once the epoch keys are gone)
+  - `undecryptable`: sent before this device joined, or from a newer client. The pane shows a lock
+    and "Encrypted before this device joined".
+  - `plaintext`: posted before the server required encryption. The pane shows an open-lock marker
+    whose tooltip says the server owner can read it.
+
+`ChannelGroups` also runs everything else about the group:
+- catching up on commits (`e2ee.handshake`) and picking up Welcomes (`e2ee.welcome`, and after every
+  reconnect)
+- keeping 20–50 key packages on the server (`e2ee.keypackages.low`)
+- reconciling against the roster on `e2ee.group.reconcile`, after a random delay of up to 2 s so
+  members do not all race
+
+**Reporting.** Every message this client sends carries an attestation inside its encrypted payload:
+the device's Ed25519 signature over the channel, client message id, time, type and body
+(`MessagePayload.attestationBytes`). Somebody else's decrypted, attested message offers *Report
+message* (a flag on hover on desktop, the long-press sheet on touch). The dialog says plainly that the
+text will be shown to the server's moderators. `ChatController.report` sends the text and attestation,
+and the server verifies them against the author's device key before accepting the report.
+
+Deleting a message asks for confirmation, and the dialog says truthfully where copies remain. For a
+pre-encryption message, the server owner keeps its text. For an encrypted one, nobody keeps a copy on
+the server.
+
+Reconciling removes any device that should not be in the group, which is the client's check on adds
+it could not verify beforehand. It also adds devices that should be, leaving out a user whose identity
+key changed. Every group operation runs one at a time, so two of them never interleave on MLS state.
 
 ## `ChatTimeline`
 

@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/server_profile.dart';
+import '../../../core/crypto/crypto_store.dart';
 import '../../../core/storage/secure_store.dart';
+import '../../security/controllers/device_setup_controller.dart';
 import '../../../core/theme/theme_controller.dart';
 
 /// The list of servers this install has connected to, persisted locally.
@@ -36,6 +38,13 @@ class ServersController extends Notifier<List<ServerProfile>> {
   Future<void> remove(String serverId) async {
     state = state.where((s) => s.id != serverId).toList(growable: false);
     _persist();
+    // Private keys, groups and decrypted messages for this server go with it.
+    // The store is closed first, if it was open.
+    if (ref.exists(cryptoEngineProvider(serverId))) {
+      (await ref.read(cryptoEngineProvider(serverId).future)).dispose();
+      ref.invalidate(cryptoEngineProvider(serverId));
+    }
+    await const CryptoStores().delete(serverId);
     await const SecureStore().forgetServer(serverId);
   }
 

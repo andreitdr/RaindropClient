@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'api_client.dart';
 
 /// Dart mirrors of the C# records in `RaindropServer/Users/Contracts.cs` and
@@ -8,17 +11,36 @@ class ServerInfo {
     required this.protocolVersion,
     this.tlsFingerprint,
     required this.payloadFormats,
+    this.identityKey,
+    this.tlsBindingSignature,
+    this.capabilities = const [],
   });
 
   final String protocolVersion;
   final String? tlsFingerprint;
   final List<String> payloadFormats;
 
+  /// The server's long-lived P-256 identity key (uncompressed point), pinned
+  /// alongside the fingerprint. See `ServerTrust`.
+  final Uint8List? identityKey;
+
+  /// [identityKey]'s signature over [tlsFingerprint].
+  final Uint8List? tlsBindingSignature;
+
+  /// Optional features the server offers, e.g. `tls.identity-binding.v1`.
+  final List<String> capabilities;
+
   factory ServerInfo.fromJson(Map<String, dynamic> j) => ServerInfo(
     protocolVersion: j['protocolVersion'] as String,
     tlsFingerprint: j['tlsFingerprint'] as String?,
     payloadFormats: List<String>.from(j['payloadFormats'] as List? ?? const []),
+    identityKey: _bytes(j['identityKey']),
+    tlsBindingSignature: _bytes(j['tlsBindingSignature']),
+    capabilities: List<String>.from(j['capabilities'] as List? ?? const []),
   );
+
+  static Uint8List? _bytes(Object? value) =>
+      value is String ? base64.decode(value) : null;
 }
 
 /// One of `active`, `left_preserved`, `erased` (an authenticated user's own state).

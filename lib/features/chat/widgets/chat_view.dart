@@ -387,6 +387,13 @@ class _MessageRowState extends ConsumerState<_MessageRow> {
                 title: const Text('Copy text'),
                 onTap: () => Navigator.pop(sheetContext, _MessageAction.copy),
               ),
+              if (_canReport)
+                ListTile(
+                  leading: const Icon(Icons.flag_outlined),
+                  title: const Text('Report message'),
+                  onTap: () =>
+                      Navigator.pop(sheetContext, _MessageAction.report),
+                ),
               if (widget.canDelete)
                 ListTile(
                   leading: Icon(Icons.delete_outline, color: scheme.error),
@@ -408,7 +415,71 @@ class _MessageRowState extends ConsumerState<_MessageRow> {
         await Clipboard.setData(ClipboardData(text: _message.content ?? ''));
       case _MessageAction.delete:
         if (mounted) await _delete();
+      case _MessageAction.report:
+        if (mounted) await _report();
       case null:
+    }
+  }
+
+  /// Somebody else's encrypted message that carries its author's attestation.
+  bool get _canReport {
+    final me = ref
+        .read(serverSessionProvider(widget.scope.serverId))
+        .valueOrNull
+        ?.currentUser
+        .userId;
+    return _message.reportable && _message.authorId != me;
+  }
+
+  Future<void> _report() async {
+    final reasonController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Report message?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'This message is end-to-end encrypted, so the server cannot read '
+              'it. Reporting it shows its text to this server\'s moderators, '
+              'with proof that its author sent it.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              maxLength: 500,
+              decoration: const InputDecoration(labelText: 'Reason (optional)'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Report'),
+          ),
+        ],
+      ),
+    );
+    final reason = reasonController.text.trim();
+    reasonController.dispose();
+    if (confirmed != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(chatProvider(widget.scope).notifier)
+          .report(_message, reason: reason.isEmpty ? null : reason);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Reported to the moderators.')),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -416,9 +487,13 @@ class _MessageRowState extends ConsumerState<_MessageRow> {
     final confirmed = await showAdaptiveConfirm(
       context,
       title: 'Delete message?',
-      message:
-          'This deletes the message for everyone. The server owner keeps a '
-          'copy.',
+      // The server archives deleted text only for messages it could read:
+      // an end-to-end encrypted one leaves nothing behind.
+      message: _message.security == MessageSecurity.plaintext
+          ? 'This deletes the message for everyone. The server owner keeps a '
+                'copy, because it was sent before end-to-end encryption.'
+          : 'This deletes the message for everyone. It was end-to-end '
+                'encrypted, so nobody keeps a copy on the server.',
       confirmLabel: 'Delete',
       destructive: true,
     );
@@ -443,6 +518,7 @@ class _MessageRowState extends ConsumerState<_MessageRow> {
     ));
     final failed = message.status == MessageStatus.failed;
     final showHoverDelete = widget.canDelete && isDesktopPlatform;
+    final showHoverReport = _canReport && isDesktopPlatform;
 
     Widget row = Opacity(
       opacity: message.status == MessageStatus.sending ? 0.55 : 1,
@@ -491,6 +567,20 @@ class _MessageRowState extends ConsumerState<_MessageRow> {
                 ],
               ),
             ),
+            if (showHoverReport)
+              Visibility(
+                visible: _hovered,
+                maintainSize: true,
+                maintainAnimation: true,
+                maintainState: true,
+                child: IconButton(
+                  icon: const Icon(Icons.flag_outlined, size: 18),
+                  tooltip: 'Report message',
+                  visualDensity: VisualDensity.compact,
+                  color: scheme.onSurfaceVariant,
+                  onPressed: _report,
+                ),
+              ),
             if (showHoverDelete)
               // Kept in the layout while hidden so the text does not reflow
               // when the pointer arrives.
@@ -515,7 +605,7 @@ class _MessageRowState extends ConsumerState<_MessageRow> {
     if (_hasSheet) {
       row = GestureDetector(onLongPress: _openSheet, child: row);
     }
-    if (showHoverDelete) {
+    if (showHoverDelete || showHoverReport) {
       row = MouseRegion(
         onEnter: (_) => setState(() => _hovered = true),
         onExit: (_) => setState(() => _hovered = false),
@@ -526,7 +616,7 @@ class _MessageRowState extends ConsumerState<_MessageRow> {
   }
 }
 
-enum _MessageAction { copy, delete }
+enum _MessageAction { copy, delete, report }
 
 /// A deleted message keeps its place with no text — the server sends the
 /// tombstone deliberately, so dropping it here would misrepresent history.
@@ -538,6 +628,28 @@ class _MessageBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final muted = Theme.of(context).textTheme.bodyMedium
+        ?.copyWith(color: scheme.onSurfaceVariant, fontStyle: FontStyle.italic);
+
+    // End-to-end encrypted, but not for this device: history is forward-only,
+    // so a device that joined the channel's group later cannot read what came
+    // before, and nothing (not even the server) can give it the keys.
+    if (!message.deleted && message.security == MessageSecurity.undecryptable) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.lock_outline, size: 14, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              'Encrypted before this device joined — it cannot be read here',
+              style: muted,
+            ),
+          ),
+        ],
+      );
+    }
+
     if (message.deleted || message.content == null) {
       return Text(
         'Message deleted',
@@ -551,9 +663,30 @@ class _MessageBody extends StatelessWidget {
     // the very gestures the row uses for its own actions. On touch the row's
     // sheet (which has "Copy text") takes them over, so the text is plain
     // there; on desktop selection keeps them and delete is a hover button.
-    return isDesktopPlatform
+    final text = isDesktopPlatform
         ? SelectableText(message.content!)
         : Text(message.content!);
+
+    // Posted before the server required end-to-end encryption: the server
+    // could (and can still) read it, which the reader should know.
+    if (message.security == MessageSecurity.plaintext) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Flexible(child: text),
+          const SizedBox(width: 6),
+          Tooltip(
+            message: 'Sent before end-to-end encryption. The server owner can read it.',
+            child: Icon(
+              Icons.lock_open,
+              size: 14,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      );
+    }
+    return text;
   }
 }
 

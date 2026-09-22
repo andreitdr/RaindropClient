@@ -32,6 +32,24 @@ flutter run -d macos      # or: -d windows, -d linux, -d ios, -d android, -d chr
 flutter build macos --debug
 ```
 
+The end-to-end encryption core is Rust, in `../RaindropCrypto` (kept out of this tree on purpose),
+compiled into the app by `native/raindrop_crypto_builder` (cargokit). Building needs `rustup` on
+`PATH` (Homebrew's is keg-only: `export PATH=/opt/homebrew/opt/rustup/bin:$PATH`), and CocoaPods for
+iOS/macOS, because cargokit only supports pods; this plugin uses the Podfile while the others use
+SPM. After changing `RaindropCrypto/crates/raindrop_crypto_ffi/src/api/`, regenerate the bindings
+from this folder:
+
+```bash
+flutter_rust_bridge_codegen generate
+```
+
+The Dart package, the Rust crate and the codegen must all be flutter_rust_bridge **2.13.0**. See
+`docs/crypto.md`.
+
+Integration tests against a live server (the real Rust core, the real server) are under
+`test/integration/` and skip themselves unless `RAINDROP_TEST_SERVER=host:port` names a server with a
+fresh database; see `docs/crypto.md#tests`.
+
 Unit tests live under `test/` (`flutter test`) — pure logic only (models, merges, settings round-trips),
 no widget tests yet. To sanity-check the network layer against a real server, run the
 server per its own CLAUDE.md (`dotnet run --project ServerCli` from `RaindropServer/`, default
@@ -57,12 +75,16 @@ core/
                 AppSurfaces color-role extension, and the catalog/active-theme controllers
   widgets/    — Panel (flat chrome surface), AdaptiveSwitch/AdaptiveActivityIndicator/showAdaptiveConfirm
   network/    — ApiClient (TLS-pinned Dio wrapper, plus the pinned WebSocket upgrade),
-                CertificatePinner, PinRegistry (the same pins, process-wide, for the voice engine's
+                CertificatePinner, ServerTrust (identity-key pin, follows signed certificate changes),
+                PinRegistry (the same pins, process-wide, for the voice engine's
                 own sockets), EventStream (the server's push channel), and one wrapper per server
                 domain with its DTOs: UsersApi, ChannelsApi, TextMessagesApi, MembersApi, RolesApi,
-                VoiceApi
+                VoiceApi, E2eeApi
   voice/      — VoiceEngine (a call's audio, transport-agnostic) + LiveKitVoiceEngine, the only code
                 that imports livekit_client / flutter_webrtc
+  crypto/     — CryptoEngine (end-to-end encryption, MLS) + MlsCryptoEngine over the generated Rust
+                bridge in crypto/bridge/ (never import it elsewhere), and CryptoStores (one
+                SQLCipher store per server, its key in SecureStore)
   storage/    — AppPrefs (plain prefs) and SecureStore (Keychain/Credential Manager/libsecret/Keystore)
   models/     — ServerProfile, the one cross-feature domain model
   router/     — go_router route table
@@ -76,7 +98,11 @@ features/
   members/    — the roster with each member's presence + the right-hand member pane
   voice/      — the call, who is in each call, voice settings + per-member audio, the voice view,
                 member menu and call controls
-  settings/   — appearance (theme), voice & audio, and connected-server management
+  security/   — end-to-end encryption: DeviceSetupController (create/link/restore, register, bind
+                the session), ChannelGroups (each channel's MLS group: join, catch up, Welcomes, key
+                packages, roster reconcile, encrypt/decrypt), the setup pane that takes the chat pane
+                when this device has no keys, the recovery-words dialog, Settings → Encryption
+  settings/   — appearance (theme), voice & audio, encryption, and connected-server management
   home/       — HomeShell, which assembles the above into the responsive shell
 ```
 
@@ -154,6 +180,10 @@ GUID and pin are already on file) if it isn't. A session's token, once obtained,
 `SecureStore`; `AppPrefs` only ever holds the non-secret server list (host/port/nickname) and UI
 settings.
 
+Alongside the fingerprint, the client pins the server's **identity key** (`core/network/server_trust.dart`).
+When a pinned certificate stops matching, session restore follows the change only if that pinned key
+signed the new certificate; otherwise the mismatch stands.
+
 `core/network/tls_pinning.dart` explains why pinning is implemented as an `HttpClient
 .badCertificateCallback`: it only fires when the platform's default trust check *fails*, which is
 exactly the self-signed-certificate case the server defaults to. A CA-issued certificate validates
@@ -183,6 +213,13 @@ Two rules for anything new that follows the stream: create the `LiveSync` *befor
 and buffer events that arrive during it (`_early`), and reset per-build fields at the top of `build` —
 Riverpod reuses the notifier instance on rebuild. A `4401` close (session ended, e.g. after a server
 restart) invalidates `serverSessionProvider`, which is what routes the shell to `ReauthPrompt`.
+
+**Messages are end-to-end encrypted** when the server offers it (`e2ee.delivery.v1`) and this device
+is set up: `ChatController` encrypts through `ChannelGroups` (`features/security/`) and posts to
+`send-encrypted`; received and paged messages are decrypted (or read from the local encrypted cache) in
+`_decode`, and each `ChatMessage` carries a `MessageSecurity` — `encrypted`, `undecryptable` (sent
+before this device joined; shown with a lock), or `plaintext` (pre-encryption; open-lock marker). See
+`docs/messages-chat.md#end-to-end-encryption`.
 
 **Sending is optimistic.** A message appears immediately with a local id, and is replaced by the
 server's copy — real id and timestamp — when the send returns; a merge on id means an event or
@@ -266,6 +303,11 @@ of the app never imports the media library.
   mute** (`memberAudioProvider`, keyed `serverId/userId`) are local only. Each remote member plays at
   `effectiveVolume` = own × output volume, capped at 2.0 (libwebrtc source gain: 1 = as sent), 0 while
   deafened or locally muted.
+- **Calls are end-to-end encrypted** on a server with `e2ee.voice.v1`: the media key comes from the
+  voice channel's MLS group (`ChannelGroups.mediaKey`, before joining — no key, no join), LiveKit's
+  frame cryptor uses it (`VoiceEngine.connect(mediaKey:)`, `setMediaKey` on every epoch change), the
+  lowest member id in the call rotates it every 10 minutes, unencrypted or undecryptable audio is kept
+  silent, and `VoiceConnectionBar` shows a lock. See `docs/voice.md#end-to-end-encrypted-calls`.
 - **"Mute for everyone"** needs server-wide `mute_members` (`serverPermissionsProvider`), and is
   enforced by the server; it arrives back as `voice.state`.
 - `voiceRosterProvider(serverId)` follows `voice.state` / `voice.left` / `channel.deleted` and drives

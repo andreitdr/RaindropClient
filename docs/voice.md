@@ -40,7 +40,47 @@ LiveKit's own `CertificatePinningOptions` is deliberately not used. It checks th
 before it looks at any pin, and a self-signed certificate reached by an address it does not name
 never passes.
 
-The audio itself is DTLS-SRTP to the LiveKit server, over UDP 7882 or the TCP 7881 fallback.
+The audio itself is DTLS-SRTP to the LiveKit server, over UDP 7882 or the TCP 7881 fallback, and
+**end-to-end encrypted inside that** on a server that offers it (`e2ee.voice.v1`).
+
+## End-to-end encrypted calls
+
+(Server side: [Voice](../../RaindropServer/docs/voice.md#end-to-end-encrypted-calls).)
+
+- **The key.** Before joining, `VoiceCallController.join` gets the call's media key from the voice
+  channel's MLS group: `ChannelGroups.mediaKey`, which joins the group if needed and exports
+  `raindrop/voice/v1` for the current epoch into slot `epoch mod 16`. It fetches the key **before**
+  telling the server it is joining. If it cannot get a key on a server that requires one, it refuses
+  with `VoiceEncryptionUnavailableException` (shown as a snack bar) and never joins in the clear.
+- **The engine.** `LiveKitVoiceEngine.connect(mediaKey:)` hands LiveKit a shared-key `BaseKeyProvider`:
+  - key ring 16
+  - ratchet window 0: keys are never derived from old ones
+  - failure tolerance −1: failures never switch encryption off
+
+  It passes that provider as `RoomOptions.encryption`, and moves senders onto the key's slot.
+- **Key changes.** `ChannelGroups.epochChanges` fires whenever the group's epoch moves. The controller
+  then exports the new key and calls `engine.setMediaKey`, which sets the key and switches this
+  participant's senders to its slot; receivers keep the older slots for frames in flight. The key is
+  also refreshed once right after connecting, in case the epoch moved during connect.
+- **Rotation.** Every 10 minutes, the participant with the lowest member id rotates the group's keys
+  (`ChannelGroups.rotate`), so a call rekeys once per interval rather than once per participant.
+- **Failing closed.** A remote track published without encryption is kept at volume 0 for as long as
+  that participant is in the call. A participant whose frames stop decrypting is silenced until a key
+  change or a good frame. `engine.encryptionChanges` reports `active`, `degraded` or `none`.
+- **The lock.** `VoiceCallState.encryption` drives a lock in `VoiceConnectionBar`:
+  - a closed lock: encrypted
+  - a clock-lock: somebody is not decrypting and is silenced
+  - an open lock: the server does not offer encrypted calls, so its media server can hear
+
+### Checking it by hand
+
+The integration test (`test/integration/e2ee_voice_test.dart`) covers the keys, including that every
+member derives the same one, rotation, and removal. It cannot play audio. To check the audio path:
+
+1. Put two devices in a call and confirm both show the closed lock and hear each other.
+2. Join the same LiveKit room from outside Raindrop with a token minted by the server's LiveKit key
+   (for example with the LiveKit CLI, `lk room join`). That participant receives only undecodable
+   frames: noise or silence, never speech.
 
 ## State
 

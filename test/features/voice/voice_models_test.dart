@@ -145,18 +145,18 @@ void main() {
 
     test('goes through the server this client pinned when there is no url', () {
       expect(
-        result(
-          path: '/api/channels/voice/signal',
-        ).signalUri(host: 'chat.example', port: 5001).toString(),
+        result(path: '/api/channels/voice/signal')
+            .signalUri(host: 'chat.example', port: 5001)
+            .toString(),
         'wss://chat.example:5001/api/channels/voice/signal',
       );
     });
 
     test('uses an absolute url when the server gives one', () {
       expect(
-        result(
-          url: 'wss://media.example',
-        ).signalUri(host: 'chat.example', port: 5001).toString(),
+        result(url: 'wss://media.example')
+            .signalUri(host: 'chat.example', port: 5001)
+            .toString(),
         'wss://media.example',
       );
     });
@@ -165,13 +165,16 @@ void main() {
   group('groupByType', () {
     const text = Channel(id: '1', name: 'general', type: ChannelType.text);
 
-    test('shows an empty voice heading only for somebody who can create one', () {
-      expect(groupByType([text]).map((c) => c.type), [ChannelType.text]);
-      expect(
-        groupByType([text], alwaysShowVoice: true).map((c) => c.type),
-        [ChannelType.text, ChannelType.voice],
-      );
-    });
+    test(
+      'shows an empty voice heading only for somebody who can create one',
+      () {
+        expect(groupByType([text]).map((c) => c.type), [ChannelType.text]);
+        expect(groupByType([text], alwaysShowVoice: true).map((c) => c.type), [
+          ChannelType.text,
+          ChannelType.voice,
+        ]);
+      },
+    );
   });
 
   group('VoiceSettings', () {
@@ -192,7 +195,10 @@ void main() {
     });
 
     test('falls back to defaults for missing or malformed values', () {
-      final back = VoiceSettings.fromJson({'outputVolume': 'loud', 'selfDeaf': 1});
+      final back = VoiceSettings.fromJson({
+        'outputVolume': 'loud',
+        'selfDeaf': 1,
+      });
       expect(back.outputVolume, 1.0);
       expect(back.selfDeaf, isFalse);
     });

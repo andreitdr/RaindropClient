@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Raindrop uses the camera to scan the code another of your devices shows, to link it securely.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Raindrop uses the microphone so you can talk in voice channels.</string>
 	<key>CFBundleDevelopmentRegion</key>

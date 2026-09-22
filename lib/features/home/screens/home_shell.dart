@@ -8,6 +8,9 @@ import '../../channels/controllers/selected_channel_controller.dart';
 import '../../channels/models/channel.dart';
 import '../../channels/widgets/channel_sidebar.dart';
 import '../../chat/widgets/chat_view.dart';
+import '../../security/controllers/device_setup_controller.dart';
+import '../../security/widgets/encryption_setup_pane.dart';
+import '../../security/widgets/recovery_words_dialog.dart';
 import '../../members/widgets/member_list.dart';
 import '../../onboarding/screens/connect_server_screen.dart';
 import '../../onboarding/screens/reauth_prompt.dart';
@@ -99,6 +102,18 @@ class _ShellLayoutState extends ConsumerState<_ShellLayout> {
       ref.watch(selectedChannelIdProvider),
     );
 
+    // This device's encryption setup. While it cannot take part yet, the
+    // setup pane takes the chat pane; a fresh recovery key is shown once.
+    final setup = ref.watch(deviceSetupProvider(serverId)).valueOrNull;
+    ref.listen(deviceSetupProvider(serverId), (_, next) {
+      final state = next.valueOrNull;
+      if (state is! DeviceSetupReady || state.recoveryWords == null) return;
+      ref
+          .read(deviceSetupProvider(serverId).notifier)
+          .acknowledgeRecoveryWords();
+      showRecoveryWordsDialog(context, state.recoveryWords!);
+    });
+
     // A call that ended without this client hanging up says why, once.
     ref.listen(voiceCallProvider.select((call) => call.notice), (_, notice) {
       if (notice == null) return;
@@ -130,7 +145,7 @@ class _ShellLayoutState extends ConsumerState<_ShellLayout> {
                 ),
               ];
 
-        final Widget chat = switch (channel) {
+        final Widget channelPane = switch (channel) {
           null => _NoChannelSelected(
             loading: channels == null,
             leading: menuButton,
@@ -147,6 +162,17 @@ class _ShellLayoutState extends ConsumerState<_ShellLayout> {
             leading: menuButton,
             trailingActions: trailingActions,
           ),
+        };
+
+        final Widget chat = switch (setup) {
+          DeviceSetupNeedsKeys() ||
+          DeviceSetupLinking() ||
+          DeviceSetupReplaced() => EncryptionSetupPane(
+            serverId: serverId,
+            state: setup!,
+            leading: menuButton,
+          ),
+          _ => channelPane,
         };
 
         if (isNarrow) {

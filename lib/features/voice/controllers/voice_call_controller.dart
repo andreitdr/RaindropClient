@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/e2ee_api.dart';
 import '../../../core/network/event_stream.dart';
 import '../../../core/network/voice_api.dart';
 import '../../../core/voice/voice_engine.dart';
+import '../../security/controllers/channel_groups.dart';
 import '../../servers/controllers/server_events.dart';
 import '../../servers/controllers/session_controller.dart';
 import '../models/member_audio.dart';
@@ -27,6 +30,7 @@ class VoiceCallState {
     this.serverMuted = false,
     this.suppressed = false,
     this.notice,
+    this.encryption = VoiceEncryption.none,
   });
 
   final String? serverId;
@@ -51,11 +55,16 @@ class VoiceCallState {
   bool isIn(String serverId, String channelId) =>
       inCall && this.serverId == serverId && this.channelId == channelId;
 
+  /// Whether this call's audio is end-to-end encrypted, for the lock in the
+  /// call UI.
+  final VoiceEncryption encryption;
+
   VoiceCallState copyWith({
     VoiceCallStatus? status,
     Set<String>? speaking,
     bool? serverMuted,
     bool? suppressed,
+    VoiceEncryption? encryption,
   }) => VoiceCallState(
     serverId: serverId,
     channelId: channelId,
@@ -64,6 +73,7 @@ class VoiceCallState {
     serverMuted: serverMuted ?? this.serverMuted,
     suppressed: suppressed ?? this.suppressed,
     notice: notice,
+    encryption: encryption ?? this.encryption,
   );
 }
 
@@ -78,6 +88,21 @@ class UnsupportedVoiceTransportException implements Exception {
       'This server carries calls over "$transport", which this version of '
       'Raindrop does not support. Updating the app may help.';
 }
+
+/// The call could not be end-to-end encrypted on a server that requires it,
+/// so it was not joined.
+class VoiceEncryptionUnavailableException implements Exception {
+  const VoiceEncryptionUnavailableException(this.reason);
+
+  final String reason;
+
+  @override
+  String toString() => 'This call could not be end-to-end encrypted: $reason';
+}
+
+/// How often the voice channel's group moves to a new epoch — a new media key
+/// — during a call, so a key that leaks exposes at most this much audio.
+const _rekeyInterval = Duration(minutes: 10);
 
 final voiceCallProvider = NotifierProvider<VoiceCallController, VoiceCallState>(
   VoiceCallController.new,
@@ -95,6 +120,8 @@ class VoiceCallController extends Notifier<VoiceCallState> {
   ServerSession? _session;
   final _subscriptions = <StreamSubscription<Object?>>[];
   final _watches = <ProviderSubscription<Object?>>[];
+  ChannelGroups? _groups;
+  Timer? _rekey;
 
   /// Bumped whenever a call starts or ends, so an answer to an older join
   /// that arrives late cannot resurrect it.
@@ -127,6 +154,32 @@ class VoiceCallController extends Notifier<VoiceCallState> {
       status: VoiceCallStatus.joining,
     );
 
+    // The media key comes first, before the server lists this device in the
+    // call: on a server whose calls are end-to-end encrypted, a device that
+    // cannot encrypt does not join at all.
+    VoiceMediaKey? mediaKey;
+    ChannelGroups? groups;
+    try {
+      final info = await session.usersApi.serverInfo();
+      if (info.capabilities.contains(e2eeVoiceCapability)) {
+        groups = await ref.read(channelGroupsProvider(serverId).future);
+        if (groups == null) {
+          throw const VoiceEncryptionUnavailableException(
+            'this device is not set up for encryption on this server.',
+          );
+        }
+        final key = await groups.mediaKey(channelId);
+        mediaKey = VoiceMediaKey(key: key.key, index: key.index);
+      }
+    } on VoiceEncryptionUnavailableException {
+      if (generation == _generation) state = const VoiceCallState();
+      rethrow;
+    } on Object catch (e) {
+      if (generation == _generation) state = const VoiceCallState();
+      throw VoiceEncryptionUnavailableException('$e');
+    }
+    if (generation != _generation) return;
+
     final settings = ref.read(voiceSettingsProvider);
     final VoiceJoinResult joined;
     try {
@@ -155,6 +208,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
 
     _engine = engine;
     _session = session;
+    _groups = groups;
     state = state.copyWith(
       serverMuted: joined.you.serverMute,
       suppressed: joined.you.suppressed,
@@ -176,6 +230,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
         processing: settings.processing,
         inputDeviceId: settings.inputDeviceId,
         outputDeviceId: settings.outputDeviceId,
+        mediaKey: mediaKey,
       );
     } on Object {
       if (generation == _generation) {
@@ -187,9 +242,51 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     if (generation == _generation && state.status == VoiceCallStatus.joining) {
       state = state.copyWith(status: VoiceCallStatus.connected);
     }
+
+    // The group may have moved on while connecting; make sure the call
+    // starts on the current key.
+    if (generation == _generation && groups != null) {
+      unawaited(_refreshMediaKey(groups, channelId));
+    }
   }
 
   /// Hangs up. Safe to call when not in a call.
+  Future<void> _refreshMediaKey(ChannelGroups groups, String channelId) async {
+    try {
+      final key = await groups.mediaKey(channelId);
+      await _engine?.setMediaKey(VoiceMediaKey(key: key.key, index: key.index));
+    } on Object catch (e) {
+      // Staying on the old key: whoever moved on is silent here (their frames
+      // do not decrypt) until the next change gets through. Never plaintext.
+      debugPrint('voice: could not switch media key: $e');
+    }
+  }
+
+  /// Rotates the call's key — but only on the one participant with the
+  /// lowest member id, so a call rekeys once per interval rather than once
+  /// per participant.
+  Future<void> _rotateIfFirst(
+    String serverId,
+    ChannelGroups groups,
+    String channelId,
+  ) async {
+    final me = _session?.currentUser.userId;
+    final participants = ref
+        .read(voiceRosterProvider(serverId))
+        .valueOrNull
+        ?.inChannel(channelId)
+        .map((p) => p.userId)
+        .toList();
+    if (me == null || participants == null || participants.isEmpty) return;
+    participants.sort();
+    if (participants.first != me) return;
+    try {
+      await groups.rotate(channelId);
+    } on Object catch (e) {
+      debugPrint('voice: could not rotate the call key: $e');
+    }
+  }
+
   Future<void> leave() async {
     if (!state.inCall) return;
     await _end();
@@ -221,7 +318,28 @@ class VoiceCallController extends Notifier<VoiceCallState> {
           }
         }),
       )
-      ..add(engine.disconnects.listen(_onEngineDisconnected));
+      ..add(engine.disconnects.listen(_onEngineDisconnected))
+      ..add(
+        engine.encryptionChanges.listen(
+          (encryption) => state = state.copyWith(encryption: encryption),
+        ),
+      );
+
+    // Every epoch of the voice channel's group is a new media key: somebody
+    // joined or left the group, or its keys were rotated.
+    final groups = _groups;
+    final channelId = state.channelId;
+    if (groups != null && channelId != null) {
+      _subscriptions.add(
+        groups.epochChanges
+            .where((changed) => changed == channelId)
+            .listen((_) => unawaited(_refreshMediaKey(groups, channelId))),
+      );
+      _rekey = Timer.periodic(
+        _rekeyInterval,
+        (_) => unawaited(_rotateIfFirst(serverId, groups, channelId)),
+      );
+    }
 
     final events = ref.read(serverEventsProvider(serverId));
     if (events != null) {
@@ -441,6 +559,9 @@ class VoiceCallController extends Notifier<VoiceCallState> {
       watch.close();
     }
     _watches.clear();
+    _rekey?.cancel();
+    _rekey = null;
+    _groups = null;
 
     final engine = _engine;
     _engine = null;

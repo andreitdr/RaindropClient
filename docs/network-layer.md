@@ -58,6 +58,26 @@ the server documents, SSH-host-key style:
   handshake, so the caller can pin it after a successful first connection — see
   [Connecting to a server](connecting-to-a-server.md).
 
+## `ServerTrust` — following a certificate change
+
+[`server_trust.dart`](../lib/core/network/server_trust.dart) pins the server's long-lived **identity
+key** next to the fingerprint and uses it to follow a certificate the owner replaced on purpose (see
+the server's [Transport security doc](../../RaindropServer/docs/transport-security.md#the-server-identity-key-changing-the-certificate-without-breaking-pins)).
+
+- `verifyTlsBinding` checks the server's ECDSA P-256 signature (`r‖s`) over
+  `"raindrop/tls-binding/v1\n" + fingerprint` with pointycastle. Malformed input returns `false`
+  instead of throwing.
+- `isConsistent(info, presented)` requires that the fingerprint `/api/server/info` advertises is the
+  certificate the handshake presented, and that the identity key signed it. `ConnectServerFlow.probe`
+  runs it on first contact.
+- `pinIdentityIfMissing` pins the key over an already-pinned connection. That covers a first
+  connection (`persist`) and clients upgraded from before identity keys existed (session restore).
+- `followCertificateChange` runs when a pinned connection fails with `certificate_mismatch`. It makes
+  one unauthenticated `/api/server/info` request over a probe connection that accepts any certificate,
+  and re-pins only if the **pinned** identity key signed the certificate that probe was presented. With
+  no identity key pinned, or with any check failing, the mismatch stands. `ServerSessionController`
+  calls it, then retries the restore once.
+
 ## `ApiException`
 
 [`api_exception.dart`](../lib/core/network/api_exception.dart) — thrown for every failure that reaches
@@ -103,3 +123,9 @@ they all share that server's one `ApiClient`.
   session token first come together.
 - [Storage](storage.md) — where the pinned fingerprint and session token actually live.
 - [Wire format](wire-format.md) — JSON today, MessagePack readiness.
+
+## `E2eeApi`
+
+[`e2ee_api.dart`](../lib/core/network/e2ee_api.dart) wraps `/api/e2ee/*`: registering and listing
+devices, session challenge and binding, the sealed key backup, and the device-link relay. Byte fields
+are base64 in JSON. It carries only public keys and opaque blobs; see [End-to-end encryption](crypto.md).

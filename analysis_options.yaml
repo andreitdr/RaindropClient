@@ -8,3 +8,5 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
+    # Vendored build glue (cargokit) with its own dependencies.
+    - native/**

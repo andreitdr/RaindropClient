@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/crypto/message_payload.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/event_stream.dart';
 import '../../../core/network/text_messages_api.dart';
+import '../../security/controllers/channel_groups.dart';
 import '../../servers/controllers/live_sync.dart';
 import '../../servers/controllers/session_controller.dart';
 import '../models/message.dart';
@@ -82,6 +85,11 @@ class ChatController
   static const _uuid = Uuid();
 
   ServerSession? _session;
+
+  /// The channel groups when the server and this device do end-to-end
+  /// encryption; null against a server that does not, where messages are
+  /// plaintext as before.
+  ChannelGroups? _groups;
   bool _disposed = false;
   bool _polling = false;
 
@@ -103,6 +111,7 @@ class ChatController
     final session = await ref.watch(serverSessionProvider(arg.serverId).future);
     _session = session;
     if (session == null) return const ChatTimeline(messages: []);
+    _groups = await ref.watch(channelGroupsProvider(arg.serverId).future);
 
     // Subscribed before the first read, not after: an event that lands while
     // the page is in flight is buffered rather than missed.
@@ -120,11 +129,17 @@ class ChatController
       limit: _pageSize,
     );
 
+    // Joining the channel's group before reading, so messages sent since this
+    // device joined can be decrypted. A device that cannot join (no access to
+    // the group yet) still sees the timeline, with placeholders.
+    try {
+      await _groups?.ensureJoined(arg.channelId);
+    } on Object catch (e) {
+      debugPrint('chat: could not join the encryption group: $e');
+    }
+
     _loaded = true;
-    final messages = mergeMessages(
-      page.messages.map(_toChatMessage).toList(),
-      _early,
-    );
+    final messages = mergeMessages(await _decodeAll(page.messages), _early);
     _early.clear();
 
     return ChatTimeline(messages: messages, olderCursor: page.nextCursor);
@@ -142,12 +157,18 @@ class ChatController
       return;
     }
 
-    final ChatMessage message;
+    final ChannelMessage wire;
     try {
-      message = _toChatMessage(ChannelMessage.fromJson(event.data));
+      wire = ChannelMessage.fromJson(event.data);
     } on Object {
       return; // A payload this build cannot read is one it ignores.
     }
+    unawaited(_applyDecoded(wire));
+  }
+
+  Future<void> _applyDecoded(ChannelMessage wire) async {
+    final message = await _decode(wire);
+    if (_disposed) return;
 
     final current = state.valueOrNull;
     if (!_loaded || current == null) {
@@ -201,16 +222,12 @@ class ChatController
         channelId: arg.channelId,
         limit: _pageSize,
       );
+      final decoded = await _decodeAll(page.messages);
       if (_disposed) return;
       final latest = state.valueOrNull;
       if (latest == null) return;
       state = AsyncData(
-        latest.copyWith(
-          messages: mergeMessages(
-            latest.messages,
-            page.messages.map(_toChatMessage),
-          ),
-        ),
+        latest.copyWith(messages: mergeMessages(latest.messages, decoded)),
       );
     } on ApiException {
       // A re-read that fails is not worth surfacing: the timeline on screen is
@@ -241,14 +258,12 @@ class ChatController
         before: current.olderCursor,
         limit: _pageSize,
       );
+      final decoded = await _decodeAll(page.messages);
       if (_disposed) return;
       final latest = state.valueOrNull ?? current;
       state = AsyncData(
         latest.copyWith(
-          messages: mergeMessages(
-            latest.messages,
-            page.messages.map(_toChatMessage),
-          ),
+          messages: mergeMessages(latest.messages, decoded),
           olderCursor: page.nextCursor,
           clearOlderCursor: page.nextCursor == null,
           loadingOlder: false,
@@ -325,11 +340,14 @@ class ChatController
   Future<void> _deliver(ChatMessage optimistic) async {
     final session = _session!;
     try {
-      final stored = await session.textMessagesApi.send(
-        session.token,
-        channelId: arg.channelId,
-        content: optimistic.content ?? '',
-      );
+      final groups = _groups;
+      final stored = groups == null
+          ? await session.textMessagesApi.send(
+              session.token,
+              channelId: arg.channelId,
+              content: optimistic.content ?? '',
+            )
+          : await _sendEncrypted(session, groups, optimistic);
       if (_disposed) return;
       final latest = state.valueOrNull;
       if (latest == null) return;
@@ -337,11 +355,11 @@ class ChatController
       // event or re-read that already picked it up cannot leave it twice.
       state = AsyncData(
         latest.copyWith(
-          messages: mergeMessages(latest.messages, [_toChatMessage(stored)]),
+          messages: mergeMessages(latest.messages, [await _decode(stored)]),
           pending: latest.pending.where((m) => m.id != optimistic.id).toList(),
         ),
       );
-    } on ApiException {
+    } on Exception {
       if (_disposed) return;
       final latest = state.valueOrNull;
       if (latest == null) return;
@@ -379,20 +397,128 @@ class ChatController
     if (latest == null) return;
     state = AsyncData(
       latest.copyWith(
-        messages: mergeMessages(latest.messages, [_toChatMessage(tombstone)]),
+        messages: mergeMessages(latest.messages, [await _decode(tombstone)]),
       ),
+    );
+  }
+
+  // ── Reporting ────────────────────────────────────────────────────────────
+
+  /// Reports somebody else's encrypted message to the channel's moderators.
+  /// This reveals its text to the server: that is the point of a report, and
+  /// the UI asks first. The author's attestation goes with it, so the server
+  /// can check the text is what their device really wrote.
+  Future<void> report(ChatMessage message, {String? reason}) async {
+    final session = _session;
+    if (session == null || !message.reportable) return;
+    await session.textMessagesApi.report(
+      session.token,
+      messageId: message.id,
+      body: message.content ?? '',
+      clientMessageId: message.clientMessageId!,
+      clientSentAt: message.clientSentAt!,
+      type: MessagePayload.textType,
+      attestation: message.attestation!,
+      reason: reason,
     );
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  static ChatMessage _toChatMessage(ChannelMessage m) => ChatMessage(
-    id: m.messageId,
-    authorId: m.authorId,
-    content: m.content,
-    sentAt: m.sentAtUtc,
-    deleted: m.deleted,
-  );
+  /// Encrypts [optimistic] in the channel's group and posts the ciphertext.
+  /// A message refused as stale (the group moved on while it was being
+  /// encrypted) is encrypted again once, in the group's new epoch.
+  Future<ChannelMessage> _sendEncrypted(
+    ServerSession session,
+    ChannelGroups groups,
+    ChatMessage optimistic,
+  ) async {
+    // Attested, so a recipient can prove to moderators who wrote it.
+    final unsigned = MessagePayload.text(
+      optimistic.content ?? '',
+      clientMessageId: optimistic.id,
+    );
+    final payload = unsigned
+        .withAttestation(
+          await groups.engine.signMessageAttestation(
+            unsigned.attestationBytes(arg.channelId),
+          ),
+        )
+        .encode();
+
+    for (var attempt = 0; ; attempt++) {
+      final ciphertext = await groups.encrypt(arg.channelId, payload);
+      try {
+        final stored = await session.textMessagesApi.sendEncrypted(
+          session.token,
+          channelId: arg.channelId,
+          message: ciphertext,
+        );
+        await groups.rememberSent(
+          channelId: arg.channelId,
+          messageId: stored.messageId,
+          sentAt: stored.sentAtUtc,
+          ciphertext: ciphertext,
+        );
+        return stored;
+      } on ApiException catch (e) {
+        groups.abandon(ciphertext);
+        if (e.code != 'stale_epoch' || attempt > 0) rethrow;
+        await groups.catchUp(arg.channelId);
+      }
+    }
+  }
+
+  Future<List<ChatMessage>> _decodeAll(List<ChannelMessage> messages) async => [
+    for (final m in messages) await _decode(m),
+  ];
+
+  /// A message as the chat shows it: plaintext as it came, an encrypted one
+  /// decrypted (or a placeholder when this device cannot), a tombstone as a
+  /// tombstone.
+  Future<ChatMessage> _decode(ChannelMessage m) async {
+    if (!m.encrypted) {
+      return ChatMessage(
+        id: m.messageId,
+        authorId: m.authorId,
+        content: m.content,
+        sentAt: m.sentAtUtc,
+        deleted: m.deleted,
+        security: MessageSecurity.plaintext,
+      );
+    }
+
+    final ciphertext = m.ciphertext;
+    final groups = _groups;
+    MessagePayload? payload;
+    if (!m.deleted && ciphertext != null && groups != null) {
+      final bytes = await groups.decrypt(
+        channelId: m.channelId,
+        messageId: m.messageId,
+        sentAt: m.sentAtUtc,
+        ciphertext: ciphertext,
+        epoch: m.epoch!,
+        senderDeviceId: m.senderDeviceId,
+      );
+      payload = bytes == null ? null : MessagePayload.tryDecode(bytes);
+    }
+
+    final readable = payload?.type == MessagePayload.textType;
+    return ChatMessage(
+      id: m.messageId,
+      authorId: m.authorId,
+      content: m.deleted ? null : (readable ? payload!.body : null),
+      sentAt: m.sentAtUtc,
+      deleted: m.deleted,
+      security: m.deleted || readable
+          ? MessageSecurity.encrypted
+          : MessageSecurity.undecryptable,
+      senderDeviceId: m.senderDeviceId,
+      attestation: readable ? payload!.attestation : null,
+      clientMessageId: readable ? payload!.clientMessageId : null,
+      clientSentAt: readable ? payload!.sentAt : null,
+    );
+  }
 
   static List<ChatMessage> _replacePending(
     List<ChatMessage> pending,

@@ -5,6 +5,8 @@
 /// speak.
 library;
 
+import 'dart:typed_data';
+
 import 'livekit_voice_engine.dart';
 
 /// Where the media connection is.
@@ -57,6 +59,33 @@ class VoiceAudioProcessing {
       Object.hash(echoCancellation, noiseSuppression, autoGainControl);
 }
 
+/// The key a call's media is end-to-end encrypted with, and its slot in the
+/// key ring. It comes from the voice channel's MLS group (see
+/// `ChannelGroups.mediaKey`) and changes with the group's epoch.
+class VoiceMediaKey {
+  const VoiceMediaKey({required this.key, required this.index});
+
+  final Uint8List key;
+  final int index;
+}
+
+/// Whether a call's media is end-to-end encrypted.
+enum VoiceEncryption {
+  /// Not encrypted beyond DTLS-SRTP to the media server, which can hear it.
+  /// Only on a server that does not offer end-to-end encrypted calls.
+  none,
+
+  /// Frames are encrypted with the group's key before they leave this
+  /// device, and decrypted only here.
+  active,
+
+  /// Encrypted, but something is failing: a participant's frames do not
+  /// decrypt (a key change still in flight, or somebody not using the group's
+  /// key), or one arrived unencrypted and is being kept silent. Nothing
+  /// unencrypted is ever played or sent.
+  degraded,
+}
+
 /// An audio device the user can pick in settings.
 class AudioDevice {
   const AudioDevice({required this.id, required this.label});
@@ -71,6 +100,10 @@ class AudioDevice {
 /// member UUID on the server.
 abstract class VoiceEngine {
   /// Connects and — when [micEnabled] — starts sending the microphone.
+  ///
+  /// With a [mediaKey], the call is end-to-end encrypted and fails closed:
+  /// every frame sent is encrypted with the key, and a participant whose
+  /// audio arrives unencrypted is kept silent.
   Future<void> connect(
     Uri url,
     String token, {
@@ -78,7 +111,16 @@ abstract class VoiceEngine {
     required VoiceAudioProcessing processing,
     String? inputDeviceId,
     String? outputDeviceId,
+    VoiceMediaKey? mediaKey,
   });
+
+  /// Switches to a new media key — after the voice channel's group moved to
+  /// a new epoch. The previous keys stay in the ring for frames still in
+  /// flight.
+  Future<void> setMediaKey(VoiceMediaKey key);
+
+  /// Whether the call is end-to-end encrypted, as it changes.
+  Stream<VoiceEncryption> get encryptionChanges;
 
   Future<void> disconnect();
 

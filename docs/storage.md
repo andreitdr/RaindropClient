@@ -31,9 +31,14 @@ Keychain (macOS/iOS), Credential Manager (Windows), libsecret (Linux), and Keyst
 per server id:
 
 - `server.<id>.fingerprint` — the pinned TLS fingerprint (see [Network layer](network-layer.md#certificatepinner-trust-on-first-use)).
+- `server.<id>.identity` — the pinned server identity key, base64 (see [Network layer](network-layer.md#servertrust--following-a-certificate-change)).
 - `server.<id>.token` — the session bearer token.
+- `server.<id>.dbkey` — the random 32-byte key for that server's encrypted crypto store
+  (`<app support>/crypto/raindrop-<id>.db`, SQLCipher). The store holds the device's private keys, MLS
+  state and decrypted messages; see [End-to-end encryption](crypto.md).
 
-`.forgetServer(serverId)` removes both at once — called whenever a server is removed from
+`.forgetServer(serverId)` removes them all at once (and `ServersController.remove` also deletes the
+crypto store itself through `CryptoStores.delete`) — called whenever a server is removed from
 `ServersController` (see [Servers & sessions](servers-and-sessions.md)) or when
 [settings](settings.md#connected-servers) drops a connected server.
 

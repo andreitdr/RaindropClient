@@ -25,6 +25,7 @@ with [Architecture overview](architecture-overview.md) if you're new to the code
 | [Settings](settings.md) | Theme selection/editor, voice & audio, connected-server management |
 | [Network layer](network-layer.md) | `ApiClient`, `CertificatePinner`, the per-domain API wrappers |
 | [Storage](storage.md) | `AppPrefs` vs. `SecureStore` — what goes where and why |
+| [End-to-end encryption](crypto.md) | The Rust MLS core in [`../RaindropCrypto`](../../RaindropCrypto/docs/README.md), the bridge and its build glue, `CryptoEngine`, the encrypted store |
 | [Routing](routing.md) | The `go_router` route table |
 | [Wire format](wire-format.md) | JSON today, MessagePack readiness |
 | [Roadmap / what's missing](roadmap.md) | Known gaps against what the server already supports |

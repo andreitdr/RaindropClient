@@ -95,8 +95,9 @@ shortcut).
 - **Rename / delete** — a menu on each channel that offers only what `canRename` / `canDelete` allow
   (none at all → no menu). It is reached the way each platform reaches one, decided by
   `isDesktopPlatform`: a hover-revealed "…" button and a right-click on desktop, a long press on touch.
-  Delete confirms with `showAdaptiveConfirm` — for a text channel it says the server owner keeps a copy
-  of the channel's messages, for a voice channel that deleting it ends its call (see the server's [deleted-message archive](../../RaindropServer/docs/messages.md#the-deleted-message-archive)).
+  Delete confirms with `showAdaptiveConfirm`. For a text channel it says the server owner keeps a copy
+  of any messages sent before end-to-end encryption; encrypted ones leave nothing readable behind. For
+  a voice channel it says that deleting it ends its call (see the server's [deleted-message archive](../../RaindropServer/docs/messages.md#the-deleted-message-archive)).
 - **The name dialog** ([`channel_name_dialog.dart`](../lib/features/channels/widgets/channel_name_dialog.dart))
   is shared by create and rename. It pre-checks the name with `validateChannelName`
   ([`channel_name.dart`](../lib/features/channels/models/channel_name.dart), a copy of the server's

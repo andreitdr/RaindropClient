@@ -1,0 +1,5 @@
+# flutter_rust_bridge_codegen generate — run from RaindropClient/.
+# The Rust code lives outside this project, in ../RaindropCrypto; only the generated Dart lands here.
+rust_input: crate::api
+rust_root: ../RaindropCrypto/crates/raindrop_crypto_ffi/
+dart_output: lib/core/crypto/bridge

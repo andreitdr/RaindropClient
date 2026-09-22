@@ -46,6 +46,14 @@ bool get isMobilePlatform =>
 /// voice library cannot choose a device there.
 bool get canChooseAudioDevices => isDesktopPlatform;
 
+/// Whether the camera can scan a QR code here — the device-link code another
+/// device shows. `mobile_scanner` covers iOS, Android and macOS; elsewhere
+/// the code is typed or pasted instead.
+bool get canScanCodes =>
+    currentPlatform == RaindropPlatform.ios ||
+    currentPlatform == RaindropPlatform.android ||
+    currentPlatform == RaindropPlatform.macos;
+
 /// Not used at import time on web, guarded so this file stays import-safe.
 bool get isRunningOnWeb => kIsWeb;
 
