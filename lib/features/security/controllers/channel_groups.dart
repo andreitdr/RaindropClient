@@ -444,6 +444,11 @@ class ChannelGroups {
         return;
       } on _CommitLost {
         await _catchUp(channelId);
+      } on ApiException catch (e) {
+        // A device we meant to add was revoked, or lost access, between the
+        // roster being read and the commit arriving; the server will not
+        // welcome it. The commit is already discarded: re-read and retry.
+        if (e.code != 'not_allowed_in_group') rethrow;
       }
     }
   }

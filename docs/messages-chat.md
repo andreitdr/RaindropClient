@@ -57,6 +57,11 @@ Deleting a message asks for confirmation, and the dialog says truthfully where c
 pre-encryption message, the server owner keeps its text. For an encrypted one, nobody keeps a copy on
 the server.
 
+Reconciling is written for races with the rest of the server. A device revoked between reading the
+roster and committing is either skipped by the key-package claim, or refused as a Welcome recipient
+(`not_allowed_in_group`). Either way the commit is discarded and the reconcile retries with a fresh
+roster, rather than leaving the group half-built.
+
 Reconciling removes any device that should not be in the group, which is the client's check on adds
 it could not verify beforehand. It also adds devices that should be, leaving out a user whose identity
 key changed. Every group operation runs one at a time, so two of them never interleave on MLS state.
