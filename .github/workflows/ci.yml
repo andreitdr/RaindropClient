@@ -85,6 +85,17 @@ jobs:
         if: matrix.name == 'windows'
         uses: ilammy/setup-nasm@v1
 
+      # TEMPORARY diagnostics for the Windows OpenSSL failure: shows which perl is used and the crate's
+      # full build output. Remove once the Windows build is green.
+      - name: Diagnose OpenSSL build (temporary)
+        if: matrix.name == 'windows'
+        continue-on-error: true
+        run: |
+          echo "--- perl on PATH"; where perl || true; perl -v | head -3
+          echo "--- nasm"; where nasm || true
+          cd ../RaindropCrypto
+          cargo build --release -p raindrop_crypto_ffi -vv 2>&1 | grep -iE "openssl|perl|nasm|configure|error|warning: .*build|failed" | tail -60
+
       - name: Restore packages
         run: flutter pub get
 
