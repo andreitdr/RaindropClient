@@ -1,0 +1,101 @@
+name: Release
+
+# Starts when release.sh pushes a version tag (vX.Y.Z). Builds and tests the tagged commit (ci.yml),
+# packages the artefact, and only if all of that succeeded publishes a GitHub release for the tag
+# with the artefact attached. GitHub adds the source-code zip itself.
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Build and test
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit # ci.yml needs CRYPTO_REPO_TOKEN
+
+  package:
+    name: Package (${{ matrix.name }})
+    needs: ci
+    strategy:
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-latest
+            bundle: build/linux/x64/release/bundle
+          - name: macos
+            os: macos-latest
+            bundle: build/macos/Build/Products/Release/raindrop_client.app
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: RaindropClient
+    steps:
+      # Same side-by-side layout as ci.yml: the app compiles ../RaindropCrypto (needs CRYPTO_REPO_TOKEN
+      # if that repo is private). It builds the crypto repo's current main, not a matching tag.
+      - uses: actions/checkout@v4
+        with:
+          path: RaindropClient
+      - uses: actions/checkout@v4
+        with:
+          repository: andreitdr/RaindropCrypto
+          token: ${{ secrets.CRYPTO_REPO_TOKEN || github.token }}
+          path: RaindropCrypto
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Linux desktop build dependencies
+        if: matrix.name == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+
+      - run: flutter pub get
+
+      - name: Build release
+        run: flutter build ${{ matrix.name }} --release --build-name "${GITHUB_REF_NAME#v}"
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          # ditto keeps macOS bundle symlinks and metadata intact; tar does the same job on Linux.
+          if [ "${{ matrix.name }}" = "macos" ]; then
+            ditto -c -k --keepParent "${{ matrix.bundle }}" "dist/RaindropClient-$VERSION-macos.zip"
+          else
+            tar -czf "dist/RaindropClient-$VERSION-linux.tar.gz" -C "${{ matrix.bundle }}" .
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.name }}
+          path: RaindropClient/dist/*
+
+  release:
+    name: Publish GitHub release
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release for the existing tag
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: dist
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
