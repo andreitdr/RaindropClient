@@ -85,16 +85,16 @@ jobs:
         if: matrix.name == 'windows'
         uses: ilammy/setup-nasm@v1
 
-      # TEMPORARY diagnostics for the Windows OpenSSL failure: shows which perl is used and the crate's
-      # full build output. Remove once the Windows build is green.
-      - name: Diagnose OpenSSL build (temporary)
+      # Git Bash (the shell used by these steps) puts Git's own cut-down, Cygwin-built perl ahead of
+      # Strawberry Perl on PATH, and OpenSSL's Configure fails with it (missing Locale::Maketext::Simple).
+      # Point the OpenSSL build at Strawberry Perl explicitly, and put it first on PATH for the build.
+      - name: Use Strawberry Perl for OpenSSL
         if: matrix.name == 'windows'
-        continue-on-error: true
         run: |
-          echo "--- perl on PATH"; where perl || true; perl -v | head -3
-          echo "--- nasm"; where nasm || true
-          cd ../RaindropCrypto
-          cargo build --release -p raindrop_crypto_ffi -vv 2>&1 | grep -iE "openssl|perl|nasm|configure|error|warning: .*build|failed" | tail -60
+          perl_exe="$(ls -d /c/hostedtoolcache/windows/strawberry-perl/*/x64/perl/bin/perl.exe | sort | tail -n 1)"
+          [ -n "$perl_exe" ] || { echo "Strawberry Perl not found" >&2; exit 1; }
+          echo "OPENSSL_SRC_PERL=$(cygpath -m "$perl_exe")" >> "$GITHUB_ENV"
+          echo "STRAWBERRY_PERL_BIN=$(dirname "$perl_exe")" >> "$GITHUB_ENV"
 
       - name: Restore packages
         run: flutter pub get
@@ -104,7 +104,9 @@ jobs:
         run: flutter analyze
 
       - name: Compile
-        run: flutter build ${{ matrix.name }} --release
+        run: |
+          if [ -n "${STRAWBERRY_PERL_BIN:-}" ]; then export PATH="$STRAWBERRY_PERL_BIN:$PATH"; fi
+          flutter build ${{ matrix.name }} --release
 
   test:
     name: Test

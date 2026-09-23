@@ -83,10 +83,23 @@ jobs:
         if: matrix.name == 'windows'
         uses: ilammy/setup-nasm@v1
 
+      # Git Bash (the shell used by these steps) puts Git's own cut-down, Cygwin-built perl ahead of
+      # Strawberry Perl on PATH, and OpenSSL's Configure fails with it (missing Locale::Maketext::Simple).
+      # Point the OpenSSL build at Strawberry Perl explicitly, and put it first on PATH for the build.
+      - name: Use Strawberry Perl for OpenSSL
+        if: matrix.name == 'windows'
+        run: |
+          perl_exe="$(ls -d /c/hostedtoolcache/windows/strawberry-perl/*/x64/perl/bin/perl.exe | sort | tail -n 1)"
+          [ -n "$perl_exe" ] || { echo "Strawberry Perl not found" >&2; exit 1; }
+          echo "OPENSSL_SRC_PERL=$(cygpath -m "$perl_exe")" >> "$GITHUB_ENV"
+          echo "STRAWBERRY_PERL_BIN=$(dirname "$perl_exe")" >> "$GITHUB_ENV"
+
       - run: flutter pub get
 
       - name: Build release
-        run: flutter build ${{ matrix.name }} --release --build-name "${GITHUB_REF_NAME#v}"
+        run: |
+          if [ -n "${STRAWBERRY_PERL_BIN:-}" ]; then export PATH="$STRAWBERRY_PERL_BIN:$PATH"; fi
+          flutter build ${{ matrix.name }} --release --build-name "${GITHUB_REF_NAME#v}"
 
       # Windows and macOS builds already carry libmpv (media_kit_libs_video). Linux does not, so it
       # is copied in here, then wrapped as AppImage + .deb + .rpm.
