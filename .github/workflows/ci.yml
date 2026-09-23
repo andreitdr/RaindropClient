@@ -96,16 +96,16 @@ jobs:
           echo "OPENSSL_SRC_PERL=$(cygpath -m "$perl_exe")" >> "$GITHUB_ENV"
           echo "STRAWBERRY_PERL_BIN=$(dirname "$perl_exe")" >> "$GITHUB_ENV"
 
-      # TEMPORARY diagnostics for the Windows OpenSSL failure: runs the crate's build on its own, with the
-      # same Perl setup, so OpenSSL's real error message is visible. Remove once the Windows build is green.
-      - name: Diagnose OpenSSL build (temporary)
+      # OpenSSL's build tree is deep. Under cargokit's default folder (inside build/, inside the doubled
+      # workspace path) its longest files exceed Windows' 260-character path limit, and Perl's Configure
+      # then fails with "No such file or directory" (exit code 2). Build in a short folder instead.
+      # Runner-only edit; the repository's copy of cargokit is untouched.
+      - name: Shorten cargokit build path
         if: matrix.name == 'windows'
-        continue-on-error: true
         run: |
-          export PATH="$STRAWBERRY_PERL_BIN:$PATH"
-          echo "OPENSSL_SRC_PERL=$OPENSSL_SRC_PERL"; where nasm || true; where cl || true
-          cd ../RaindropCrypto
-          cargo build --release -p raindrop_crypto_ffi -vv 2>&1 | grep -E "^\[openssl-sys|^error|^warning: openssl" | grep -v "rerun-if\|check-cfg" | tail -80
+          file=native/raindrop_crypto_builder/cargokit/cmake/cargokit.cmake
+          sed -i 's|set(CARGOKIT_TEMP_DIR "${CMAKE_CURRENT_BINARY_DIR}/cargokit_build")|set(CARGOKIT_TEMP_DIR "C:/ck")|' "$file"
+          grep -n 'CARGOKIT_TEMP_DIR "C:/ck"' "$file"
 
       - name: Restore packages
         run: flutter pub get
