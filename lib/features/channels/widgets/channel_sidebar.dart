@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/layout/layout_slot.dart';
 import '../../../core/models/server_profile.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/users_api.dart';
@@ -9,6 +10,7 @@ import '../../../core/platform/platform_info.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/adaptive.dart';
 import '../../../core/widgets/panel.dart';
+import '../../home/layout/main_layout_ids.dart';
 import '../../servers/controllers/server_permissions.dart';
 import '../../voice/controllers/voice_roster_controller.dart';
 import '../../voice/widgets/voice_controls.dart';
@@ -26,10 +28,14 @@ class ChannelSidebar extends ConsumerWidget {
     super.key,
     required this.server,
     required this.currentUser,
+    this.width = 240,
   });
 
   final ServerProfile server;
   final UserProfile currentUser;
+
+  /// Set by the layout; the narrow layout's drawer uses the default.
+  final double width;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -42,7 +48,7 @@ class ChannelSidebar extends ConsumerWidget {
     );
 
     return SizedBox(
-      width: 240,
+      width: width,
       child: Panel(
         color: context.surfaces.sidebar,
         child: Column(
@@ -662,13 +668,8 @@ class _UserPanel extends StatelessWidget {
                 ),
               ),
             ),
-            const VoiceSelfControls(),
-            IconButton(
-              icon: const Icon(Icons.settings_outlined, size: 20),
-              tooltip: 'Settings',
-              visualDensity: VisualDensity.compact,
-              onPressed: () => context.push('/settings'),
-            ),
+            // Mute, deafen and Settings by default; the layout decides.
+            const LayoutSlot(MainSlots.userPanel),
           ],
         ),
       ),

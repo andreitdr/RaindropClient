@@ -10,6 +10,15 @@
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<!-- WebRTC binds UDP and TCP sockets to gather ICE candidates and receive audio;
+	     the App Sandbox refuses bind() without this, so a call connects its signalling
+	     and then never establishes media. Must match DebugProfile.entitlements. -->
+	<key>com.apple.security.network.server</key>
+	<true/>
+	<!-- Attaching a file and saving one: read what the user picked or dropped, write where they
+	     chose to save. Must match in both entitlement files. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
 	<key>keychain-access-groups</key>
 	<array/>
 </dict>

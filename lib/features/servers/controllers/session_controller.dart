@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/server_profile.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/attachments_api.dart';
 import '../../../core/network/channels_api.dart';
 import '../../../core/network/e2ee_api.dart';
 import '../../../core/network/members_api.dart';
@@ -41,6 +42,7 @@ class ServerSession {
   late final TextMessagesApi textMessagesApi = TextMessagesApi(client);
   late final VoiceApi voiceApi = VoiceApi(client);
   late final E2eeApi e2eeApi = E2eeApi(client);
+  late final AttachmentsApi attachmentsApi = AttachmentsApi(client);
 }
 
 /// Resolves whether we already have a valid session for a connected server
@@ -172,5 +174,26 @@ class ServerSessionController
     }
     await _secureStore.clearSessionToken(current.profile.id);
     state = const AsyncData(null);
+  }
+
+  /// Leaves the server for good (`POST /api/users/me/leave`): the account is
+  /// kept, reserved but inactive, until the server's retention runs out when
+  /// [preserveData] is set, and erased at once otherwise. Unlike [logout] a
+  /// failure is not swallowed — a wrong password must reach the dialog.
+  /// Forgetting the server locally is the caller's next step.
+  Future<LeaveResult> leave({
+    required String password,
+    required bool preserveData,
+  }) async {
+    final current = state.valueOrNull;
+    if (current == null) throw StateError('Not signed in to $arg.');
+    final result = await current.usersApi.leave(
+      current.token,
+      password: password,
+      preserveData: preserveData,
+    );
+    await _secureStore.clearSessionToken(current.profile.id);
+    state = const AsyncData(null);
+    return result;
   }
 }

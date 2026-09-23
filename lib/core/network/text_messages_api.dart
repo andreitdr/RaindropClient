@@ -9,6 +9,40 @@ import 'dart:typed_data';
 
 import 'api_client.dart';
 
+/// An encrypted file a message carries, as far as the server can describe it.
+/// Its name, type and key are inside the message's ciphertext.
+class MessageAttachmentRef {
+  const MessageAttachmentRef({
+    required this.attachmentId,
+    required this.kind,
+    required this.extension,
+    required this.ciphertextSize,
+    this.ciphertextSha256,
+  });
+
+  final String attachmentId;
+
+  /// `file`, or `thumbnail` for a preview of another file in the message.
+  final String kind;
+
+  /// The extension the sender declared to the server. Compared with the name
+  /// inside the encrypted message before anything is previewed.
+  final String extension;
+  final int ciphertextSize;
+  final Uint8List? ciphertextSha256;
+
+  factory MessageAttachmentRef.fromJson(Map<String, dynamic> j) =>
+      MessageAttachmentRef(
+        attachmentId: j['attachmentId'] as String,
+        kind: j['kind'] as String? ?? 'file',
+        extension: j['extension'] as String? ?? '',
+        ciphertextSize: (j['ciphertextSize'] as num?)?.toInt() ?? 0,
+        ciphertextSha256: j['ciphertextSha256'] is String
+            ? base64.decode(j['ciphertextSha256'] as String)
+            : null,
+      );
+}
+
 /// A message as the server stored it.
 ///
 /// A deleted message still arrives, with [content] null and [deleted] set:
@@ -32,6 +66,7 @@ class ChannelMessage {
     this.ciphertext,
     this.epoch,
     this.senderDeviceId,
+    this.attachments = const [],
   });
 
   final String messageId;
@@ -54,6 +89,10 @@ class ChannelMessage {
   /// Which of the author's devices sent an encrypted message.
   final String? senderDeviceId;
 
+  /// The encrypted files the message carries; empty for none, and once it is
+  /// deleted.
+  final List<MessageAttachmentRef> attachments;
+
   /// Whether the message was end-to-end encrypted (deleted or not).
   bool get encrypted => epoch != null;
 
@@ -73,6 +112,10 @@ class ChannelMessage {
         : null,
     epoch: (j['epoch'] as num?)?.toInt(),
     senderDeviceId: j['senderDeviceId'] as String?,
+    attachments: [
+      for (final a in j['attachments'] as List? ?? const [])
+        MessageAttachmentRef.fromJson(Map<String, dynamic>.from(a as Map)),
+    ],
   );
 }
 
@@ -162,14 +205,22 @@ class TextMessagesApi {
   /// Posts an end-to-end encrypted message — the MLS ciphertext this
   /// device's group produced — and returns it as the server stored it. Throws
   /// `stale_epoch` when the group has moved on: catch up and encrypt again.
+  ///
+  /// [attachmentIds] are finished uploads (`AttachmentsApi.complete`) the
+  /// message carries, in the order its payload lists them.
   Future<ChannelMessage> sendEncrypted(
     String token, {
     required String channelId,
     required Uint8List message,
+    List<String> attachmentIds = const [],
   }) async => ChannelMessage.fromJson(
     await _client.post(
       '/api/channels/text/messages/send-encrypted',
-      body: {'channelId': channelId, 'message': base64.encode(message)},
+      body: {
+        'channelId': channelId,
+        'message': base64.encode(message),
+        if (attachmentIds.isNotEmpty) 'attachmentIds': attachmentIds,
+      },
       token: token,
     ),
   );
@@ -187,6 +238,7 @@ class TextMessagesApi {
     required String type,
     required Uint8List attestation,
     String? reason,
+    List<({String attachmentId, Uint8List ciphertextSha256})>? attachments,
   }) => _client.post(
     '/api/channels/text/messages/report',
     body: {
@@ -197,6 +249,17 @@ class TextMessagesApi {
       'type': type,
       'attestation': base64.encode(attestation),
       'reason': reason,
+      // Present only for a message that carries files, whose attestation is
+      // the v2 one that also covers them.
+      'attachments': ?(attachments == null
+          ? null
+          : [
+              for (final a in attachments)
+                {
+                  'attachmentId': a.attachmentId,
+                  'ciphertextSha256': base64.encode(a.ciphertextSha256),
+                },
+            ]),
     },
     token: token,
   );

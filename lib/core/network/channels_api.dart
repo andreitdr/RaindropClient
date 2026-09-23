@@ -38,6 +38,7 @@ abstract final class ChannelPermissionNames {
   static const connect = 'connect';
   static const speak = 'speak';
   static const muteMembers = 'mute_members';
+  static const attachFiles = 'attach_files';
 }
 
 class ChannelSummary {

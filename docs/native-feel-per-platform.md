@@ -45,9 +45,10 @@ chat → optional member list) into a single pane behind a `Drawer` under **680p
 phones and small windows usable without a separate mobile codebase — the same layout code runs
 everywhere, and the breakpoint (not the OS) decides which arrangement to render.
 
-A second breakpoint, **1000px**, decides whether the member list pane shows automatically
-(`canShowMembers`) or has to be toggled on with a button in the chat pane's trailing actions — see
-[Members & presence](members-presence.md).
+Above 680px the panes' order and widths come from the user's saved [layout](layout.md). Whether the
+member list shows by itself is derived from those widths: it shows while the chat keeps at least
+**440px** (`kMinContentWidth`) beside it — a 1000px window at the default widths — and otherwise folds
+behind the **Members** button, wherever the layout put it. See [Members & presence](members-presence.md).
 
 ## Related
 

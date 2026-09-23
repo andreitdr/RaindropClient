@@ -55,6 +55,10 @@ Two mutating methods:
   a fresh session, so the shell picks it up immediately without waiting for `build` to re-run.
 - `.logout()` — best-effort `POST /api/users/logout` (a failure there is ignored — the token is being
   discarded locally regardless), then clears the stored token and sets state to `null`.
+- `.leave({password, preserveData})` — `POST /api/users/me/leave`, then clears the stored token and
+  sets state to `null`, same as a logout. **Its failures are not swallowed**, unlike `logout()`'s: a
+  wrong password comes back as `invalid_credentials` and has to reach the dialog that asked for it.
+  Forgetting the server locally is the caller's next step, not part of this.
 
 ## The event stream
 
@@ -87,10 +91,36 @@ of the UUID while the lookup is still in flight.
 ## Server rail
 
 [`server_rail.dart`](../lib/features/servers/widgets/server_rail.dart) — the leftmost pane of the
-shell: one circular avatar (initial letter of `displayName`) per connected server, plus an "add
-server" button that pushes `/connect`. Tapping a server calls `activeServerIdProvider.notifier.select`.
-Switching servers is always a single tap, regardless of how deep the user is in a channel — the same
-pattern Discord-style clients are known for.
+shell: one circular avatar (initial letter of `displayName`) per connected server, then the
+`rail.footer` [layout slot](layout.md) — by default an "add server" button that pushes `/connect` and
+a settings button that pushes `/settings`, but the user may move, add or remove them. Tapping a server
+calls `activeServerIdProvider.notifier.select`. Switching servers is always a single tap, regardless
+of how deep the user is in a channel — the same pattern Discord-style clients are known for.
+
+The rail is the **one pane that is on screen for every server, signed in or not** — `HomeShell`'s
+`_SignedOutLayout` keeps it beside `ReauthPrompt`, and the narrow layout puts it in the drawer — which
+is why settings hang off it rather than off a server's own sidebar, where they were unreachable on a
+server this device is signed out of. The sidebar's own gear and header still push `/settings` too;
+they are shortcuts, not the only way in.
+
+### Leaving or removing a server
+
+Right-click (long-press on touch) a server avatar for its menu, the same gesture the channel tiles
+use (see [Channels](channels.md)):
+
+- **Leave server** opens [`leave_server_dialog.dart`](../lib/features/servers/widgets/leave_server_dialog.dart):
+  the password (the server requires it) and an "Erase my account" switch, off by default, which is
+  `preserveData` inverted — off leaves the account inactive but reserved until the server's retention
+  runs out, on erases username and password at once. See the server's
+  [Users doc](../../RaindropServer/docs/users.md#lifecycle). The dialog hangs up a call on that server
+  first (the voice leave needs the session the server leave is about to end), calls
+  `serverSessionProvider(id).notifier.leave(...)`, then `ServersController.remove(id)` — leaving always
+  forgets the server on this device. Like the channel-name dialog it stays open on failure, showing
+  the server's message under the field, and it resolves the session with `await ref.read(provider.future)`
+  rather than hiding the menu entry, since only the *active* server's session has been restored.
+- **Remove from this device** is the local-only half, identical to the Settings row: confirm,
+  `logout()`, `remove(id)`. The account on the server is untouched — this is the one to use when
+  signed out, since a leave needs a live session.
 
 ## Related
 

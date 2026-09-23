@@ -19,6 +19,7 @@ class Channel {
     this.canManageMessages = false,
     this.canConnect = false,
     this.canSpeak = false,
+    this.canAttachFiles = false,
   });
 
   final String id;
@@ -47,6 +48,10 @@ class Channel {
   /// listening. The server can still mute somebody for everyone on top.
   final bool canSpeak;
 
+  /// Whether we may add files to the messages we post here. The composer
+  /// hides its attach button when we may not.
+  final bool canAttachFiles;
+
   factory Channel.fromSummary(ChannelSummary summary) => Channel(
     id: summary.channelId,
     name: summary.name,
@@ -61,6 +66,7 @@ class Channel {
     canManageMessages: summary.can(ChannelPermissionNames.manageMessages),
     canConnect: summary.can(ChannelPermissionNames.connect),
     canSpeak: summary.can(ChannelPermissionNames.speak),
+    canAttachFiles: summary.can(ChannelPermissionNames.attachFiles),
   );
 }
 

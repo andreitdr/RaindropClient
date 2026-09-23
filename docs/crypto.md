@@ -44,6 +44,11 @@ and the C# server.
   - Its random 32-byte key is `server.<id>.dbkey` in [`SecureStore`](storage.md).
   - `CryptoStores.initialize()` loads the native library and runs in `main.dart` before `runApp`.
   - `CryptoStores.delete` wipes a server's store and key. `ServersController.remove` calls it.
+- **`AttachmentCipher`** (`attachment_cipher.dart`, implemented by `RustAttachmentCipher` over
+  `bridge/api/attachment.dart`) encrypts and decrypts files in the core's `raindrop/attachment/v1`
+  format, each under its own key, streaming from path to path. It is separate from `CryptoEngine`
+  because a file's key is its own rather than the session's. `signMessageAttestationV2` on the engine
+  signs a message that carries files. See [Attachments](attachments.md).
 - **`groupIdForChannel(channelId)`**: every channel has one MLS group, whose id is the channel UUID
   as 16 big-endian bytes, the same as the server's `Guid.ToByteArray(bigEndian: true)`.
 

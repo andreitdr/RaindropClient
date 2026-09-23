@@ -19,17 +19,21 @@ class MemberList extends ConsumerWidget {
     super.key,
     required this.serverId,
     required this.currentUserId,
+    this.width = 240,
   });
 
   final String serverId;
   final String currentUserId;
+
+  /// Set by the layout.
+  final double width;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final membersAsync = ref.watch(membersProvider(serverId));
 
     return SizedBox(
-      width: 240,
+      width: width,
       child: Panel(
         color: context.surfaces.sidebar,
         child: SafeArea(

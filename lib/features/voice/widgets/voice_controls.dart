@@ -1,20 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/voice/voice_engine.dart';
-
+import '../../../core/layout/layout_scope.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/voice/voice_engine.dart';
+import '../../../core/widgets/rail_button.dart';
 import '../../channels/controllers/channels_controller.dart';
 import '../../servers/controllers/servers_controller.dart';
 import '../controllers/voice_call_controller.dart';
 import '../controllers/voice_settings_controller.dart';
 
-/// The microphone and headset buttons. They work whether or not a call is in
-/// progress: the state carries into the next call, like a headset's own
-/// mute switch.
-class VoiceSelfControls extends ConsumerWidget {
+/// The microphone and headset buttons side by side, for the narrow layout's
+/// call bar and the voice view's in-call controls. In the main view's
+/// toolbars they are placed one by one, as layout slot buttons.
+class VoiceSelfControls extends StatelessWidget {
   const VoiceSelfControls({super.key, this.iconSize = 20});
 
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        VoiceMuteButton(iconSize: iconSize),
+        VoiceDeafenButton(iconSize: iconSize),
+      ],
+    );
+  }
+}
+
+/// The microphone button. It works whether or not a call is in progress: the
+/// state carries into the next call, like a headset's own mute switch.
+class VoiceMuteButton extends ConsumerWidget {
+  const VoiceMuteButton({
+    super.key,
+    this.style = SlotStyle.compact,
+    this.iconSize = 20,
+  });
+
+  final SlotStyle style;
   final double iconSize;
 
   @override
@@ -22,43 +47,92 @@ class VoiceSelfControls extends ConsumerWidget {
     final settings = ref.watch(voiceSettingsProvider);
     final call = ref.watch(voiceCallProvider);
     final controller = ref.read(voiceSettingsProvider.notifier);
-    final error = Theme.of(context).colorScheme.error;
 
     // A moderator's mute (or no `speak` here) outranks the button: it shows
     // as muted either way, and says why.
     final forcedMute = call.inCall && (call.serverMuted || call.suppressed);
+    final on = settings.micOn && !forcedMute;
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          iconSize: iconSize,
-          visualDensity: VisualDensity.compact,
-          tooltip: forcedMute
-              ? (call.serverMuted
-                    ? 'Muted for everyone by a moderator'
-                    : 'You cannot speak in this channel')
-              : settings.micOn
-              ? 'Mute'
-              : 'Unmute',
-          icon: Icon(
-            settings.micOn && !forcedMute ? Icons.mic : Icons.mic_off,
-            color: settings.micOn && !forcedMute ? null : error,
-          ),
-          onPressed: controller.toggleMute,
-        ),
-        IconButton(
-          iconSize: iconSize,
-          visualDensity: VisualDensity.compact,
-          tooltip: settings.selfDeaf ? 'Undeafen' : 'Deafen',
-          icon: Icon(
-            settings.selfDeaf ? Icons.headset_off : Icons.headset,
-            color: settings.selfDeaf ? error : null,
-          ),
-          onPressed: controller.toggleDeafen,
-        ),
-      ],
+    return _SelfButton(
+      style: style,
+      iconSize: iconSize,
+      icon: on ? Icons.mic : Icons.mic_off,
+      alarmed: !on,
+      tooltip: forcedMute
+          ? (call.serverMuted
+                ? 'Muted for everyone by a moderator'
+                : 'You cannot speak in this channel')
+          : settings.micOn
+          ? 'Mute'
+          : 'Unmute',
+      onPressed: controller.toggleMute,
     );
+  }
+}
+
+/// The headset button; like [VoiceMuteButton], a setting rather than call
+/// state.
+class VoiceDeafenButton extends ConsumerWidget {
+  const VoiceDeafenButton({
+    super.key,
+    this.style = SlotStyle.compact,
+    this.iconSize = 20,
+  });
+
+  final SlotStyle style;
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final deaf = ref.watch(voiceSettingsProvider.select((s) => s.selfDeaf));
+    return _SelfButton(
+      style: style,
+      iconSize: iconSize,
+      icon: deaf ? Icons.headset_off : Icons.headset,
+      alarmed: deaf,
+      tooltip: deaf ? 'Undeafen' : 'Deafen',
+      onPressed: ref.read(voiceSettingsProvider.notifier).toggleDeafen,
+    );
+  }
+}
+
+class _SelfButton extends StatelessWidget {
+  const _SelfButton({
+    required this.style,
+    required this.iconSize,
+    required this.icon,
+    required this.alarmed,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final SlotStyle style;
+  final double iconSize;
+  final IconData icon;
+
+  /// Muted or deafened: drawn in the error colour.
+  final bool alarmed;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = alarmed ? Theme.of(context).colorScheme.error : null;
+    return switch (style) {
+      SlotStyle.rail => RailButton(
+        icon: icon,
+        iconColor: color,
+        tooltip: tooltip,
+        onTap: onPressed,
+      ),
+      SlotStyle.compact => IconButton(
+        iconSize: iconSize,
+        visualDensity: VisualDensity.compact,
+        tooltip: tooltip,
+        icon: Icon(icon, color: color),
+        onPressed: onPressed,
+      ),
+    };
   }
 }
 

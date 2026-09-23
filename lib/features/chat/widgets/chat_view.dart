@@ -1,16 +1,27 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:mime/mime.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/platform/platform_info.dart';
+import '../../../core/storage/attachment_cache.dart';
 import '../../../core/widgets/adaptive.dart';
 import '../../channels/models/channel.dart';
+import '../../security/controllers/channel_groups.dart';
 import '../../servers/controllers/session_controller.dart';
 import '../../servers/controllers/user_lookup.dart';
+import '../controllers/attachment_transfers.dart';
 import '../controllers/chat_controller.dart';
 import '../models/message.dart';
+import 'attachments/attachment_previews.dart';
+import 'attachments/file_card.dart';
 
 class ChatView extends ConsumerStatefulWidget {
   const ChatView({
@@ -34,6 +45,11 @@ class _ChatViewState extends ConsumerState<ChatView> {
   final _composerController = TextEditingController();
   final _scrollController = ScrollController();
   bool _sending = false;
+
+  /// Files picked or dropped for the next message, already checked against the
+  /// server's rules.
+  final _files = <ChatAttachment>[];
+  bool _dragging = false;
 
   ChatScope get _scope =>
       (serverId: widget.serverId, channelId: widget.channel.id);
@@ -72,23 +88,99 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
   Future<void> _send() async {
     final text = _composerController.text.trim();
-    if (text.isEmpty || _sending) return;
+    final files = List.of(_files);
+    if ((text.isEmpty && files.isEmpty) || _sending) return;
 
     _composerController.clear();
-    setState(() => _sending = true);
+    setState(() {
+      _files.clear();
+      // A message with files can take a while to upload; the composer stays
+      // free for the next one meanwhile, since each shows its own progress.
+      _sending = files.isEmpty;
+    });
     _scrollToBottom();
     try {
-      await ref.read(chatProvider(_scope).notifier).send(text);
+      await ref.read(chatProvider(_scope).notifier).send(text, files: files);
     } on ApiException catch (e) {
-      if (mounted) _showError(e);
+      if (mounted) _showError(e.message);
+    } on AttachmentRefused catch (e) {
+      if (mounted) _showError(e.message);
     } finally {
-      if (mounted) setState(() => _sending = false);
+      if (mounted && files.isEmpty) setState(() => _sending = false);
     }
   }
 
-  void _showError(ApiException e) =>
+  void _showError(String message) =>
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.message)));
+          .showSnackBar(SnackBar(content: Text(message)));
+
+  /// Opens the system's file picker and queues what was picked.
+  Future<void> _pickFiles() async {
+    final picked = await FilePicker.pickFiles();
+    final files = <({String name, String path})>[];
+    for (final file in picked) {
+      var path = file.path;
+      if (path == null) {
+        // A phone hands back a content URI rather than a path: copy the file
+        // somewhere this app can read it from while it is encrypted.
+        final copy = await (await AttachmentCache.instance()).plaintextFile(
+          file.name,
+        );
+        final sink = copy.openWrite();
+        await sink.addStream(file.readAsByteStream());
+        await sink.close();
+        path = copy.path;
+      }
+      files.add((name: file.name, path: path));
+    }
+    await _addFiles(files);
+  }
+
+  /// Queues files for the next message, refusing — with the reason — any the
+  /// server would refuse, so nothing is encrypted or uploaded in vain.
+  Future<void> _addFiles(Iterable<({String name, String path})> picked) async {
+    final policy = ref
+        .read(attachmentPolicyProvider(widget.serverId))
+        .valueOrNull;
+    if (policy == null || !_canAttach) return;
+
+    final added = <ChatAttachment>[];
+    for (final file in picked) {
+      if (_files.length + added.length >= policy.maximumFilesPerMessage) {
+        _showError(
+          'A message can carry at most ${policy.maximumFilesPerMessage} files.',
+        );
+        break;
+      }
+      final onDisk = File(file.path);
+      if (!await onDisk.exists()) continue; // A folder, or gone already.
+      final size = await onDisk.length();
+      final refusal = policy.refusalFor(file.name, size);
+      if (refusal != null) {
+        if (mounted) _showError(refusal);
+        continue;
+      }
+      added.add(
+        ChatAttachment(
+          name: file.name,
+          size: size,
+          mimeType: lookupMimeType(file.name) ?? 'application/octet-stream',
+          localPath: file.path,
+        ),
+      );
+    }
+    if (mounted && added.isNotEmpty) setState(() => _files.addAll(added));
+  }
+
+  /// Whether files can go into this channel: the server takes them, we may
+  /// attach and post here, and this device encrypts — a file's key travels
+  /// inside the encrypted message, so there is no sending one without it.
+  bool get _canAttach =>
+      widget.channel.type == ChannelType.text &&
+      widget.channel.canSendMessages &&
+      widget.channel.canAttachFiles &&
+      ref.read(attachmentPolicyProvider(widget.serverId)).valueOrNull != null &&
+      ref.read(channelGroupsProvider(widget.serverId)).valueOrNull != null;
 
   @override
   Widget build(BuildContext context) {
@@ -107,7 +199,12 @@ class _ChatViewState extends ConsumerState<ChatView> {
       if (after > before && _isAtBottom) _scrollToBottom();
     });
 
-    return Column(
+    // Watched so the attach button appears once both are known.
+    ref.watch(attachmentPolicyProvider(widget.serverId));
+    ref.watch(channelGroupsProvider(widget.serverId));
+    final canAttach = _canAttach;
+
+    final column = Column(
       children: [
         _ChatTopBar(
           channel: widget.channel,
@@ -137,8 +234,48 @@ class _ChatViewState extends ConsumerState<ChatView> {
           channel: widget.channel,
           sending: _sending,
           onSend: _send,
+          files: _files,
+          onAttach: canAttach ? _pickFiles : null,
+          onRemoveFile: (file) => setState(() => _files.remove(file)),
         ),
       ],
+    );
+
+    if (!isDesktopPlatform) return column;
+    // Dropping files onto the chat queues them, as the attach button does.
+    return DropTarget(
+      enable: canAttach,
+      onDragEntered: (_) => setState(() => _dragging = true),
+      onDragExited: (_) => setState(() => _dragging = false),
+      onDragDone: (details) {
+        setState(() => _dragging = false);
+        unawaited(
+          _addFiles([
+            for (final item in details.files)
+              (name: item.name, path: item.path),
+          ]),
+        );
+      },
+      child: Stack(
+        children: [
+          column,
+          if (_dragging)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: ColoredBox(
+                  color: Theme.of(context).colorScheme.primary
+                      .withValues(alpha: 0.12),
+                  child: Center(
+                    child: Text(
+                      'Drop to add to your message',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -562,6 +699,11 @@ class _MessageRowState extends ConsumerState<_MessageRow> {
                   ),
                   const SizedBox(height: 2),
                   _MessageBody(message: message),
+                  if (message.attachments.isNotEmpty && !message.deleted)
+                    MessageAttachments(
+                      serverId: widget.scope.serverId,
+                      attachments: message.attachments,
+                    ),
                   if (failed)
                     _FailedActions(scope: widget.scope, localId: message.id),
                 ],
@@ -650,6 +792,14 @@ class _MessageBody extends StatelessWidget {
       );
     }
 
+    // Decrypted, but a kind of message this build does not show.
+    if (!message.deleted && message.unsupported) {
+      return Text(
+        'This message needs a newer version of Raindrop.',
+        style: muted,
+      );
+    }
+
     if (message.deleted || message.content == null) {
       return Text(
         'Message deleted',
@@ -659,6 +809,11 @@ class _MessageBody extends StatelessWidget {
         ),
       );
     }
+    // A message of files alone has no text to show above them.
+    if (message.content!.isEmpty && message.attachments.isNotEmpty) {
+      return const SizedBox.shrink();
+    }
+
     // Selecting text is a long press on touch and a right-click on desktop —
     // the very gestures the row uses for its own actions. On touch the row's
     // sheet (which has "Copy text") takes them over, so the text is plain
@@ -732,12 +887,23 @@ class _Composer extends StatelessWidget {
     required this.channel,
     required this.sending,
     required this.onSend,
+    required this.files,
+    required this.onAttach,
+    required this.onRemoveFile,
   });
 
   final TextEditingController controller;
   final Channel channel;
   final bool sending;
   final VoidCallback onSend;
+
+  /// Files queued for the next message.
+  final List<ChatAttachment> files;
+
+  /// Opens the file picker; null when files cannot be added here, which hides
+  /// the button.
+  final VoidCallback? onAttach;
+  final void Function(ChatAttachment file) onRemoveFile;
 
   @override
   Widget build(BuildContext context) {
@@ -755,30 +921,59 @@ class _Composer extends StatelessWidget {
           margin: EdgeInsets.zero,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            child: Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: controller,
-                    enabled: canSend,
-                    minLines: 1,
-                    maxLines: 5,
-                    decoration: InputDecoration(
-                      border: InputBorder.none,
-                      hintText: canSend
-                          ? 'Message #${channel.name}'
-                          : channel.type == ChannelType.text
-                          ? "You can't post in #${channel.name}"
-                          : 'Only text channels carry messages',
+                if (files.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final file in files)
+                            PendingFileChip(
+                              attachment: file,
+                              onRemove: () => onRemoveFile(file),
+                            ),
+                        ],
+                      ),
                     ),
-                    onSubmitted: (_) => onSend(),
-                    textInputAction: TextInputAction.send,
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.send_rounded),
-                  color: Theme.of(context).colorScheme.primary,
-                  onPressed: canSend && !sending ? onSend : null,
+                Row(
+                  children: [
+                    if (onAttach != null)
+                      IconButton(
+                        icon: const Icon(Icons.attach_file_rounded),
+                        tooltip: 'Add files',
+                        onPressed: onAttach,
+                      ),
+                    Expanded(
+                      child: TextField(
+                        controller: controller,
+                        enabled: canSend,
+                        minLines: 1,
+                        maxLines: 5,
+                        decoration: InputDecoration(
+                          border: InputBorder.none,
+                          hintText: canSend
+                              ? 'Message #${channel.name}'
+                              : channel.type == ChannelType.text
+                              ? "You can't post in #${channel.name}"
+                              : 'Only text channels carry messages',
+                        ),
+                        onSubmitted: (_) => onSend(),
+                        textInputAction: TextInputAction.send,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.send_rounded),
+                      color: Theme.of(context).colorScheme.primary,
+                      onPressed: canSend && !sending ? onSend : null,
+                    ),
+                  ],
                 ),
               ],
             ),

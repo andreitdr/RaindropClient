@@ -3,6 +3,7 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
+import 'api/attachment.dart';
 import 'api/session.dart';
 
 import 'dart:async';
@@ -69,7 +70,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -124611464;
+  int get rustContentHash => 964364491;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -281,12 +282,43 @@ abstract class RustLibApi extends BaseApi {
     required List<int> canonical,
   });
 
+  Future<Uint8List> crateApiSessionCryptoSessionSignMessageAttestationV2({
+    required CryptoSession that,
+    required List<int> canonical,
+  });
+
   Future<Uint8List> crateApiSessionCryptoSessionSignSessionChallenge({
     required CryptoSession that,
     required List<int> nonce,
   });
 
+  BigInt crateApiAttachmentAttachmentCiphertextLength({
+    required BigInt plaintextLength,
+  });
+
   bool crateApiSessionBackupNeedsPassphrase({required List<int> blob});
+
+  Future<Uint8List> crateApiAttachmentDecryptAttachmentBytes({
+    required List<int> ciphertext,
+    required List<int> key,
+    required List<int> expectedSha256,
+  });
+
+  Future<BigInt> crateApiAttachmentDecryptAttachmentFile({
+    required String inputPath,
+    required String outputPath,
+    required List<int> key,
+    required List<int> expectedSha256,
+  });
+
+  Future<SealedAttachmentBytes> crateApiAttachmentEncryptAttachmentBytes({
+    required List<int> plaintext,
+  });
+
+  Future<SealedAttachment> crateApiAttachmentEncryptAttachmentFile({
+    required String inputPath,
+    required String outputPath,
+  });
 
   Future<void> crateApiInitApp();
 
@@ -1702,6 +1734,46 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<Uint8List> crateApiSessionCryptoSessionSignMessageAttestationV2({
+    required CryptoSession that,
+    required List<int> canonical,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCryptoSession(
+            that,
+            serializer,
+          );
+          sse_encode_list_prim_u_8_loose(canonical, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 36,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: sse_decode_crypto_failure,
+        ),
+        constMeta:
+            kCrateApiSessionCryptoSessionSignMessageAttestationV2ConstMeta,
+        argValues: [that, canonical],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kCrateApiSessionCryptoSessionSignMessageAttestationV2ConstMeta =>
+      const TaskConstMeta(
+        debugName: "CryptoSession_sign_message_attestation_v2",
+        argNames: ["that", "canonical"],
+      );
+
+  @override
   Future<Uint8List> crateApiSessionCryptoSessionSignSessionChallenge({
     required CryptoSession that,
     required List<int> nonce,
@@ -1718,7 +1790,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 37,
             port: port_,
           );
         },
@@ -1741,13 +1813,41 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  BigInt crateApiAttachmentAttachmentCiphertextLength({
+    required BigInt plaintextLength,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_64(plaintextLength, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 38)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_u_64,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiAttachmentAttachmentCiphertextLengthConstMeta,
+        argValues: [plaintextLength],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAttachmentAttachmentCiphertextLengthConstMeta =>
+      const TaskConstMeta(
+        debugName: "attachment_ciphertext_length",
+        argNames: ["plaintextLength"],
+      );
+
+  @override
   bool crateApiSessionBackupNeedsPassphrase({required List<int> blob}) {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_list_prim_u_8_loose(blob, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 37)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 39)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_bool,
@@ -1767,6 +1867,150 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<Uint8List> crateApiAttachmentDecryptAttachmentBytes({
+    required List<int> ciphertext,
+    required List<int> key,
+    required List<int> expectedSha256,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_list_prim_u_8_loose(ciphertext, serializer);
+          sse_encode_list_prim_u_8_loose(key, serializer);
+          sse_encode_list_prim_u_8_loose(expectedSha256, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 40,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: sse_decode_crypto_failure,
+        ),
+        constMeta: kCrateApiAttachmentDecryptAttachmentBytesConstMeta,
+        argValues: [ciphertext, key, expectedSha256],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAttachmentDecryptAttachmentBytesConstMeta =>
+      const TaskConstMeta(
+        debugName: "decrypt_attachment_bytes",
+        argNames: ["ciphertext", "key", "expectedSha256"],
+      );
+
+  @override
+  Future<BigInt> crateApiAttachmentDecryptAttachmentFile({
+    required String inputPath,
+    required String outputPath,
+    required List<int> key,
+    required List<int> expectedSha256,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(inputPath, serializer);
+          sse_encode_String(outputPath, serializer);
+          sse_encode_list_prim_u_8_loose(key, serializer);
+          sse_encode_list_prim_u_8_loose(expectedSha256, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 41,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_u_64,
+          decodeErrorData: sse_decode_crypto_failure,
+        ),
+        constMeta: kCrateApiAttachmentDecryptAttachmentFileConstMeta,
+        argValues: [inputPath, outputPath, key, expectedSha256],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAttachmentDecryptAttachmentFileConstMeta =>
+      const TaskConstMeta(
+        debugName: "decrypt_attachment_file",
+        argNames: ["inputPath", "outputPath", "key", "expectedSha256"],
+      );
+
+  @override
+  Future<SealedAttachmentBytes> crateApiAttachmentEncryptAttachmentBytes({
+    required List<int> plaintext,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_list_prim_u_8_loose(plaintext, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 42,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_sealed_attachment_bytes,
+          decodeErrorData: sse_decode_crypto_failure,
+        ),
+        constMeta: kCrateApiAttachmentEncryptAttachmentBytesConstMeta,
+        argValues: [plaintext],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAttachmentEncryptAttachmentBytesConstMeta =>
+      const TaskConstMeta(
+        debugName: "encrypt_attachment_bytes",
+        argNames: ["plaintext"],
+      );
+
+  @override
+  Future<SealedAttachment> crateApiAttachmentEncryptAttachmentFile({
+    required String inputPath,
+    required String outputPath,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(inputPath, serializer);
+          sse_encode_String(outputPath, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 43,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_sealed_attachment,
+          decodeErrorData: sse_decode_crypto_failure,
+        ),
+        constMeta: kCrateApiAttachmentEncryptAttachmentFileConstMeta,
+        argValues: [inputPath, outputPath],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAttachmentEncryptAttachmentFileConstMeta =>
+      const TaskConstMeta(
+        debugName: "encrypt_attachment_file",
+        argNames: ["inputPath", "outputPath"],
+      );
+
+  @override
   Future<void> crateApiInitApp() {
     return handler.executeNormal(
       NormalTask(
@@ -1775,7 +2019,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 44,
             port: port_,
           );
         },
@@ -1808,7 +2052,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_list_prim_u_8_loose(keyA, serializer);
           sse_encode_String(userB, serializer);
           sse_encode_list_prim_u_8_loose(keyB, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 39)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 45)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -2140,6 +2384,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  SealedAttachment dco_decode_sealed_attachment(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return SealedAttachment(
+      key: dco_decode_list_prim_u_8_strict(arr[0]),
+      ciphertextSha256: dco_decode_list_prim_u_8_strict(arr[1]),
+      ciphertextLength: dco_decode_u_64(arr[2]),
+    );
+  }
+
+  @protected
+  SealedAttachmentBytes dco_decode_sealed_attachment_bytes(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return SealedAttachmentBytes(
+      sealed: dco_decode_sealed_attachment(arr[0]),
+      ciphertext: dco_decode_list_prim_u_8_strict(arr[1]),
+    );
+  }
+
+  @protected
   SealedBackup dco_decode_sealed_backup(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -2155,6 +2424,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int dco_decode_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
+  }
+
+  @protected
+  BigInt dco_decode_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeU64(raw);
   }
 
   @protected
@@ -2575,6 +2850,32 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  SealedAttachment sse_decode_sealed_attachment(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_key = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_ciphertextSha256 = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_ciphertextLength = sse_decode_u_64(deserializer);
+    return SealedAttachment(
+      key: var_key,
+      ciphertextSha256: var_ciphertextSha256,
+      ciphertextLength: var_ciphertextLength,
+    );
+  }
+
+  @protected
+  SealedAttachmentBytes sse_decode_sealed_attachment_bytes(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_sealed = sse_decode_sealed_attachment(deserializer);
+    var var_ciphertext = sse_decode_list_prim_u_8_strict(deserializer);
+    return SealedAttachmentBytes(
+      sealed: var_sealed,
+      ciphertext: var_ciphertext,
+    );
+  }
+
+  @protected
   SealedBackup sse_decode_sealed_backup(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_blob = sse_decode_list_prim_u_8_strict(deserializer);
@@ -2586,6 +2887,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int sse_decode_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint32();
+  }
+
+  @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getBigUint64();
   }
 
   @protected
@@ -2988,6 +3295,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_sealed_attachment(
+    SealedAttachment self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_prim_u_8_strict(self.key, serializer);
+    sse_encode_list_prim_u_8_strict(self.ciphertextSha256, serializer);
+    sse_encode_u_64(self.ciphertextLength, serializer);
+  }
+
+  @protected
+  void sse_encode_sealed_attachment_bytes(
+    SealedAttachmentBytes self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_sealed_attachment(self.sealed, serializer);
+    sse_encode_list_prim_u_8_strict(self.ciphertext, serializer);
+  }
+
+  @protected
   void sse_encode_sealed_backup(SealedBackup self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(self.blob, serializer);
@@ -2998,6 +3326,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_u_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint32(self);
+  }
+
+  @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putBigUint64(self);
   }
 
   @protected
@@ -3288,6 +3622,13 @@ class CryptoSessionImpl extends RustOpaque implements CryptoSession {
   /// Signs a message attestation over `canonical` with this device's key.
   Future<Uint8List> signMessageAttestation({required List<int> canonical}) =>
       RustLib.instance.api.crateApiSessionCryptoSessionSignMessageAttestation(
+        that: this,
+        canonical: canonical,
+      );
+
+  /// Signs the attestation of a message that carries files (context `raindrop/message-attestation/v2`).
+  Future<Uint8List> signMessageAttestationV2({required List<int> canonical}) =>
+      RustLib.instance.api.crateApiSessionCryptoSessionSignMessageAttestationV2(
         that: this,
         canonical: canonical,
       );

@@ -14,10 +14,15 @@ import 'package:msgpack_dart/msgpack_dart.dart' as msgpack;
 /// sent the message); it is what lets one of them *prove* it to moderators,
 /// who cannot decrypt anything, when reporting the message.
 ///
-/// [type] is an open string (`text` today) so a plugin or a later build can
+/// [type] is an open string (`text`, `files`) so a plugin or a later build can
 /// send other kinds of content in the same channel; a client shows what it
 /// understands and a placeholder for the rest. MLS pads the ciphertext to a
 /// multiple of 256 bytes, so the size of this says little about the text.
+///
+/// A `files` message carries its caption in [body] and its files in [files]
+/// (`x.f`): each one's attachment id on the server, its own key, name, MIME
+/// type, size and ciphertext hash — see [AttachmentDescriptor]. Its
+/// attestation is the v2 one ([attestsFiles]), which also covers the files.
 class MessagePayload {
   const MessagePayload({
     required this.type,
@@ -33,6 +38,9 @@ class MessagePayload {
   /// The [type] of a plain text message.
   static const textType = 'text';
 
+  /// The [type] of a message that carries files, with an optional caption.
+  static const filesType = 'files';
+
   final String type;
   final String body;
 
@@ -46,6 +54,20 @@ class MessagePayload {
 
   final Map<String, Object?> ext;
 
+  /// The files a `files` message carries, in the order they are shown; empty
+  /// for any other message, and for descriptors this build cannot read.
+  List<AttachmentDescriptor> get files {
+    final list = ext['f'];
+    if (list is! List) return const [];
+    return [
+      for (final item in list)
+        if (item is Map) ?AttachmentDescriptor.tryDecode(item),
+    ];
+  }
+
+  /// Whether the attestation is the v2 one, which also signs [files].
+  bool get attestsFiles => type == filesType && files.isNotEmpty;
+
   /// The sender's device signature over [attestationBytes], or null from a
   /// client that does not attest.
   final Uint8List? attestation;
@@ -55,6 +77,11 @@ class MessagePayload {
   /// message id, the send time in ms, the type and the body — each text field
   /// as a 4-byte big-endian length and its UTF-8. The device adds its own
   /// context string before signing.
+  ///
+  /// When the message carries files ([attestsFiles]) the v2 layout follows:
+  /// a 4-byte big-endian count, then for each file in [attestedFiles] order
+  /// its id (lower case, as a field like the others) and the 32 bytes of its
+  /// ciphertext's SHA-256. Signed with `signMessageAttestationV2`.
   Uint8List attestationBytes(String channelId) {
     final out = BytesBuilder();
     void field(String value) {
@@ -72,8 +99,35 @@ class MessagePayload {
     );
     field(type);
     field(body);
+    if (attestsFiles) {
+      final attested = attestedFiles;
+      out.add(
+        (ByteData(4)..setUint32(0, attested.length)).buffer.asUint8List(),
+      );
+      for (final file in attested) {
+        field(file.attachmentId.toLowerCase());
+        out.add(file.ciphertextSha256);
+      }
+    }
     return out.toBytes();
   }
+
+  /// Every attachment a `files` message names, in the order its attestation
+  /// covers them: each file, followed by its thumbnail when it has one.
+  List<({String attachmentId, Uint8List ciphertextSha256})> get attestedFiles =>
+      [
+        for (final file in files) ...[
+          (
+            attachmentId: file.attachmentId,
+            ciphertextSha256: file.ciphertextSha256,
+          ),
+          if (file.thumbnail case final thumbnail?)
+            (
+              attachmentId: thumbnail.attachmentId,
+              ciphertextSha256: thumbnail.ciphertextSha256,
+            ),
+        ],
+      ];
 
   MessagePayload withAttestation(Uint8List signature) => MessagePayload(
     type: type,
@@ -91,6 +145,21 @@ class MessagePayload {
         clientMessageId: clientMessageId,
         sentAt: DateTime.now().toUtc(),
       );
+
+  /// A message carrying [files], with [caption] (possibly empty) as its text.
+  factory MessagePayload.files(
+    String caption,
+    List<AttachmentDescriptor> files, {
+    required String clientMessageId,
+  }) => MessagePayload(
+    type: filesType,
+    body: caption,
+    clientMessageId: clientMessageId,
+    sentAt: DateTime.now().toUtc(),
+    ext: {
+      'f': [for (final file in files) file.encode()],
+    },
+  );
 
   Uint8List encode() => msgpack.serialize({
     'v': version,
@@ -138,3 +207,144 @@ class MessagePayload {
     }
   }
 }
+
+/// One encrypted file as a `files` message describes it — everything a
+/// recipient needs to fetch it and open it, none of which the server sees
+/// except [attachmentId]:
+///
+/// `{i: attachment id, k: key, n: name, m: MIME type, s: size in bytes,
+/// h: ciphertext SHA-256, t?: thumbnail, pw?/ph?: pixel size, d?: duration ms}`
+///
+/// The name is the sender's file name, never trusted as a path: only its last
+/// component is ever used, and only to name a file the member chose to save.
+class AttachmentDescriptor {
+  const AttachmentDescriptor({
+    required this.attachmentId,
+    required this.key,
+    required this.name,
+    required this.mimeType,
+    required this.size,
+    required this.ciphertextSha256,
+    this.thumbnail,
+    this.width,
+    this.height,
+    this.duration,
+  });
+
+  final String attachmentId;
+
+  /// The file's own `raindrop/attachment/v1` key.
+  final Uint8List key;
+  final String name;
+  final String mimeType;
+
+  /// The plaintext size.
+  final int size;
+
+  /// What the downloaded ciphertext must hash to before it is opened.
+  final Uint8List ciphertextSha256;
+
+  /// A small preview image the sender made, uploaded as its own attachment.
+  final ThumbnailDescriptor? thumbnail;
+
+  /// For an image or video, its size in pixels, so the timeline can reserve
+  /// the space before it has loaded.
+  final int? width;
+  final int? height;
+
+  /// For audio or video, how long it plays.
+  final Duration? duration;
+
+  Map<String, Object?> encode() => {
+    'i': attachmentId,
+    'k': key,
+    'n': name,
+    'm': mimeType,
+    's': size,
+    'h': ciphertextSha256,
+    't': ?thumbnail?.encode(),
+    'pw': ?width,
+    'ph': ?height,
+    'd': ?duration?.inMilliseconds,
+  };
+
+  /// Decodes one descriptor, or returns null for one this build cannot read.
+  static AttachmentDescriptor? tryDecode(Map<Object?, Object?> map) {
+    final id = map['i'];
+    final key = _bytes(map['k']);
+    final name = map['n'];
+    final mime = map['m'];
+    final size = map['s'];
+    final hash = _bytes(map['h']);
+    if (id is! String ||
+        key == null ||
+        key.length != 32 ||
+        name is! String ||
+        mime is! String ||
+        size is! int ||
+        hash == null ||
+        hash.length != 32) {
+      return null;
+    }
+    final thumbnail = map['t'];
+    final duration = map['d'];
+    return AttachmentDescriptor(
+      attachmentId: id,
+      key: key,
+      name: name,
+      mimeType: mime,
+      size: size,
+      ciphertextSha256: hash,
+      thumbnail: thumbnail is Map
+          ? ThumbnailDescriptor.tryDecode(thumbnail)
+          : null,
+      width: map['pw'] is int ? map['pw'] as int : null,
+      height: map['ph'] is int ? map['ph'] as int : null,
+      duration: duration is int ? Duration(milliseconds: duration) : null,
+    );
+  }
+}
+
+/// A sender-made preview image of a file: `{i, k, h}` as in
+/// [AttachmentDescriptor], always a JPEG.
+class ThumbnailDescriptor {
+  const ThumbnailDescriptor({
+    required this.attachmentId,
+    required this.key,
+    required this.ciphertextSha256,
+  });
+
+  final String attachmentId;
+  final Uint8List key;
+  final Uint8List ciphertextSha256;
+
+  Map<String, Object?> encode() => {
+    'i': attachmentId,
+    'k': key,
+    'h': ciphertextSha256,
+  };
+
+  static ThumbnailDescriptor? tryDecode(Map<Object?, Object?> map) {
+    final id = map['i'];
+    final key = _bytes(map['k']);
+    final hash = _bytes(map['h']);
+    if (id is! String ||
+        key == null ||
+        key.length != 32 ||
+        hash == null ||
+        hash.length != 32) {
+      return null;
+    }
+    return ThumbnailDescriptor(
+      attachmentId: id,
+      key: key,
+      ciphertextSha256: hash,
+    );
+  }
+}
+
+Uint8List? _bytes(Object? value) => switch (value) {
+  final Uint8List bytes => bytes,
+  final List<int> bytes => Uint8List.fromList(bytes),
+  _ => null,
+};

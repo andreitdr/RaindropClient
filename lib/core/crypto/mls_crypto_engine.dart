@@ -108,6 +108,10 @@ class MlsCryptoEngine implements CryptoEngine {
       _guard(() => _session.signMessageAttestation(canonical: canonical));
 
   @override
+  Future<Uint8List> signMessageAttestationV2(Uint8List canonical) =>
+      _guard(() => _session.signMessageAttestationV2(canonical: canonical));
+
+  @override
   Future<({Uint8List offer, Uint8List commitment})> beginDeviceLink({
     required String userId,
     required String deviceId,

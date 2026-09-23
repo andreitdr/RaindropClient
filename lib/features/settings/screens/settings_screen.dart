@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/layout/layout_controller.dart';
 import '../../../core/storage/app_prefs.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../../core/theme/theme_definition.dart';
@@ -10,8 +11,10 @@ import '../../servers/controllers/servers_controller.dart';
 import '../../security/widgets/encryption_settings_section.dart';
 import '../../servers/controllers/session_controller.dart';
 import '../../voice/widgets/voice_settings_section.dart';
+import 'layout_editor_screen.dart';
 
-/// Theme selection, voice and audio, and connected-server management.
+/// Theme selection, the main view's layout, voice and audio, and
+/// connected-server management.
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -87,6 +90,9 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 16),
+          _SectionLabel('Layout'),
+          const _LayoutSection(),
+          const SizedBox(height: 16),
           _SectionLabel('Voice & audio'),
           const VoiceSettingsSection(),
           const SizedBox(height: 16),
@@ -157,6 +163,37 @@ class _SectionLabel extends StatelessWidget {
         text.toUpperCase(),
         style: Theme.of(context).textTheme.labelMedium
             ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: 0.6),
+      ),
+    );
+  }
+}
+
+/// The way into the layout editor — offered on windows wide enough for the
+/// layout it edits.
+class _LayoutSection extends ConsumerWidget {
+  const _LayoutSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final wide = MediaQuery.sizeOf(context).width >= kLayoutEditorMinWidth;
+    final rules = ref.watch(layoutRulesProvider);
+    final custom =
+        ref.watch(layoutConfigProvider) != rules.defaults.normalize(rules);
+    return Card(
+      margin: EdgeInsets.zero,
+      child: ListTile(
+        enabled: wide,
+        leading: const Icon(Icons.dashboard_customize_outlined),
+        title: const Text('Customize layout'),
+        subtitle: Text(
+          !wide
+              ? 'Widen the window to edit the layout.'
+              : custom
+              ? 'Using your own layout on every server.'
+              : 'Move, resize and hide panes and buttons in the main view.',
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => context.push('/settings/layout'),
       ),
     );
   }
@@ -242,7 +279,8 @@ class _ServerRow extends ConsumerWidget {
             title: 'Remove $name?',
             message:
                 'This forgets the server locally, including its saved session and pinned '
-                "certificate. It doesn't delete your account on the server.",
+                "certificate. It doesn't delete your account on the server — you can log "
+                'back in later with your username and password.',
             confirmLabel: 'Remove',
             destructive: true,
           );

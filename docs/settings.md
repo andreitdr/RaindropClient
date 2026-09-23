@@ -1,11 +1,16 @@
 # Settings
 
-Feature folder: [`lib/features/settings/`](../lib/features/settings/). Routes: `/settings` and
-`/settings/theme-editor` (see [Routing](routing.md)).
+Feature folder: [`lib/features/settings/`](../lib/features/settings/). Routes: `/settings`,
+`/settings/layout` and `/settings/theme-editor` (see [Routing](routing.md)).
+
+`/settings` is reached from the **Settings** button — by default in the server rail (see
+[Servers & sessions](servers-and-sessions.md#server-rail)), which is on screen for every server
+whether or not this device is signed in to it, and in the user panel; the user's [layout](layout.md)
+can move it, but always keeps it somewhere — plus the channel sidebar's header.
 
 ## `SettingsScreen`
 
-[`settings_screen.dart`](../lib/features/settings/screens/settings_screen.dart) has three sections:
+[`settings_screen.dart`](../lib/features/settings/screens/settings_screen.dart) has these sections:
 
 ### Theme
 
@@ -16,6 +21,13 @@ that built-in themes don't. "New theme" pushes `/settings/theme-editor` with the
 theme as the starting point. Deleting a theme asks for confirmation via `showAdaptiveConfirm` (see
 [Native feel per platform](native-feel-per-platform.md)) and, if the deleted theme was active, falls
 back the selection to `kSystemThemeId`.
+
+### Layout
+
+"Customize layout" opens `/settings/layout`, the [layout editor](layout.md#the-editor): move, resize
+and hide the main view's panes and buttons, reset, import and export. Disabled under 680px, where the
+narrow layout that the saved layout does not arrange is shown; the subtitle says whether a custom
+layout is in use.
 
 ### Voice & audio
 
@@ -29,7 +41,8 @@ are set from the member menu in a call, not here.
 ### Connected servers
 
 Lists every server from `serversControllerProvider` (see [Servers & sessions](servers-and-sessions.md))
-with its `host:port`. The logout icon on each row: confirms, then calls
+with its `host:port`. Leaving a server for good is the rail's right-click menu, not this list — see
+[Servers & sessions](servers-and-sessions.md#leaving-or-removing-a-server). The logout icon on each row: confirms, then calls
 `serverSessionProvider(serverId).notifier.logout()` followed by
 `serversControllerProvider.notifier.remove(serverId)` — **this only forgets the server locally**
 (including its saved session and pinned certificate fingerprint); it does not delete the user's

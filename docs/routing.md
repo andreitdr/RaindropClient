@@ -10,6 +10,7 @@
 | `/connect` | [`ConnectServerScreen`](connecting-to-a-server.md) | — |
 | `/connect/auth` | [`ServerAuthScreen`](connecting-to-a-server.md) | `ConnectHandoff` — `(flow: ConnectServerFlow, status: UserStateResult, displayName: String)` |
 | `/settings` | [`SettingsScreen`](settings.md) | — |
+| `/settings/layout` | [`LayoutEditorScreen`](layout.md#the-editor) | — |
 | `/settings/theme-editor` | [`ThemeEditorScreen`](settings.md) | `(starting: AppThemeDefinition, editing: AppThemeDefinition?)` |
 
 ## Why routes are shallow

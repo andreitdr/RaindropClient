@@ -183,13 +183,24 @@ Speaking and "connected" colours reuse `AppSurfaces.onlineIndicator`, so no them
 
 | Platform | What voice needed |
 |---|---|
-| macOS | `com.apple.security.device.audio-input` in both entitlements files; `NSMicrophoneUsageDescription` in `Info.plist` |
+| macOS | `com.apple.security.device.audio-input`, `com.apple.security.network.client` **and `com.apple.security.network.server`** in *both* entitlements files; `NSMicrophoneUsageDescription` in `Info.plist` |
 | iOS | `NSMicrophoneUsageDescription`. **No** background audio mode: calls are foreground-only for now |
 | Android | `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `BLUETOOTH_CONNECT` (+ legacy `BLUETOOTH` ≤ API 30), and `INTERNET`/`ACCESS_NETWORK_STATE` in the **main** manifest (release builds had no network access before). No foreground service yet |
 | Windows, Linux | nothing |
 
 flutter_webrtc and livekit_client ship Swift Package Manager manifests, so the Apple builds stay on
 SPM with no Podfile.
+
+`com.apple.security.network.server` is the one that is easy to get wrong, because nothing about it
+says "voice". Under the App Sandbox it is what permits `bind()`, and WebRTC binds UDP and TCP
+sockets both to gather ICE candidates and to receive audio; `network.client` covers only outgoing
+connections. Without it a call looks *almost* fine: the signalling WebSocket connects (it is an
+outgoing connection), the server admits the participant, and then no media connection is ever
+established — the only ICE candidates the client can offer are `tcp … typ host tcptype active` ones
+on port 9, and no connectivity check can succeed. LiveKit logs the participant joining and being
+removed again without a connection, and the client retries the whole join in a loop. Release builds
+carried `network.client` alone until this was found, so voice worked from `flutter run` and failed
+in release builds only — the same trap the Android manifest fell into.
 
 ## Not yet
 

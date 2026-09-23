@@ -1,5 +1,9 @@
 import 'dart:typed_data';
 
+import '../../../core/crypto/message_payload.dart';
+import '../../../core/network/attachments_api.dart';
+import '../../../core/network/text_messages_api.dart';
+
 /// Where a message is between the composer and the server.
 enum MessageStatus {
   /// The server has it; [ChatMessage.id] is the real message id.
@@ -28,6 +32,66 @@ enum MessageSecurity {
   plaintext,
 }
 
+/// A file in a message, outgoing or received.
+///
+/// Outgoing, it starts as [localPath] with an upload [progress], and gains its
+/// [descriptor] once it is encrypted and uploaded — kept on a failed send, so
+/// retrying does not upload it again. Received, [descriptor] is what the
+/// encrypted message says about it and [serverRef] what the server stored.
+class ChatAttachment {
+  const ChatAttachment({
+    required this.name,
+    required this.size,
+    required this.mimeType,
+    this.descriptor,
+    this.serverRef,
+    this.localPath,
+    this.progress,
+  });
+
+  /// The sender's file name — shown, and used to name a file saved from it,
+  /// never trusted as a path.
+  final String name;
+  final int size;
+  final String mimeType;
+  final AttachmentDescriptor? descriptor;
+  final MessageAttachmentRef? serverRef;
+
+  /// Outgoing: the file on this device.
+  final String? localPath;
+
+  /// Outgoing: how much has been uploaded, 0 to 1; null before it starts.
+  final double? progress;
+
+  String get extension => extensionOf(name);
+
+  bool get outgoing => localPath != null;
+
+  /// A received file the server does not list for this message — named in
+  /// the encrypted payload but not attached to it, so nothing to fetch.
+  bool get unavailable =>
+      !outgoing && (descriptor == null || serverRef == null);
+
+  /// The extension the sender declared to the server is not the one in the
+  /// name inside the encrypted message: a client that lied to get past the
+  /// server's type rules. Such a file is never previewed.
+  bool get extensionMismatch =>
+      serverRef != null && serverRef!.extension != extension;
+
+  ChatAttachment copyWith({
+    AttachmentDescriptor? descriptor,
+    double? progress,
+  }) => ChatAttachment(
+    name: name,
+    size: size,
+    mimeType: mimeType,
+    descriptor: descriptor ?? this.descriptor,
+    serverRef: serverRef,
+    localPath: localPath,
+    progress: progress ?? this.progress,
+  );
+}
+
 /// One message as the chat pane renders it.
 ///
 /// [authorId] is a UUID rather than a name, exactly as the server sends it —
@@ -46,6 +110,9 @@ class ChatMessage {
     this.attestation,
     this.clientMessageId,
     this.clientSentAt,
+    this.attachments = const [],
+    this.payloadType,
+    this.unsupported = false,
   });
 
   final String id;
@@ -71,6 +138,17 @@ class ChatMessage {
   final String? clientMessageId;
   final DateTime? clientSentAt;
 
+  /// The files the message carries, in the order the sender listed them.
+  /// Thumbnails are not listed here; they belong to the file they preview.
+  final List<ChatAttachment> attachments;
+
+  /// The encrypted payload's type (`text`, `files`), which a report signs.
+  final String? payloadType;
+
+  /// Decrypted, but a kind of message this build does not know how to show —
+  /// sent by a newer client or a plugin.
+  final bool unsupported;
+
   /// Whether the message carries what a report needs.
   bool get reportable =>
       !deleted &&
@@ -78,7 +156,10 @@ class ChatMessage {
       attestation != null &&
       senderDeviceId != null;
 
-  ChatMessage copyWith({MessageStatus? status}) => ChatMessage(
+  ChatMessage copyWith({
+    MessageStatus? status,
+    List<ChatAttachment>? attachments,
+  }) => ChatMessage(
     id: id,
     authorId: authorId,
     content: content,
@@ -90,6 +171,9 @@ class ChatMessage {
     attestation: attestation,
     clientMessageId: clientMessageId,
     clientSentAt: clientSentAt,
+    attachments: attachments ?? this.attachments,
+    payloadType: payloadType,
+    unsupported: unsupported,
   );
 }
 

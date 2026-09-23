@@ -231,6 +231,12 @@ abstract interface class CryptoEngine {
   /// recipient can prove it to moderators if they report the message.
   Future<Uint8List> signMessageAttestation(Uint8List canonical);
 
+  /// The same for a message that carries files, whose canonical bytes also
+  /// name each file's id and ciphertext hash — signed under its own context
+  /// (`raindrop/message-attestation/v2`), so a reporter cannot pair the words
+  /// with another file.
+  Future<Uint8List> signMessageAttestationV2(Uint8List canonical);
+
   /// New device, before it has an identity: makes its key and a link offer
   /// for one of the user's existing devices to approve. Upload [offer]; put
   /// [commitment] in the [DeviceLinkCode] the user carries across.

@@ -50,6 +50,19 @@ any authenticated caller who asks (see the server's
 `AppPrefs`, and doubles as that server's storage namespace key for both `AppPrefs` and `SecureStore` —
 there's no second synthetic id anywhere that needs to be kept in sync with it.
 
+## Attachment files
+
+The main view's **layout** is a file too: `<app support>/layout.json`, owned by
+[`LayoutStore`](../lib/core/layout/layout_store.dart) in `core/layout/`. It is UI state, which would
+normally mean `AppPrefs`, but it is kept as a file because it is meant to be the user's own —
+exported, copied to another machine, imported back. No file means the default layout; a corrupt one is
+moved to `layout.json.bad`. See [Layout](layout.md#the-file).
+
+Not preferences and not secrets, so neither of the above: [`AttachmentCache`](../lib/core/storage/attachment_cache.dart)
+keeps encrypted attachments in the app's cache folder (at most 512 MB, least recently used first out),
+decrypts only what the member opens into a temporary folder that is emptied at startup and on exit, and
+deletes outgoing ciphertext once it is sent. See [Attachments](attachments.md#on-disk-attachmentcache).
+
 ## Rule of thumb for new state
 
 | If it's... | It goes in... |

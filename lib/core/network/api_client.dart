@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
@@ -63,20 +64,121 @@ class ApiClient {
     String? token,
   }) => _send('POST', path, body: body, token: token);
 
+  /// Sends [bytes] as a raw `application/octet-stream` body — a chunk of an
+  /// encrypted file — and reads the JSON answer like any other call. Ids go in
+  /// [headers], never the URL.
+  Future<Map<String, dynamic>> putBytes(
+    String path,
+    Uint8List bytes, {
+    Map<String, String> headers = const {},
+    String? token,
+    void Function(int sent, int total)? onProgress,
+  }) => _send(
+    'PUT',
+    path,
+    body: Stream<List<int>>.value(bytes),
+    token: token,
+    headers: {
+      ...headers,
+      Headers.contentTypeHeader: 'application/octet-stream',
+      Headers.contentLengthHeader: '${bytes.length}',
+    },
+    onSendProgress: onProgress,
+  );
+
+  /// POSTs [body] and streams a binary answer into [savePath] — an encrypted
+  /// attachment. With [fromByte], asks for the rest of a file only
+  /// (`Range: bytes=fromByte-`) and appends it, to resume a download. An error
+  /// answer throws [ApiException] and leaves [savePath] as it was.
+  Future<void> downloadTo(
+    String path,
+    String savePath, {
+    Map<String, dynamic>? body,
+    String? token,
+    int fromByte = 0,
+    void Function(int received, int total)? onProgress,
+  }) async {
+    Response<ResponseBody> response;
+    try {
+      response = await _dio.request<ResponseBody>(
+        path,
+        data: body,
+        options: Options(
+          method: 'POST',
+          responseType: ResponseType.stream,
+          // The body is ciphertext, possibly large: no receive timeout between
+          // chunks beyond the connection's own.
+          receiveTimeout: const Duration(minutes: 5),
+          headers: {
+            'Accept': 'application/octet-stream, application/json',
+            'Authorization': ?(token == null ? null : 'Bearer $token'),
+            'Range': ?(fromByte > 0 ? 'bytes=$fromByte-' : null),
+          },
+        ),
+      );
+    } on DioException catch (e) {
+      if (e.error is HandshakeException) {
+        throw ApiException.certificateMismatch();
+      }
+      throw ApiException.network(e.message ?? e.toString());
+    }
+
+    final status = response.statusCode ?? 0;
+    final stream = response.data!.stream;
+    if (status < 200 || status >= 300) {
+      final text = await utf8.decodeStream(stream);
+      Object? error;
+      try {
+        error = text.isEmpty ? null : jsonDecode(text);
+      } on FormatException {
+        error = null;
+      }
+      throw ApiException.fromResponseBody(status, error);
+    }
+
+    // A server that ignored the range sends the whole file: start over.
+    final append = fromByte > 0 && status == HttpStatus.partialContent;
+    final total =
+        int.tryParse(
+          response.headers.value(Headers.contentLengthHeader) ?? '',
+        ) ??
+        -1;
+    final sink = File(savePath)
+        .openWrite(mode: append ? FileMode.append : FileMode.write);
+    var received = 0;
+    try {
+      await for (final chunk in stream) {
+        sink.add(chunk);
+        received += chunk.length;
+        onProgress?.call(received, total);
+      }
+    } on Object catch (e) {
+      throw ApiException.network('the download was interrupted: $e');
+    } finally {
+      await sink.close();
+    }
+  }
+
   Future<Map<String, dynamic>> _send(
     String method,
     String path, {
-    Map<String, dynamic>? body,
+    Object? body,
     String? token,
+    Map<String, String>? headers,
+    void Function(int, int)? onSendProgress,
   }) async {
     Response<dynamic> response;
     try {
       response = await _dio.request<dynamic>(
         path,
         data: body,
+        onSendProgress: onSendProgress,
         options: Options(
           method: method,
-          headers: token != null ? {'Authorization': 'Bearer $token'} : null,
+          headers: {
+            ...?headers,
+            'Authorization': ?(token == null ? null : 'Bearer $token'),
+          },
         ),
       );
     } on DioException catch (e) {

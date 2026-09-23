@@ -19,9 +19,10 @@ The roster is re-read after every reconnect. While the stream is down it falls b
 **fifteen seconds** (`_fallbackPollInterval`) — slower than chat's three, because a roster a few
 seconds stale reads as fine and this is a whole-server query.
 
-`autoDispose` matters here specifically: the member pane is hidden below **1000px** unless manually
-toggled on (see [Native feel per platform](native-feel-per-platform.md#the-responsive-shell)), and a
-hidden pane has no roster to keep current. A failed re-read leaves the last good roster on screen
+`autoDispose` matters here specifically: the member pane is hidden when the window is too narrow for
+it (1000px at the default widths) unless manually toggled on (see
+[Native feel per platform](native-feel-per-platform.md#the-responsive-shell)), or when the user has
+hidden it in their [layout](layout.md), and a hidden pane has no roster to keep current. A failed re-read leaves the last good roster on screen
 rather than surfacing an error where the list used to be.
 
 ## `PresenceStatus` — client-side mirror of the server enum

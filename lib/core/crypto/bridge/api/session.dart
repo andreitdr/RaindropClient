@@ -168,6 +168,9 @@ abstract class CryptoSession implements RustOpaqueInterface {
   /// Signs a message attestation over `canonical` with this device's key.
   Future<Uint8List> signMessageAttestation({required List<int> canonical});
 
+  /// Signs the attestation of a message that carries files (context `raindrop/message-attestation/v2`).
+  Future<Uint8List> signMessageAttestationV2({required List<int> canonical});
+
   /// Signs the server's session-binding challenge with this device's key.
   Future<Uint8List> signSessionChallenge({required List<int> nonce});
 }

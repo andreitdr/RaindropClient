@@ -218,13 +218,17 @@ class UsersApi {
     ),
   );
 
+  /// Restores a preserved account. Like [login], the username stands in for
+  /// the UUID when the client no longer has it — it stays reserved for as
+  /// long as the account is preserved.
   Future<SessionResult> rejoin({
-    required String userId,
+    String? userId,
+    String? username,
     required String password,
   }) async => SessionResult.fromJson(
     await _client.post(
       '/api/users/rejoin',
-      body: {'userId': userId, 'password': password},
+      body: {'userId': userId, 'username': username, 'password': password},
     ),
   );
 

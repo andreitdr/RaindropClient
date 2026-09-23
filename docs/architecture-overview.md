@@ -22,6 +22,9 @@ lib/
     voice/      — VoiceEngine (a call's audio, transport-agnostic) and LiveKitVoiceEngine, the only
                   code that imports livekit_client / flutter_webrtc
     storage/    — AppPrefs (plain prefs) and SecureStore (Keychain/Credential Manager/libsecret/Keystore)
+    layout/     — LayoutConfig (the main view's pane order/widths and slot buttons, as JSON),
+                  LayoutStore (the layout file), LayoutScope/LayoutRow/LayoutSlot, and the editor's
+                  LayoutEditBarrier — ids as open strings; see layout.md
     models/     — ServerProfile, the one cross-feature domain model
     router/     — go_router route table
   features/

@@ -51,7 +51,15 @@ the device's Ed25519 signature over the channel, client message id, time, type a
 (`MessagePayload.attestationBytes`). Somebody else's decrypted, attested message offers *Report
 message* (a flag on hover on desktop, the long-press sheet on touch). The dialog says plainly that the
 text will be shown to the server's moderators. `ChatController.report` sends the text and attestation,
-and the server verifies them against the author's device key before accepting the report.
+and the server verifies them against the author's device key before accepting the report. A message
+with files is attested under v2, which also covers each file's id and hash, and its report sends those
+files too (`ChatMessage.payloadType` remembers which was signed).
+
+**Files.** `ChatController.send(text, files:)` encrypts and uploads each file (with progress on the
+pending message), then posts a `files` payload whose caption is the text. `_decode` turns a received
+one into `ChatMessage.attachments`, and a decrypted payload of a type this build does not know is
+marked `unsupported` rather than undecryptable. The echo of our own message is matched on its client
+message id, which a message of files alone needs. Full detail: [Attachments](attachments.md).
 
 Deleting a message asks for confirmation, and the dialog says truthfully where copies remain. For a
 pre-encryption message, the server owner keeps its text. For an encrypted one, nobody keeps a copy on

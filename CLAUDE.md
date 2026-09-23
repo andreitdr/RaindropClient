@@ -51,7 +51,7 @@ Integration tests against a live server (the real Rust core, the real server) ar
 fresh database; see `docs/crypto.md#tests`.
 
 Unit tests live under `test/` (`flutter test`) — pure logic only (models, merges, settings round-trips),
-no widget tests yet. To sanity-check the network layer against a real server, run the
+plus one widget test for the layout editor's hit-testing (`test/core/layout/`). To sanity-check the network layer against a real server, run the
 server per its own CLAUDE.md (`dotnet run --project ServerCli` from `RaindropServer/`, default
 `https://localhost:5001`) and drive `core/network/api_client.dart` and the API wrappers beside it
 (`users_api.dart`, `channels_api.dart`, `text_messages_api.dart`) from a scratch script — they depend
@@ -79,13 +79,17 @@ core/
                 PinRegistry (the same pins, process-wide, for the voice engine's
                 own sockets), EventStream (the server's push channel), and one wrapper per server
                 domain with its DTOs: UsersApi, ChannelsApi, TextMessagesApi, MembersApi, RolesApi,
-                VoiceApi, E2eeApi
+                VoiceApi, E2eeApi, AttachmentsApi
   voice/      — VoiceEngine (a call's audio, transport-agnostic) + LiveKitVoiceEngine, the only code
                 that imports livekit_client / flutter_webrtc
   crypto/     — CryptoEngine (end-to-end encryption, MLS) + MlsCryptoEngine over the generated Rust
-                bridge in crypto/bridge/ (never import it elsewhere), and CryptoStores (one
-                SQLCipher store per server, its key in SecureStore)
-  storage/    — AppPrefs (plain prefs) and SecureStore (Keychain/Credential Manager/libsecret/Keystore)
+                bridge in crypto/bridge/ (never import it elsewhere), AttachmentCipher (files, per-file
+                keys) + RustAttachmentCipher, and CryptoStores (one SQLCipher store per server, its
+                key in SecureStore)
+  storage/    — AppPrefs (plain prefs), SecureStore (Keychain/Credential Manager/libsecret/Keystore),
+                and AttachmentCache (encrypted attachments, and the temporary plaintext folder)
+  layout/     — LayoutConfig (the main view's pane order/widths and slot buttons, JSON), LayoutStore
+                (the local layout file), LayoutScope/LayoutRow/LayoutSlot, LayoutEditBarrier
   models/     — ServerProfile, the one cross-feature domain model
   router/     — go_router route table
 features/
@@ -94,7 +98,8 @@ features/
                 LiveSync (following the event stream), the per-server UUID→name lookup cache, the
                 left-hand server rail
   channels/   — the server's channel list + the sidebar that renders it
-  chat/       — ChatController (send, follow the event stream, page back) + the chat pane
+  chat/       — ChatController (send, follow the event stream, page back), AttachmentTransfers
+                (upload/open encrypted files) + the chat pane, its composer and attachment previews
   members/    — the roster with each member's presence + the right-hand member pane
   voice/      — the call, who is in each call, voice settings + per-member audio, the voice view,
                 member menu and call controls
@@ -102,8 +107,10 @@ features/
                 the session), ChannelGroups (each channel's MLS group: join, catch up, Welcomes, key
                 packages, roster reconcile, encrypt/decrypt), the setup pane that takes the chat pane
                 when this device has no keys, the recovery-words dialog, Settings → Encryption
-  settings/   — appearance (theme), voice & audio, encryption, and connected-server management
-  home/       — HomeShell, which assembles the above into the responsive shell
+  settings/   — appearance (theme), the layout editor, voice & audio, encryption, and
+                connected-server management
+  home/       — HomeShell/MainView, which assemble the above into the responsive shell, and
+                layout/ — the main view's pane/slot/button ids, defaults, rules and button registry
 ```
 
 State management is Riverpod (`flutter_riverpod`, `Notifier`/`AsyncNotifier`/`.family`), navigation is
@@ -137,6 +144,19 @@ which one is picked (`kSystemThemeId` is the "match OS" pseudo-entry, resolved t
 `light`/`dark` theme by `resolveActiveTheme()` using the platform's live brightness). Editing a
 built-in theme forks it into a new custom one rather than mutating the shipped JSON in place; deleting
 a custom theme that's currently active falls back to `kSystemThemeId`.
+
+### Layout
+
+Full detail: [`docs/layout.md`](docs/layout.md). The wide main view is arranged by a user-editable
+`LayoutConfig` (`core/layout/`): panes in order with widths, and **slots** (toolbars inside panes —
+`rail.footer`, `user.trailing`, `topBar.trailing`) listing button ids. It is saved to
+`<app support>/layout.json` — a file, not `AppPrefs`, so it can be exported and imported — and applies
+to every server. The ids, defaults, rules and the button registry live in `features/home/layout/`;
+`core/` knows them only as open strings and keeps unknown ones. Every layout goes through
+`LayoutConfig.normalize` (load, import, each edit, save). Rail, channel list and chat are required;
+Settings must stay in some slot. The editor (Settings → Customize layout, `/settings/layout`) renders
+the real `MainView` over a draft, made inert by `LayoutEditBarrier` except over slots. A new toolbar
+button is an entry in `mainLayoutButtons`, not a widget hard-coded into a pane.
 
 ### Native feel per platform
 
@@ -179,6 +199,12 @@ call `/api/users/me` to confirm it's still valid, and fall back to `ReauthPrompt
 GUID and pin are already on file) if it isn't. A session's token, once obtained, lives only in
 `SecureStore`; `AppPrefs` only ever holds the non-secret server list (host/port/nickname) and UI
 settings.
+
+**Leaving is the server rail's right-click menu** (`features/servers/widgets/`): "Leave server" asks
+for the password and whether to erase the account (`POST /api/users/me/leave`, `preserveData`
+inverted), hangs up a call on that server, then forgets the server locally; "Remove from this device"
+is the local-only half, and the only one available while signed out. The rail also carries the
+settings button by default, since it is the one pane shown for every server signed in or not.
 
 Alongside the fingerprint, the client pins the server's **identity key** (`core/network/server_trust.dart`).
 When a pinned certificate stops matching, session restore follows the change only if that pinned key
@@ -254,6 +280,17 @@ server errors such as `channel_name_taken` inline.
 
 History pages backwards through the server's opaque cursor — pass `nextCursor` back untouched, never
 parse it. The chat pane exposes that as a "Load earlier messages" row at the top of the list.
+
+**Files** ([`docs/attachments.md`](docs/attachments.md)) are end-to-end encrypted: each is encrypted
+under its own key by the Rust core (`AttachmentCipher`), uploaded in chunks, and described — key, name,
+type, hash, a sender-made thumbnail — inside a `files` message, attested under v2. The composer's
+paperclip and desktop drag-and-drop check every file against the server's `GET /api/attachments/policy`
+first; it shows only with `attachments.v1`, `attach_files` in the channel, and encryption on this
+device. Received files preview inline (image, video and audio through `media_kit`) only when the
+server's `preview.extensions` lists them, `AttachmentPreviewRegistry` knows them (the plugin seam), and
+the extension the sender declared to the server matches the name in the message; everything else is a
+file card that saves, and nothing received is ever opened by the app. Decrypted files live in a temporary
+folder emptied at startup and exit.
 
 ### Members and presence
 

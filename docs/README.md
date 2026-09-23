@@ -20,8 +20,10 @@ with [Architecture overview](architecture-overview.md) if you're new to the code
 | [Channels](channels.md) | The channel list, creating/renaming/deleting channels, the sidebar |
 | [Live updates](live-updates.md) | The event stream: `EventStream`, `serverEventsProvider`, `LiveSync`, reconnects and fallback polling |
 | [Messages & chat](messages-chat.md) | `ChatController`, pushed messages, optimistic send, deleting a message, tombstones, history paging |
+| [Attachments](attachments.md) | End-to-end encrypted files: picking and dropping, the server's rules, chunked uploads, thumbnails, previews (image/video/audio), saving, what stays on disk |
 | [Members & presence](members-presence.md) | The roster pane, presence grouping, pushed presence |
 | [Voice](voice.md) | Voice channels: joining a call, mute/deafen, per-member volume and mute, mute for everyone, the LiveKit engine and its pinning |
+| [Layout](layout.md) | The customizable main view: pane order/widths, buttons in slots, the layout file, the layout editor |
 | [Settings](settings.md) | Theme selection/editor, voice & audio, connected-server management |
 | [Network layer](network-layer.md) | `ApiClient`, `CertificatePinner`, the per-domain API wrappers |
 | [Storage](storage.md) | `AppPrefs` vs. `SecureStore` — what goes where and why |
@@ -39,11 +41,13 @@ with [Architecture overview](architecture-overview.md) if you're new to the code
   `core/network/` contracts must track [RaindropServer's API](../../RaindropServer/docs/README.md)
   exactly.
 - **What's implemented:** connecting to a server (register/login/rejoin), reading and posting to text
-  channels, creating/renaming/deleting channels and deleting messages (each gated on what the server says
+  channels, end-to-end encrypted file attachments with inline image/video/audio previews,
+  creating/renaming/deleting channels and deleting messages (each gated on what the server says
   the account may do), viewing the member roster with presence, voice channels (group calls with mute,
   deafen, per-member volume and mute, and mute for everyone), live updates over the server's event stream
   (messages, deletions, channels, roster, presence and who is in which call arrive as they happen), theming
-  (built-in + custom), per-platform adaptive chrome.
+  (built-in + custom), a user-arranged main view (panes and buttons moved, resized and hidden in a
+  layout editor, saved to a local file), per-platform adaptive chrome.
 - **What's not implemented yet:** background voice on phones, MessagePack encoding. See [Roadmap](roadmap.md).
 
 ## Keeping this wiki current

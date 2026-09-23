@@ -100,6 +100,7 @@ serializer, so `UserId` on the wire is `userId` here — every `fromJson` reflec
 | [`RolesApi`](../lib/core/network/roles_api.dart) | `/api/roles/me` (only) | [`Roles/RoleContracts.cs`](../../RaindropServer/RaindropServer/Roles/RoleContracts.cs) | [Channels](channels.md#creating-renaming-and-deleting) |
 | [`MembersApi`](../lib/core/network/members_api.dart) | `/api/members` | [`Members/MemberContracts.cs`](../../RaindropServer/RaindropServer/Members/MemberContracts.cs) | [Members & presence](members-presence.md) |
 | [`TextMessagesApi`](../lib/core/network/text_messages_api.dart) | `/api/channels/text/messages/{send,history,delete}` | [`Channels/Text/TextChannelContracts.cs`](../../RaindropServer/RaindropServer/Channels/Text/TextChannelContracts.cs) | [Messages & chat](messages-chat.md) |
+| [`AttachmentsApi`](../lib/core/network/attachments_api.dart) | `/api/attachments/{policy,uploads/*,download}` — chunks go through `ApiClient.putBytes`, downloads through `ApiClient.downloadTo` | [`Attachments/AttachmentContracts.cs`](../../RaindropServer/RaindropServer/Attachments/AttachmentContracts.cs) | [Attachments](attachments.md) |
 | [`VoiceApi`](../lib/core/network/voice_api.dart) | `/api/channels/voice`, `/api/channels/voice/{join,leave,state,mute}` | [`Channels/Voice/VoiceContracts.cs`](../../RaindropServer/RaindropServer/Channels/Voice/VoiceContracts.cs) | [Voice](voice.md) |
 
 The audio of a call does not go through `ApiClient` at all: the voice engine (`core/voice/`) opens its
