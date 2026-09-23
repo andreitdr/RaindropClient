@@ -74,6 +74,17 @@ jobs:
           ' macos/Runner.xcodeproj/project.pbxproj
           grep -c 'Apple Development' macos/Runner.xcodeproj/project.pbxproj && exit 1 || true
 
+      # rusqlite's bundled SQLCipher compiles OpenSSL from source, which needs a full Perl and NASM.
+      # The Perl on the Windows runner's PATH is Git's cut-down one and fails ("perl reported failure").
+      - name: Windows OpenSSL build tools
+        if: matrix.name == 'windows'
+        uses: shogo82148/actions-setup-perl@v1
+        with:
+          distribution: strawberry
+      - name: Install NASM
+        if: matrix.name == 'windows'
+        uses: ilammy/setup-nasm@v1
+
       - name: Restore packages
         run: flutter pub get
 
