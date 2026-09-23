@@ -66,12 +66,12 @@ jobs:
       - name: Use ad-hoc code signing
         if: matrix.name == 'macos'
         run: |
-          perl -pi -e '\''
+          perl -pi -e '
             s/"CODE_SIGN_IDENTITY\[sdk=macosx\*\]" = "Apple Development";/"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";/;
             s/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/;
             s/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/;
             s/DEVELOPMENT_TEAM = [A-Z0-9]+;/DEVELOPMENT_TEAM = "";/;
-          '\'' macos/Runner.xcodeproj/project.pbxproj
+          ' macos/Runner.xcodeproj/project.pbxproj
           grep -c 'Apple Development' macos/Runner.xcodeproj/project.pbxproj && exit 1 || true
 
       - name: Restore packages
