@@ -96,6 +96,17 @@ jobs:
           echo "OPENSSL_SRC_PERL=$(cygpath -m "$perl_exe")" >> "$GITHUB_ENV"
           echo "STRAWBERRY_PERL_BIN=$(dirname "$perl_exe")" >> "$GITHUB_ENV"
 
+      # TEMPORARY diagnostics for the Windows OpenSSL failure: runs the crate's build on its own, with the
+      # same Perl setup, so OpenSSL's real error message is visible. Remove once the Windows build is green.
+      - name: Diagnose OpenSSL build (temporary)
+        if: matrix.name == 'windows'
+        continue-on-error: true
+        run: |
+          export PATH="$STRAWBERRY_PERL_BIN:$PATH"
+          echo "OPENSSL_SRC_PERL=$OPENSSL_SRC_PERL"; where nasm || true; where cl || true
+          cd ../RaindropCrypto
+          cargo build --release -p raindrop_crypto_ffi -vv 2>&1 | grep -E "^\[openssl-sys|^error|^warning: openssl" | grep -v "rerun-if\|check-cfg" | tail -80
+
       - name: Restore packages
         run: flutter pub get
 
