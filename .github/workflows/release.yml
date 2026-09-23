@@ -29,9 +29,13 @@ jobs:
           - name: macos
             os: macos-latest
             bundle: build/macos/Build/Products/Release/raindrop_client.app
+          - name: windows
+            os: windows-latest
+            bundle: build/windows/x64/runner/Release
     runs-on: ${{ matrix.os }}
     defaults:
       run:
+        shell: bash # Windows defaults to PowerShell
         working-directory: RaindropClient
     steps:
       # Same side-by-side layout as ci.yml: the app compiles ../RaindropCrypto (needs CRYPTO_REPO_TOKEN
@@ -53,7 +57,7 @@ jobs:
 
       - name: Linux desktop build dependencies
         if: matrix.name == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsecret-1-dev
 
       - run: flutter pub get
 
@@ -65,12 +69,13 @@ jobs:
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p dist
-          # ditto keeps macOS bundle symlinks and metadata intact; tar does the same job on Linux.
-          if [ "${{ matrix.name }}" = "macos" ]; then
-            ditto -c -k --keepParent "${{ matrix.bundle }}" "dist/RaindropClient-$VERSION-macos.zip"
-          else
-            tar -czf "dist/RaindropClient-$VERSION-linux.tar.gz" -C "${{ matrix.bundle }}" .
-          fi
+          # ditto keeps macOS bundle symlinks and metadata intact; tar does the same job on Linux;
+          # Windows gets a plain zip (7-Zip is preinstalled on the runner).
+          case "${{ matrix.name }}" in
+            macos)   ditto -c -k --keepParent "${{ matrix.bundle }}" "dist/RaindropClient-$VERSION-macos.zip" ;;
+            linux)   tar -czf "dist/RaindropClient-$VERSION-linux.tar.gz" -C "${{ matrix.bundle }}" . ;;
+            windows) (cd "${{ matrix.bundle }}" && 7z a -tzip "$GITHUB_WORKSPACE/RaindropClient/dist/RaindropClient-$VERSION-windows.zip" .) ;;
+          esac
 
       - uses: actions/upload-artifact@v4
         with:

@@ -27,11 +27,19 @@ env:
 
 jobs:
   build:
-    name: Build
-    runs-on: ubuntu-latest
+    name: Build (${{ matrix.name }})
+    strategy:
+      fail-fast: false # one platform failing shouldn't hide the others' results
+      matrix:
+        include:
+          - { name: linux, os: ubuntu-latest }
+          - { name: macos, os: macos-latest }
+          - { name: windows, os: windows-latest }
+    runs-on: ${{ matrix.os }}
     # The workspace mirrors the local layout: <workspace>/RaindropClient next to <workspace>/RaindropCrypto.
     defaults:
       run:
+        shell: bash # Windows defaults to PowerShell
         working-directory: RaindropClient
     steps:
       - uses: actions/checkout@v4
@@ -50,16 +58,18 @@ jobs:
           cache: true
 
       - name: Linux desktop build dependencies
-        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+        if: matrix.name == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsecret-1-dev
 
       - name: Restore packages
         run: flutter pub get
 
       - name: Static analysis
+        if: matrix.name == 'linux' # platform-independent, so once is enough
         run: flutter analyze
 
       - name: Compile
-        run: flutter build linux --release
+        run: flutter build ${{ matrix.name }} --release
 
   test:
     name: Test
