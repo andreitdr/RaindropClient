@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Turns a Flutter Linux bundle (with libraries already added by bundle-libs.sh) into an AppImage,
+# a .deb and an .rpm. Every package carries its own libraries, so none depends on libmpv & co.
+#
+# Usage: build-packages.sh <version> <path to bundle> <output dir>
+# Needs: appimagetool (downloaded here), fpm (gem install fpm), rpm.
+
+set -euo pipefail
+
+VERSION="$1"
+BUNDLE="$(cd "$2" && pwd)"
+OUT="$(mkdir -p "$3" && cd "$3" && pwd)"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+desktop_file() { # <Exec value>
+    cat <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=Raindrop
+Comment=Decentralised, self-hosted chat
+Exec=$1
+Icon=raindrop
+Categories=Network;Chat;InstantMessaging;
+StartupWMClass=com.raindrop.raindrop_client
+Terminal=false
+DESKTOP
+}
+
+# ---- AppImage: a single file that runs on most distributions without installing anything ----
+APPDIR="$WORK/Raindrop.AppDir"
+mkdir -p "$APPDIR/usr/lib/raindrop"
+cp -a "$BUNDLE"/. "$APPDIR/usr/lib/raindrop/"
+cp "$HERE/raindrop.png" "$APPDIR/raindrop.png"
+ln -s raindrop.png "$APPDIR/.DirIcon"
+desktop_file raindrop_client > "$APPDIR/raindrop.desktop"
+cat > "$APPDIR/AppRun" <<'APPRUN'
+#!/bin/sh
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "$HERE/usr/lib/raindrop/raindrop_client" "$@"
+APPRUN
+chmod +x "$APPDIR/AppRun"
+
+curl -fsSL -o "$WORK/appimagetool" \
+    https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+chmod +x "$WORK/appimagetool"
+# Extract-and-run avoids needing FUSE on the CI runner.
+ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$WORK/appimagetool" "$APPDIR" "$OUT/RaindropClient-$VERSION-linux-x86_64.AppImage"
+
+# ---- .deb / .rpm: installed under /opt/raindrop, launcher in the menu and on PATH as `raindrop` ----
+STAGE="$WORK/stage"
+mkdir -p "$STAGE/opt/raindrop" "$STAGE/usr/bin" "$STAGE/usr/share/applications" \
+         "$STAGE/usr/share/icons/hicolor/512x512/apps"
+cp -a "$BUNDLE"/. "$STAGE/opt/raindrop/"
+ln -s /opt/raindrop/raindrop_client "$STAGE/usr/bin/raindrop"
+cp "$HERE/raindrop.png" "$STAGE/usr/share/icons/hicolor/512x512/apps/raindrop.png"
+desktop_file /opt/raindrop/raindrop_client > "$STAGE/usr/share/applications/raindrop.desktop"
+
+# Only what every desktop has: the GTK toolkit and its display stack. Everything else is bundled.
+common=(-s dir -n raindrop-client -v "$VERSION" -C "$STAGE"
+        --description "Raindrop chat client" --license "UNLICENSED" --vendor "Raindrop"
+        --url "https://github.com/andreitdr/RaindropClient" --maintainer "Raindrop")
+
+fpm "${common[@]}" -t deb -a amd64 -d "libgtk-3-0 | libgtk-3-0t64" -p "$OUT/RaindropClient-$VERSION-linux-amd64.deb" .
+fpm "${common[@]}" -t rpm -a x86_64 -d gtk3 -p "$OUT/RaindropClient-$VERSION-linux-x86_64.rpm" .
+
+ls -lh "$OUT"

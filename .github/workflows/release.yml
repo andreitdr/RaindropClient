@@ -23,15 +23,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - name: linux
-            os: ubuntu-latest
-            bundle: build/linux/x64/release/bundle
-          - name: macos
-            os: macos-latest
-            bundle: build/macos/Build/Products/Release/raindrop_client.app
-          - name: windows
-            os: windows-latest
-            bundle: build/windows/x64/runner/Release
+          # Linux is built on the oldest supported Ubuntu on purpose: a bundle links against the
+          # glibc it was built with and runs on that version or newer, so older = more distributions.
+          - { name: linux, os: ubuntu-22.04, bundle: build/linux/x64/release/bundle }
+          - { name: macos, os: macos-latest, bundle: build/macos/Build/Products/Release/raindrop_client.app }
+          - { name: windows, os: windows-latest, bundle: build/windows/x64/runner/Release }
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -55,27 +51,64 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Linux desktop build dependencies
+      - name: Linux build and packaging tools
         if: matrix.name == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsecret-1-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsecret-1-dev \
+            libmpv-dev libpulse-dev patchelf rpm
+          sudo gem install --no-document fpm
+
+      # The project signs with the developer's own Apple Development certificate, which CI doesn't have.
+      # Switch to ad-hoc signing on this runner only (the checkout is discarded afterwards).
+      - name: Use ad-hoc code signing
+        if: matrix.name == 'macos'
+        run: |
+          perl -pi -e '
+            s/"CODE_SIGN_IDENTITY\[sdk=macosx\*\]" = "Apple Development";/"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";/;
+            s/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/;
+            s/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/;
+            s/DEVELOPMENT_TEAM = [A-Z0-9]+;/DEVELOPMENT_TEAM = "";/;
+          ' macos/Runner.xcodeproj/project.pbxproj
+          grep -c 'Apple Development' macos/Runner.xcodeproj/project.pbxproj && exit 1 || true
 
       - run: flutter pub get
 
       - name: Build release
         run: flutter build ${{ matrix.name }} --release --build-name "${GITHUB_REF_NAME#v}"
 
-      - name: Package
+      # Windows and macOS builds already carry libmpv (media_kit_libs_video). Linux does not, so it
+      # is copied in here, then wrapped as AppImage + .deb + .rpm.
+      - name: Package (linux)
+        if: matrix.name == 'linux'
         run: |
-          set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
+          packaging/linux/bundle-libs.sh "${{ matrix.bundle }}"
+          packaging/linux/build-packages.sh "$VERSION" "${{ matrix.bundle }}" dist
+
+      # A disk image with the app and an Applications shortcut: open it and drag the app across.
+      - name: Package (macos)
+        if: matrix.name == 'macos'
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist dmg-stage
+          # ditto keeps symlinks, resource forks and the code signature intact.
+          ditto "${{ matrix.bundle }}" dmg-stage/RaindropClient.app
+          ln -s /Applications dmg-stage/Applications
+          hdiutil create -volname "Raindrop" -srcfolder dmg-stage -ov -format UDZO "dist/RaindropClient-$VERSION-macos.dmg"
+
+      # Flutter's Windows exe needs the Visual C++ runtime; a clean PC may not have it, so ship the
+      # DLLs next to the exe (Microsoft allows this "app-local" deployment of the redistributable).
+      - name: Package (windows)
+        if: matrix.name == 'windows'
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          crt="$(ls -d "/c/Program Files/Microsoft Visual Studio/"*/*/VC/Redist/MSVC/*/x64/Microsoft.VC*.CRT 2>/dev/null | sort | tail -n 1)"
+          [ -n "$crt" ] || { echo "Visual C++ runtime folder not found" >&2; exit 1; }
+          echo "Bundling runtime from: $crt"
+          cp "$crt"/*.dll "${{ matrix.bundle }}/"
           mkdir -p dist
-          # ditto keeps macOS bundle symlinks and metadata intact; tar does the same job on Linux;
-          # Windows gets a plain zip (7-Zip is preinstalled on the runner).
-          case "${{ matrix.name }}" in
-            macos)   ditto -c -k --keepParent "${{ matrix.bundle }}" "dist/RaindropClient-$VERSION-macos.zip" ;;
-            linux)   tar -czf "dist/RaindropClient-$VERSION-linux.tar.gz" -C "${{ matrix.bundle }}" . ;;
-            windows) (cd "${{ matrix.bundle }}" && 7z a -tzip "$GITHUB_WORKSPACE/RaindropClient/dist/RaindropClient-$VERSION-windows.zip" .) ;;
-          esac
+          (cd "${{ matrix.bundle }}" && 7z a -tzip "$GITHUB_WORKSPACE/RaindropClient/dist/RaindropClient-$VERSION-windows.zip" .)
 
       - uses: actions/upload-artifact@v4
         with:

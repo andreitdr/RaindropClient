@@ -59,7 +59,20 @@ jobs:
 
       - name: Linux desktop build dependencies
         if: matrix.name == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsecret-1-dev
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsecret-1-dev libmpv-dev libpulse-dev
+
+      # The project signs with the developer's own Apple Development certificate, which CI doesn't have.
+      # Switch to ad-hoc signing on this runner only (the checkout is discarded afterwards).
+      - name: Use ad-hoc code signing
+        if: matrix.name == 'macos'
+        run: |
+          perl -pi -e '\''
+            s/"CODE_SIGN_IDENTITY\[sdk=macosx\*\]" = "Apple Development";/"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";/;
+            s/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/;
+            s/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/;
+            s/DEVELOPMENT_TEAM = [A-Z0-9]+;/DEVELOPMENT_TEAM = "";/;
+          '\'' macos/Runner.xcodeproj/project.pbxproj
+          grep -c 'Apple Development' macos/Runner.xcodeproj/project.pbxproj && exit 1 || true
 
       - name: Restore packages
         run: flutter pub get
