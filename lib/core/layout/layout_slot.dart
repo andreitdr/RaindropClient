@@ -104,13 +104,23 @@ class _EditableSlot extends StatelessWidget {
                     : const EdgeInsets.all(2),
               ),
             ),
-          // The end of the slot, and all of an empty one.
+          // The end of the slot, and all of an empty one — which says so,
+          // since an empty toolbar is otherwise an invisible target.
           _SlotDropTarget(
             slotId: slotId,
             index: ids.length,
             axis: axis,
             editing: editing,
-            child: SizedBox.square(dimension: ids.isEmpty ? chipSize : 20),
+            child: ids.isEmpty
+                ? SizedBox.square(
+                    dimension: chipSize,
+                    child: Icon(
+                      Icons.add,
+                      size: chipSize * 0.5,
+                      color: scheme.primary,
+                    ),
+                  )
+                : const SizedBox.square(dimension: 20),
           ),
         ],
       ),

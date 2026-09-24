@@ -58,6 +58,7 @@ class PaneRule {
   const PaneRule({
     this.required = false,
     this.fill = false,
+    this.slot,
     this.minWidth,
     this.maxWidth,
   });
@@ -67,6 +68,10 @@ class PaneRule {
 
   /// The pane that takes the space left over (the chat); never resized.
   final bool fill;
+
+  /// The toolbar inside this pane: where a button dropped anywhere on it
+  /// goes. Null for a pane with no toolbar of its own.
+  final String? slot;
 
   final double? minWidth;
   final double? maxWidth;
@@ -106,6 +111,9 @@ class LayoutRules {
   }
 
   bool canHidePane(String paneId) => panes[paneId]?.required != true;
+
+  /// The toolbar a button dropped on [paneId] belongs in, if it has one.
+  String? slotOfPane(String paneId) => panes[paneId]?.slot;
 }
 
 /// How the main view is arranged: its panes in left-to-right order, and which

@@ -22,12 +22,12 @@ bar) still use the saved buttons.
   the space the others leave (the chat).
 - **`slots`** — slot id → ordered button ids. A slot is a toolbar inside a pane.
 
-| Pane | Rule |
-|---|---|
-| `servers` (rail) | Required. Fixed at 76px: its server icons are a fixed size. |
-| `channels` | Required. 180–400px. |
-| `content` (chat / voice view) | Required. Fills the rest. |
-| `members` | Can be hidden. 180–400px. |
+| Pane | Rule | Its toolbar (`PaneRule.slot`) |
+|---|---|---|
+| `servers` (rail) | Required. Fixed at 76px: its server icons are a fixed size. | `rail.footer` |
+| `channels` | Required. 180–400px. | `user.trailing` |
+| `content` (chat / voice view) | Required. Fills the rest. | `topBar.trailing` |
+| `members` | Can be hidden. 180–400px. | none — it takes no buttons |
 
 | Slot | Where | Default buttons |
 |---|---|---|
@@ -124,12 +124,20 @@ Settings → Layout → **Customize layout** (disabled under 680px). A full-scre
 Cancel (or back) with unsaved changes asks before discarding.
 
 - **Panes** — each is outlined, with a handle in its middle: drag it onto another pane's left or right
-  half to move it there; the eye button hides it (member list only). Resizable panes have a grip on the
-  edge facing the chat.
-- **Buttons** — every slot shows its buttons as chips: drag one onto a chip to put it before that one,
-  or to the end of a slot. The tray under the preview lists every button — drag one into a slot to add
-  it — and takes drops: a button dropped there is removed, a pane hidden. The tray refuses the last
-  Settings button and required panes, and says why. Hidden panes are listed there to show again.
+  half to move it there (anywhere on that pane, its handle included); the eye button hides it (member
+  list only). Resizable panes have a grip on the edge facing the chat.
+- **Buttons** — the tray under the preview lists every button. Drop one **anywhere on a pane** and it
+  joins that pane's own toolbar (`PaneRule.slot`: the rail's footer, the channel list's user panel, the
+  chat's top bar) at the end; the member list has no toolbar and takes none. Drop it **on a chip** in a
+  slot instead and it lands exactly there, which is how buttons are reordered — the slot is the finer
+  target and wins over the pane, decided by asking the pane's `LayoutEditBarrier` whether a slot is
+  under the pointer (`layoutSlotUnder`). The tray also takes drops: a button dropped there is removed,
+  a pane hidden. It refuses the last Settings button and required panes, and says why. Hidden panes are
+  listed there to show again.
+
+  Both pane-wide drop zones sit **above** the pane handle and resize grip in the `Stack`. They take no
+  pointer events while nothing is dragged, and underneath those they would lose every drop aimed at the
+  middle of a pane — which is exactly where the handle is.
 - **Reset to default** puts the draft back to the stock layout (Save then deletes the file).
 - **Import… / Export…** (desktop only, through `file_selector`): import reads and normalizes a file
   into the draft; export writes the draft. Export writes straight to the chosen file — the macOS
@@ -149,13 +157,21 @@ crushing the chat. A server that is not signed in shows placeholders for the pan
   both `SlotStyle`s). It appears in the editor's tray at once; add it to `mainDefaultLayout` to show it
   by default (installs with a saved layout get it only by adding it).
 - **Slot**: an id in `MainSlots`, a `LayoutSlot(id)` where it belongs, and its default buttons in
-  `mainDefaultLayout` — saved layouts pick those up, since a missing slot gets its defaults.
+  `mainDefaultLayout` — saved layouts pick those up, since a missing slot gets its defaults. Name it as
+  a pane's `PaneRule.slot` as well, so a button dropped on that pane has somewhere to go.
 
 ## Tests
 
 [`test/core/layout/`](../test/core/layout/): the model and `normalize`, edits, JSON, the file store
 (`layout_config_test.dart`), and a widget test that panes are inert in the editor while slot chips
 still drag (`layout_editing_test.dart`).
+
+[`test/features/settings/layout_editor_parts_test.dart`](../test/features/settings/layout_editor_parts_test.dart)
+drives the editor's own pieces — which is why they live in
+[`widgets/layout_editor_parts.dart`](../lib/features/settings/widgets/layout_editor_parts.dart) rather
+than inside the screen, since the screen needs a live session to show anything: dropping a button from
+the tray onto a chip, into an emptied slot and onto a bare pane, dropping a pane over another's handle,
+and bringing a hidden pane back.
 
 ## Related
 

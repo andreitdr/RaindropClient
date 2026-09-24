@@ -40,6 +40,17 @@ class LayoutHitThrough extends SingleChildRenderObjectWidget {
   RenderObject createRenderObject(BuildContext context) => _RenderHitThrough();
 }
 
+/// Whether a slot ([LayoutHitThrough]) sits under [globalPosition], asked of
+/// the [LayoutEditBarrier] at [barrierContext]. Lets a drop target covering a
+/// whole pane step aside where a slot of its own would take the drop.
+bool layoutSlotUnder(BuildContext barrierContext, Offset globalPosition) {
+  final box = barrierContext.findRenderObject() as RenderBox?;
+  if (box == null || !box.hasSize) return false;
+  final result = BoxHitTestResult();
+  box.hitTest(result, position: box.globalToLocal(globalPosition));
+  return result.path.any((entry) => entry.target is _RenderHitThrough);
+}
+
 class _RenderHitThrough extends RenderProxyBox {
   // Hit over its whole area, gaps between chips included: a drop target
   // there adds itself without claiming the hit, and would otherwise leave

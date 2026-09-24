@@ -33,15 +33,26 @@ const mainDefaultLayout = LayoutConfig(
 /// - The rail, the channel list and the chat can move but not be hidden: they
 ///   are how servers, channels and messages are reached. Only the member list
 ///   can go.
+/// - A button dropped anywhere on a pane joins that pane's toolbar; the
+///   member list has none, so it takes no buttons.
 /// - The rail keeps its width (its server icons are a fixed size); the two
 ///   side panes resize between 180 and 400; the chat takes what is left.
 /// - Settings must stay in at least one slot: the layout editor is behind it.
 const mainLayoutRules = LayoutRules(
   defaults: mainDefaultLayout,
   panes: {
-    MainPanes.servers: PaneRule(required: true),
-    MainPanes.channels: PaneRule(required: true, minWidth: 180, maxWidth: 400),
-    MainPanes.content: PaneRule(required: true, fill: true),
+    MainPanes.servers: PaneRule(required: true, slot: MainSlots.railFooter),
+    MainPanes.channels: PaneRule(
+      required: true,
+      slot: MainSlots.userPanel,
+      minWidth: 180,
+      maxWidth: 400,
+    ),
+    MainPanes.content: PaneRule(
+      required: true,
+      fill: true,
+      slot: MainSlots.topBar,
+    ),
     MainPanes.members: PaneRule(minWidth: 180, maxWidth: 400),
   },
   requiredButtons: {MainButtons.settings},
