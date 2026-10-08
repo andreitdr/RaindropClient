@@ -30,7 +30,7 @@ Loaded once in `main.dart` before `runApp` and handed to the widget tree via `ap
 Keychain (macOS/iOS), Credential Manager (Windows), libsecret (Linux), and Keystore (Android). Holds,
 per server id:
 
-- `server.<id>.fingerprint` — the pinned TLS fingerprint (see [Network layer](network-layer.md#certificatepinner-trust-on-first-use)).
+- `server.<id>.fingerprint` — the pinned TLS fingerprint (see [Network layer](network-layer.md#certificatepinner--trust-on-first-use)).
 - `server.<id>.identity` — the pinned server identity key, base64 (see [Network layer](network-layer.md#servertrust--following-a-certificate-change)).
 - `server.<id>.token` — the session bearer token.
 - `server.<id>.dbkey` — the random 32-byte key for that server's encrypted crypto store

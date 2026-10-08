@@ -40,7 +40,7 @@ On success, `flow.persist(ref, session: ..., displayName: ...)`:
 
 1. Pins the certificate fingerprint observed during the flow — **only if nothing was pinned for this
    GUID yet** (trust-on-first-use, same model as SSH host keys; see
-   [Network layer](network-layer.md#certificatepinner) and the server's
+   [Network layer](network-layer.md#certificatepinner--trust-on-first-use) and the server's
    [Transport security doc](../../RaindropServer/docs/transport-security.md)).
    It also pins the server's identity key, provided `probe()` found the server's statements consistent
    (the advertised fingerprint is the presented certificate, and the identity key signed it). The key

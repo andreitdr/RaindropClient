@@ -355,11 +355,17 @@ of the app never imports the media library.
 
 - **Background voice on phones** (iOS background audio, Android microphone foreground service), and
   rejoining automatically after a dropped connection.
+- Push-to-talk, camera and screen sharing, microphone gain; changing your username or password from
+  the app; any role-editing or report-moderation UI; notifications; MessagePack on the wire.
+
+The full, maintained inventory is [`docs/roadmap.md`](docs/roadmap.md) — update it in the same change
+that closes one of these.
 
 ### Wire format
 
 The server negotiates JSON or MessagePack via `Content-Type`/`Accept` and documents that MessagePack's
 win only shows up on larger, more numeric payloads than user management (see its CLAUDE.md). This
 client only speaks JSON for now (`ApiClient` sends `application/json` unconditionally) — add
-MessagePack encoding (the `msgpack_dart` dependency is already in `pubspec.yaml`, unused) once chat or
-voice metadata is the thing being fetched.
+MessagePack encoding once chat or voice metadata is the thing being fetched. `msgpack_dart` is already a
+dependency, used for the *inside* of an end-to-end encrypted message (`core/crypto/message_payload.dart`),
+not for the HTTP bodies.

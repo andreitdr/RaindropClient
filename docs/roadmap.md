@@ -1,34 +1,86 @@
-# Roadmap / what's missing
+# Roadmap
 
-Known gaps between what [RaindropServer](../../RaindropServer/docs/README.md) already supports and
-what this client currently exposes. Keep this file honest — when one of these ships, move it out
-rather than leaving it here stale.
+What RaindropClient does today, and what it does not do yet. This file is the honest inventory for
+the **app**; the other two projects keep their own, and a gap here is often a gap there too:
 
-## Voice: what the first version leaves out
+- [RaindropServer roadmap](../../RaindropServer/docs/roadmap.md) — the .NET backend.
+- [RaindropCrypto roadmap](../../RaindropCrypto/docs/roadmap.md) — the Rust E2EE core.
 
-Voice channels work (see [Voice](voice.md)). Not yet:
+**Keep this honest.** When something here ships, move it from *Not implemented yet* into
+*Implemented* in the same change that ships it, and update the doc it points at.
 
-- **Background audio on phones** — iOS has no background audio mode set and Android has no microphone
-  foreground service, so a call stops being heard when the app is backgrounded.
-- **Rejoining after a dropped connection** — the call ends with a notice; you join again.
-- **Push-to-talk**, **camera and screen sharing**, and a **microphone volume** (the voice library has no
-  input gain on desktop; automatic gain control stands in for it).
+## Implemented
 
-## MessagePack wire format
+| Area | What works | Doc |
+|---|---|---|
+| Platforms | macOS, Windows, Linux, iOS and Android, with per-platform adaptive chrome (web is not a target) | [Native feel per platform](native-feel-per-platform.md) |
+| Servers | Several independent servers in one install, each with its own GUID, pinned certificate and session; add, switch, forget; cold-start session resolution and reauth | [Servers & sessions](servers-and-sessions.md) |
+| Connecting | `ConnectServerFlow`: register, log in, rejoin a preserved account, trust-on-first-use fingerprint pinning, pinned-key changes surfaced | [Connecting to a server](connecting-to-a-server.md) |
+| Channels | The channel list and sidebar, create/rename/delete, each gated on `yourPermissions` | [Channels](channels.md) |
+| Messages | `ChatController`: history paging, optimistic send, deleting your own (or others' with the permission), tombstones, reporting an encrypted message | [Messages & chat](messages-chat.md) |
+| Encryption | Device setup, first-device identity, linking by code or QR, recovery key, revocation, session binding; every channel's MLS group driven through the server's delivery service, so messages are **encrypted end to end** today | [Crypto](crypto.md), [Messages & chat](messages-chat.md#end-to-end-encryption) |
+| Attachments | Picking, dropping, chunked encrypted upload with progress, inline image/video/audio previews, thumbnails, saving, cache on disk | [Attachments](attachments.md) |
+| Voice | Joining a call, mute, deafen, per-member volume and local mute, mute for everyone, the LiveKit engine over the server's relay with the same pinning, **media end-to-end encrypted** from the channel's MLS group | [Voice](voice.md) |
+| Members | The roster pane, presence grouping, pushed presence updates | [Members & presence](members-presence.md) |
+| Live updates | `EventStream` over the server's WebSocket, `LiveSync` merging by id, reconnect with backoff and fallback polling | [Live updates](live-updates.md) |
+| Layout | A user-arranged main view: pane order, widths, buttons in slots, hiding, saved to a local layout file, edited in a layout editor | [Layout](layout.md) |
+| Theming | Two built-in themes, custom themes from asset/JSON definitions, a theme editor | [Theming](theming.md) |
+| Settings | Theme, layout, voice & audio, encryption (devices, linking, new recovery key), connected servers | [Settings](settings.md) |
+| Network | `ApiClient` over dio, `CertificatePinner`, per-domain API wrappers mirroring the server's contracts | [Network layer](network-layer.md) |
+| Storage | `AppPrefs` for preferences, `SecureStore` for tokens and store keys, the encrypted crypto store per server | [Storage](storage.md) |
+| CI | Build on Linux/macOS/Windows and `flutter analyze` + `flutter test` on every push to `main`; desktop installers on a version tag | [CI & releases](ci-and-releases.md) |
 
-Server-side fully implemented and negotiable; client sends JSON unconditionally. See
-[Wire format](wire-format.md) for what adopting it would involve.
+## Not implemented yet
 
-## End-to-end encrypted messages and calls
+### Voice
+- **Background audio on phones.** iOS has no background audio mode set and Android has no microphone
+  foreground service, so a call stops being heard once the app is backgrounded.
+- **Rejoining automatically after a dropped connection.** LiveKit's own reconnect is handled and shown
+  as `reconnecting`, but a connection that is really gone ends the call with a notice; you join again.
+- **Push-to-talk.**
+- **Camera and screen sharing.** The server limits the call token to the microphone, so this needs
+  both sides. [Server roadmap](../../RaindropServer/docs/roadmap.md#voice)
+- **Microphone volume.** The voice library has no input gain on desktop; automatic gain control stands
+  in for it.
 
-Everything underneath is done: the [Rust core](../../RaindropCrypto/docs/README.md), the server's
-[MLS delivery service](../../RaindropServer/docs/e2ee.md#the-delivery-service), and the client's
-`E2eeApi` wrapper, wired and tested against a live server (see [Crypto](crypto.md)). What is missing is
-the app actually driving a channel's group through it — creating/joining the group, encrypting outgoing
-messages, decrypting incoming ones — so text channels and voice calls still run over
-[transport encryption](../../RaindropServer/docs/transport-security.md) only.
+### Account and moderation UI
+- **Changing your username or password.** `UsersApi.changeUsername` and `changePassword` are wrapped
+  and tested, but no screen calls them. [Network layer](network-layer.md)
+- **Role and permission editing.** `RolesApi` only reads the caller's own roles; the server's full
+  role API (create, update, assign, the permission catalogue) has no UI, so roles are granted from the
+  server's console. [Server roles doc](../../RaindropServer/docs/roles-and-permissions.md)
+- **A moderator view of reports.** The app can report an encrypted message; listing a channel's
+  reports (`manage_messages`) is console-only today. [Messages & chat](messages-chat.md)
+
+### Chat features
+- **Message editing, reactions, threads, pinned messages, typing indicators, unread counts, mentions
+  and search.** None of these exist on the server either; they are joint work.
+  [Server roadmap](../../RaindropServer/docs/roadmap.md#chat)
+- **Notifications.** No local or push notifications on any platform; the app only shows what is on
+  screen while it is open.
+
+### Protocol and packaging
+- **MessagePack on the wire.** Fully implemented and negotiable server-side; this client sends and
+  accepts JSON unconditionally. MessagePack *is* already used inside encrypted message payloads.
+  [Wire format](wire-format.md)
+- **Mobile release artefacts.** `release.yml` packages Linux (AppImage/deb/rpm), macOS (dmg) and
+  Windows (zip); there is no signed `.apk`/`.aab` or TestFlight build.
+  [CI & releases](ci-and-releases.md)
+- **Code signing and notarisation.** CI switches macOS to ad-hoc signing, so released desktop builds
+  are unsigned.
+
+## Deliberately not planned
+
+- **Web.** Flutter web is not a target: the app compiles a Rust crypto core, pins TLS certificates
+  itself and keeps keys in the platform keystore, none of which a browser allows.
+- **Talking to anything but a Raindrop server.** No bridges, no federation; each server is its own
+  world, as the [server's architecture](../../RaindropServer/docs/architecture-overview.md#the-decentralisation-principle)
+  requires.
+- **Falling back to unencrypted messages where encryption is available.** When a server offers
+  `e2ee.delivery.v1` and this device is set up, messages go through the group; plaintext is only for
+  servers that explicitly allow it.
 
 ## Related
 
-- [Voice](voice.md), [Wire format](wire-format.md), [Crypto](crypto.md) — the fuller context for each
-  gap above.
+- [Voice](voice.md), [Wire format](wire-format.md), [Crypto](crypto.md) — the fuller context for the
+  gaps above.
