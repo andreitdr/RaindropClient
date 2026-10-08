@@ -15,10 +15,11 @@ lib/
     theme/      — AppThemeDefinition (JSON-backed theme model), AppTheme's ThemeData builder, the
                   AppSurfaces color-role extension, and the catalog/active-theme controllers
     widgets/    — Panel (flat chrome surface), AdaptiveSwitch/AdaptiveActivityIndicator/showAdaptiveConfirm
-    network/    — ApiClient (TLS-pinned Dio wrapper), CertificatePinner, PinRegistry (the same pins,
-                  process-wide, for sockets ApiClient does not open), and one wrapper per server
-                  domain with its DTOs: UsersApi, ChannelsApi, TextMessagesApi, MembersApi, RolesApi,
-                  VoiceApi
+    network/    — RaindropChannel (one TLS-pinned gRPC connection per server), the code generated
+                  from RaindropProto (grpc/generated/, through grpc/protocol.dart), CertificatePinner,
+                  ServerTrust, PinRegistry (the same pins, process-wide, for the voice engine's own
+                  sockets), EventStream, and one wrapper per service with its models: UsersApi,
+                  ChannelsApi, TextMessagesApi, MembersApi, RolesApi, VoiceApi, E2eeApi, AttachmentsApi
     voice/      — VoiceEngine (a call's audio, transport-agnostic) and LiveKitVoiceEngine, the only
                   code that imports livekit_client / flutter_webrtc
     storage/    — AppPrefs (plain prefs) and SecureStore (Keychain/Credential Manager/libsecret/Keystore)

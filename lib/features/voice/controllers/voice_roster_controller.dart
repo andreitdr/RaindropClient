@@ -91,7 +91,7 @@ class VoiceRoster {
       );
 }
 
-/// One server's [VoiceRoster], read from `GET /api/channels/voice` and kept
+/// One server's [VoiceRoster], read from `VoiceService.GetVoiceStatus` and kept
 /// current by `voice.state` / `voice.left`. A deleted channel takes its call
 /// with it, and a role change — which can change which calls this account
 /// sees — re-reads the whole thing.
@@ -153,7 +153,7 @@ class VoiceRosterController extends FamilyAsyncNotifier<VoiceRoster, String> {
     try {
       return switch (event.type) {
         ServerEventTypes.voiceState => roster.upsert(
-          VoiceParticipant.fromJson(event.data),
+          VoiceParticipant.fromProto(event.proto.voiceState),
         ),
         ServerEventTypes.voiceLeft => roster.remove(
           event.channelId ?? '',
@@ -196,8 +196,8 @@ class VoiceRosterController extends FamilyAsyncNotifier<VoiceRoster, String> {
         await session.voiceApi.status(session.token),
       );
     } on ApiException catch (e) {
-      // A server from before voice channels: nothing to show, nothing to join.
-      if (e.statusCode == 404 || e.statusCode == 405) return VoiceRoster.empty;
+      // A server without the voice service: nothing to show, nothing to join.
+      if (e.code == 'unimplemented') return VoiceRoster.empty;
       rethrow;
     }
   }

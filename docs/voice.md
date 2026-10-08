@@ -22,11 +22,16 @@ split the same way:
   imports `livekit_client` or `flutter_webrtc`. It sends speech-bitrate Opus with DTX (silence is sent
   as nothing), and has no adaptive stream or dynacast since calls are audio-only.
 
-**The connection goes through the server you already pin.** The join response has `path:
-/api/channels/voice/signal` and no `url`, so `VoiceJoinResult.signalUri` builds
-`wss://<host>:<port>/api/channels/voice/signal` from the server profile. LiveKit's SDK opens `/rtc`
-under it, and the server relays that to LiveKit. The server's self-signed certificate therefore has to
-be trusted by LiveKit's own sockets, which `ApiClient`'s pinning does not reach. Two things handle it:
+**The connection goes through the server you already pin.** Joining, leaving, mute and deafen are
+gRPC calls (`VoiceService`), and call state arrives on the event stream. The audio's signalling is the
+one connection to the server that is not gRPC: LiveKit's own WebSocket, which its SDK opens and the
+server relays.
+
+The join response has `path: /api/channels/voice/signal` and no `url`, so `VoiceJoinResult.signalUri`
+builds `wss://<host>:<port>/api/channels/voice/signal` from the server profile. LiveKit's SDK opens
+`/rtc` under it, and the server relays that to LiveKit. The server's self-signed certificate therefore
+has to be trusted by LiveKit's own sockets, which `RaindropChannel`'s pinning does not reach. Two
+things handle it:
 
 - **`PinRegistry`** (`core/network/pin_registry.dart`) holds the pinned fingerprint of every server
   with a session. `ServerSessionController` registers it on cold start and on `adopt` after a first
@@ -98,7 +103,8 @@ member derives the same one, rotation, and removal. It cannot play audio. To che
 - `channel.deleted` as dropping that call.
 
 It re-reads after `ready` and after any role event, and polls every 15 s while the stream is down. A
-server from before voice (`404` on `GET /api/channels/voice`) reads as an empty, unavailable roster.
+server without the voice service (`unimplemented` on `VoiceService.GetVoiceStatus`) reads as an empty,
+unavailable roster.
 
 **The call controller** joins with `VoiceApi.join`, sending your current mute and deafen so nobody
 sees you unmuted for a moment. It then creates the engine and connects.

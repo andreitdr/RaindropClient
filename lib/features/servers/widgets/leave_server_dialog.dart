@@ -10,7 +10,7 @@ import '../controllers/session_controller.dart';
 
 /// Leaves [server] for good: asks for the password (the server demands it
 /// for a leave) and whether to keep the account, calls
-/// `POST /api/users/me/leave`, then forgets the server on this device.
+/// `UserService.LeaveServer`, then forgets the server on this device.
 ///
 /// Like the channel-name dialog, it stays open while the request is in
 /// flight and when it fails, so a wrong password is shown under the field

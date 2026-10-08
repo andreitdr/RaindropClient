@@ -1,13 +1,14 @@
-/// Dart mirrors of the C# records in `RaindropServer/Channels/Text/
-/// TextChannelContracts.cs` — everything that is only true of *text*
-/// channels, kept apart from `channels_api.dart` the same way the server
-/// keeps `Channels/Text/` apart from `Channels/`.
+/// The app's view of `raindrop.v1.TextChannelService` (RaindropProto's
+/// `text.proto`) — everything that is only true of *text* channels, kept apart
+/// from `channels_api.dart` the same way the server keeps `Channels/Text/`
+/// apart from `Channels/`.
 library;
 
-import 'dart:convert';
 import 'dart:typed_data';
 
-import 'api_client.dart';
+import 'grpc/protocol.dart' as pb;
+import 'grpc/wire.dart';
+import 'raindrop_channel.dart';
 
 /// An encrypted file a message carries, as far as the server can describe it.
 /// Its name, type and key are inside the message's ciphertext.
@@ -31,15 +32,16 @@ class MessageAttachmentRef {
   final int ciphertextSize;
   final Uint8List? ciphertextSha256;
 
-  factory MessageAttachmentRef.fromJson(Map<String, dynamic> j) =>
+  factory MessageAttachmentRef.fromProto(pb.MessageAttachment m) =>
       MessageAttachmentRef(
-        attachmentId: j['attachmentId'] as String,
-        kind: j['kind'] as String? ?? 'file',
-        extension: j['extension'] as String? ?? '',
-        ciphertextSize: (j['ciphertextSize'] as num?)?.toInt() ?? 0,
-        ciphertextSha256: j['ciphertextSha256'] is String
-            ? base64.decode(j['ciphertextSha256'] as String)
-            : null,
+        attachmentId: m.attachmentId,
+        kind: Wire.attachmentKind(m.kind),
+        extension: m.extension_3,
+        ciphertextSize: m.ciphertextSize.toInt(),
+        ciphertextSha256: Wire.optionalBytes(
+          m.hasCiphertextSha256(),
+          m.ciphertextSha256,
+        ),
       );
 }
 
@@ -52,7 +54,7 @@ class MessageAttachmentRef {
 ///
 /// [authorId] is a UUID, never a username — an account can be renamed or
 /// erased and the message still points at the same person. Turn it into
-/// something to show with `POST /api/users/lookup` (`UsersApi.lookup`).
+/// something to show with `UserService.LookupUser` (`UsersApi.lookup`).
 class ChannelMessage {
   const ChannelMessage({
     required this.messageId,
@@ -96,25 +98,20 @@ class ChannelMessage {
   /// Whether the message was end-to-end encrypted (deleted or not).
   bool get encrypted => epoch != null;
 
-  factory ChannelMessage.fromJson(Map<String, dynamic> j) => ChannelMessage(
-    messageId: j['messageId'] as String,
-    channelId: j['channelId'] as String,
-    authorId: j['authorId'] as String,
-    content: j['content'] as String?,
-    sentAtUtc: DateTime.parse(j['sentAtUtc'] as String),
-    deleted: j['deleted'] as bool? ?? false,
-    deletedAtUtc: j['deletedAtUtc'] == null
-        ? null
-        : DateTime.parse(j['deletedAtUtc'] as String),
-    deletedBy: j['deletedBy'] as String?,
-    ciphertext: j['ciphertext'] is String
-        ? base64.decode(j['ciphertext'] as String)
-        : null,
-    epoch: (j['epoch'] as num?)?.toInt(),
-    senderDeviceId: j['senderDeviceId'] as String?,
+  factory ChannelMessage.fromProto(pb.ChannelMessage m) => ChannelMessage(
+    messageId: m.messageId,
+    channelId: m.channelId,
+    authorId: m.authorId,
+    content: m.hasContent() ? m.content : null,
+    sentAtUtc: Wire.time(m.sentAt),
+    deleted: m.deleted,
+    deletedAtUtc: Wire.optionalTime(m.hasDeletedAt(), m.deletedAt),
+    deletedBy: m.hasDeletedBy() ? m.deletedBy : null,
+    ciphertext: Wire.optionalBytes(m.hasCiphertext(), m.ciphertext),
+    epoch: m.hasEpoch() ? m.epoch.toInt() : null,
+    senderDeviceId: m.hasSenderDeviceId() ? m.senderDeviceId : null,
     attachments: [
-      for (final a in j['attachments'] as List? ?? const [])
-        MessageAttachmentRef.fromJson(Map<String, dynamic>.from(a as Map)),
+      for (final a in m.attachments) MessageAttachmentRef.fromProto(a),
     ],
   );
 }
@@ -140,14 +137,14 @@ class MessageReport {
   final String? reason;
   final DateTime reportedAtUtc;
 
-  factory MessageReport.fromJson(Map<String, dynamic> j) => MessageReport(
-    reportId: j['reportId'] as String,
-    messageId: j['messageId'] as String,
-    authorId: j['authorId'] as String,
-    reporterId: j['reporterId'] as String,
-    body: j['body'] as String,
-    reason: j['reason'] as String?,
-    reportedAtUtc: DateTime.parse(j['reportedAtUtc'] as String),
+  factory MessageReport.fromProto(pb.MessageReport m) => MessageReport(
+    reportId: m.reportId,
+    messageId: m.messageId,
+    authorId: m.authorId,
+    reporterId: m.reporterId,
+    body: m.body,
+    reason: m.hasReason() ? m.reason : null,
+    reportedAtUtc: Wire.time(m.reportedAt),
   );
 }
 
@@ -170,23 +167,24 @@ class MessageHistoryPage {
 
   bool get hasMore => nextCursor != null;
 
-  factory MessageHistoryPage.fromJson(Map<String, dynamic> j) =>
+  factory MessageHistoryPage.fromProto(pb.GetHistoryResponse m) =>
       MessageHistoryPage(
-        channelId: j['channelId'] as String,
+        channelId: m.channelId,
         messages: [
-          for (final m in j['messages'] as List? ?? const [])
-            ChannelMessage.fromJson(Map<String, dynamic>.from(m as Map)),
+          for (final message in m.messages) ChannelMessage.fromProto(message),
         ],
-        nextCursor: j['nextCursor'] as String?,
+        nextCursor: m.hasNextCursor() ? m.nextCursor : null,
       );
 }
 
-/// Typed wrapper over `/api/channels/text/messages/*`. One instance per
-/// connected server, built from that server's [ApiClient].
+/// `raindrop.v1.TextChannelService`. One instance per connected server, built
+/// on that server's [RaindropChannel].
 class TextMessagesApi {
-  TextMessagesApi(this._client);
+  TextMessagesApi(this._channel)
+    : _text = pb.TextChannelServiceClient(_channel.channel);
 
-  final ApiClient _client;
+  final RaindropChannel _channel;
+  final pb.TextChannelServiceClient _text;
 
   /// Posts a message and returns it as the server stored it, so the caller
   /// can swap its optimistic copy for the real id and timestamp.
@@ -194,12 +192,14 @@ class TextMessagesApi {
     String token, {
     required String channelId,
     required String content,
-  }) async => ChannelMessage.fromJson(
-    await _client.post(
-      '/api/channels/text/messages/send',
-      body: {'channelId': channelId, 'content': content},
+  }) async => ChannelMessage.fromProto(
+    (await _channel.call(
+      (o) => _text.sendMessage(
+        pb.SendMessageRequest(channelId: channelId, content: content),
+        options: o,
+      ),
       token: token,
-    ),
+    )).message,
   );
 
   /// Posts an end-to-end encrypted message — the MLS ciphertext this
@@ -213,16 +213,18 @@ class TextMessagesApi {
     required String channelId,
     required Uint8List message,
     List<String> attachmentIds = const [],
-  }) async => ChannelMessage.fromJson(
-    await _client.post(
-      '/api/channels/text/messages/send-encrypted',
-      body: {
-        'channelId': channelId,
-        'message': base64.encode(message),
-        if (attachmentIds.isNotEmpty) 'attachmentIds': attachmentIds,
-      },
+  }) async => ChannelMessage.fromProto(
+    (await _channel.call(
+      (o) => _text.sendEncryptedMessage(
+        pb.SendEncryptedMessageRequest(
+          channelId: channelId,
+          message: message,
+          attachmentIds: attachmentIds,
+        ),
+        options: o,
+      ),
       token: token,
-    ),
+    )).message,
   );
 
   /// Reports an end-to-end encrypted message to the channel's moderators,
@@ -239,28 +241,32 @@ class TextMessagesApi {
     required Uint8List attestation,
     String? reason,
     List<({String attachmentId, Uint8List ciphertextSha256})>? attachments,
-  }) => _client.post(
-    '/api/channels/text/messages/report',
-    body: {
-      'messageId': messageId,
-      'body': body,
-      'clientMessageId': clientMessageId,
-      'clientSentAtUnixMs': clientSentAt.millisecondsSinceEpoch,
-      'type': type,
-      'attestation': base64.encode(attestation),
-      'reason': reason,
-      // Present only for a message that carries files, whose attestation is
-      // the v2 one that also covers them.
-      'attachments': ?(attachments == null
-          ? null
-          : [
-              for (final a in attachments)
-                {
-                  'attachmentId': a.attachmentId,
-                  'ciphertextSha256': base64.encode(a.ciphertextSha256),
-                },
-            ]),
-    },
+  }) => _channel.call(
+    (o) => _text.reportMessage(
+      pb.ReportMessageRequest(
+        messageId: messageId,
+        body: body,
+        clientMessageId: clientMessageId,
+        clientSentAtUnixMs: Wire.int64(clientSentAt.millisecondsSinceEpoch),
+        type: type,
+        attestation: attestation,
+        reason: reason,
+        // Present only for a message that carries files, whose attestation is
+        // the v2 one that also covers them — its presence is what says so.
+        attestedFiles: attachments == null
+            ? null
+            : pb.AttestedFiles(
+                attachments: [
+                  for (final a in attachments)
+                    pb.AttestedAttachment(
+                      attachmentId: a.attachmentId,
+                      ciphertextSha256: a.ciphertextSha256,
+                    ),
+                ],
+              ),
+      ),
+      options: o,
+    ),
     token: token,
   );
 
@@ -270,15 +276,14 @@ class TextMessagesApi {
     String token, {
     required String channelId,
   }) async {
-    final body = await _client.post(
-      '/api/channels/text/messages/reports',
-      body: {'channelId': channelId},
+    final response = await _channel.call(
+      (o) => _text.listReports(
+        pb.ListReportsRequest(channelId: channelId),
+        options: o,
+      ),
       token: token,
     );
-    return [
-      for (final r in body['reports'] as List? ?? const [])
-        MessageReport.fromJson(Map<String, dynamic>.from(r as Map)),
-    ];
+    return [for (final r in response.reports) MessageReport.fromProto(r)];
   }
 
   /// One page of history. [before] is a `nextCursor` from a previous page —
@@ -289,10 +294,16 @@ class TextMessagesApi {
     required String channelId,
     String? before,
     int? limit,
-  }) async => MessageHistoryPage.fromJson(
-    await _client.post(
-      '/api/channels/text/messages/history',
-      body: {'channelId': channelId, 'before': before, 'limit': limit},
+  }) async => MessageHistoryPage.fromProto(
+    await _channel.call(
+      (o) => _text.getHistory(
+        pb.GetHistoryRequest(
+          channelId: channelId,
+          before: before,
+          limit: limit,
+        ),
+        options: o,
+      ),
       token: token,
     ),
   );
@@ -304,11 +315,13 @@ class TextMessagesApi {
   Future<ChannelMessage> delete(
     String token, {
     required String messageId,
-  }) async => ChannelMessage.fromJson(
-    await _client.post(
-      '/api/channels/text/messages/delete',
-      body: {'messageId': messageId},
+  }) async => ChannelMessage.fromProto(
+    (await _channel.call(
+      (o) => _text.deleteMessage(
+        pb.DeleteMessageRequest(messageId: messageId),
+        options: o,
+      ),
       token: token,
-    ),
+    )).message,
   );
 }

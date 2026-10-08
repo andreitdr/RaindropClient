@@ -4,8 +4,8 @@ import 'dart:typed_data';
 import 'package:pointycastle/export.dart';
 
 import '../storage/secure_store.dart';
-import 'api_client.dart';
 import 'api_exception.dart';
+import 'raindrop_channel.dart';
 import 'tls_pinning.dart';
 import 'users_api.dart';
 
@@ -102,7 +102,7 @@ class ServerTrust {
     // exists to refuse.
     if (pinnedKey == null) throw ApiException.certificateMismatch();
 
-    final probe = ApiClient.forServer(host: host, port: port);
+    final probe = RaindropChannel.forServer(host: host, port: port);
     try {
       final info = await UsersApi(probe).serverInfo();
       final presented = probe.pinner.observedFingerprint;
@@ -122,7 +122,7 @@ class ServerTrust {
       await store.pinFingerprint(serverId, presented);
       return presented;
     } finally {
-      probe.close();
+      await probe.close();
     }
   }
 

@@ -2,8 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/models/server_profile.dart';
-import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/raindrop_channel.dart';
 import '../../../core/network/server_trust.dart';
 import '../../../core/network/users_api.dart';
 import '../../../core/storage/secure_store.dart';
@@ -58,7 +58,7 @@ class ConnectServerFlow {
 
   final String? _pinnedFingerprint;
 
-  late final ApiClient client = ApiClient.forServer(
+  late final RaindropChannel client = RaindropChannel.forServer(
     host: host,
     port: port,
     pinnedFingerprint: _pinnedFingerprint,

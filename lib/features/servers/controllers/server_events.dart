@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/event_stream.dart';
@@ -30,7 +31,13 @@ final serverEventsProvider = Provider.family<EventStream?, String>((
     }
   });
 
+  // Back from the background — a phone unlocked, a laptop woken — anything
+  // could have changed while the app was not looking, even if the stream
+  // survived. A fresh `ready` is every feature's cue to re-read.
+  final lifecycle = AppLifecycleListener(onResume: stream.resubscribe);
+
   ref.onDispose(() {
+    lifecycle.dispose();
     unawaited(statuses.cancel());
     unawaited(stream.close());
   });

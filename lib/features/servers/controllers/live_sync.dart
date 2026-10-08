@@ -14,8 +14,8 @@ import 'server_events.dart';
 /// again — and doing it *after* `ready` is what guarantees there is no gap,
 /// since anything that changes after that arrives as an event.
 ///
-/// The fallback poll is what keeps a client working against a server too old
-/// to have `/api/events`, or through a network that drops WebSockets: the
+/// The fallback poll is what keeps a client current while the stream is down —
+/// a network that drops long-lived connections, a server restarting: the
 /// stream keeps retrying in the background, and the moment it is live the
 /// poll stops.
 class LiveSync {

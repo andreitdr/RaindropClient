@@ -6,7 +6,6 @@
 // After running it, grep the server's database files *and its attachments
 // folder* for the test's secret: it must appear in neither.
 import 'dart:io';
-import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_io.dart';
@@ -15,7 +14,7 @@ import 'package:raindrop_client/core/crypto/attachment_cipher.dart';
 import 'package:raindrop_client/core/crypto/bridge/frb_generated.dart';
 import 'package:raindrop_client/core/crypto/message_payload.dart';
 import 'package:raindrop_client/core/crypto/mls_crypto_engine.dart';
-import 'package:raindrop_client/core/network/api_client.dart';
+import 'package:raindrop_client/core/network/raindrop_channel.dart';
 import 'package:raindrop_client/core/network/api_exception.dart';
 import 'package:raindrop_client/core/network/attachments_api.dart';
 import 'package:raindrop_client/core/network/channels_api.dart';
@@ -64,7 +63,7 @@ void main() {
       externalLibrary: ExternalLibrary.open(File(_library).absolute.path),
     );
     final parts = _server!.split(':');
-    final client = ApiClient.forServer(
+    final client = RaindropChannel.forServer(
       host: parts[0],
       port: int.parse(parts[1]),
     );
@@ -127,14 +126,25 @@ void main() {
       extension: extensionOf(name),
       ciphertextSize: sealed.ciphertextLength,
     );
-    for (var offset = 0; offset < encrypted.length; offset += status.chunkSize) {
-      await attachments.chunk(
-        from.token,
-        attachmentId: status.attachmentId,
-        offset: offset,
-        bytes: encrypted.sublist(offset, min(offset + status.chunkSize, encrypted.length)),
-      );
-    }
+    // Two streams, the second resuming where the server says the first got
+    // to — what a client does after a dropped connection.
+    final half = encrypted.length ~/ 2;
+    await attachments.upload(
+      from.token,
+      attachmentId: status.attachmentId,
+      offset: 0,
+      data: Stream.value(encrypted.sublist(0, half)),
+      frameBytes: status.frameBytes,
+    );
+    final resumeAt = (await attachments.status(from.token, attachmentId: status.attachmentId)).receivedSize;
+    expect(resumeAt, half);
+    await attachments.upload(
+      from.token,
+      attachmentId: status.attachmentId,
+      offset: resumeAt,
+      data: Stream.value(encrypted.sublist(resumeAt)),
+      frameBytes: status.frameBytes,
+    );
     await attachments.complete(
       from.token,
       attachmentId: status.attachmentId,

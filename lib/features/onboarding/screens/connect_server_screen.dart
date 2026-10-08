@@ -6,8 +6,8 @@ import '../../../core/widgets/adaptive.dart';
 import '../controllers/connect_server_flow.dart';
 
 /// Step 1 of adding a server: host, port, and a local nickname. Submitting
-/// probes the server (`GET /api/server/info`) and asks what this brand-new
-/// GUID means there (`POST /api/users/status`) before handing off to
+/// probes the server (`ServerService.GetServerInfo`) and asks what this brand-new
+/// GUID means there (`UserService.GetUserStatus`) before handing off to
 /// [ServerAuthScreen] for registration, login, or rejoin.
 class ConnectServerScreen extends StatefulWidget {
   const ConnectServerScreen({super.key});

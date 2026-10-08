@@ -12,7 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:raindrop_client/core/crypto/bridge/frb_generated.dart';
 import 'package:raindrop_client/core/crypto/crypto_engine.dart';
 import 'package:raindrop_client/core/crypto/mls_crypto_engine.dart';
-import 'package:raindrop_client/core/network/api_client.dart';
+import 'package:raindrop_client/core/network/raindrop_channel.dart';
 import 'package:raindrop_client/core/network/api_exception.dart';
 import 'package:raindrop_client/core/network/channels_api.dart';
 import 'package:raindrop_client/core/network/e2ee_api.dart';
@@ -56,7 +56,7 @@ void main() {
       externalLibrary: ExternalLibrary.open(File(_library).absolute.path),
     );
     final parts = _server!.split(':');
-    final client = ApiClient.forServer(
+    final client = RaindropChannel.forServer(
       host: parts[0],
       port: int.parse(parts[1]),
     );

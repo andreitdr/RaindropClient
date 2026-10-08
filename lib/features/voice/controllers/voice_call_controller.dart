@@ -386,14 +386,14 @@ class VoiceCallController extends Notifier<VoiceCallState> {
 
     switch (event.type) {
       case ServerEventTypes.voiceState:
-        final you = VoiceParticipant.fromJson(event.data);
+        final you = VoiceParticipant.fromProto(event.proto.voiceState);
         state = state.copyWith(
           serverMuted: you.serverMute,
           suppressed: you.suppressed,
         );
 
       case ServerEventTypes.voiceLeft:
-        final left = VoiceLeft.fromJson(event.data);
+        final left = VoiceLeft.fromProto(event.proto.voiceLeft);
         unawaited(_end(notice: _noticeFor(left.reason), reportLeave: false));
     }
   }

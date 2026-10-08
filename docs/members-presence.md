@@ -7,13 +7,15 @@ Feature folder: [`lib/features/members/`](../lib/features/members/). Server-side
 
 [`MembersController`](../lib/features/members/controllers/members_controller.dart)
 (`membersProvider`, `AsyncNotifierProvider.autoDispose.family<..., List<Member>, String>` keyed by
-`serverId`) fetches `GET /api/members` once and then follows the [event stream](live-updates.md):
+`serverId`) fetches `MemberService.ListMembers` once and then follows the [event stream](live-updates.md):
 
-- `member.joined` adds the member as offline — a `member.presence` follows as soon as their first
-  session opens;
+- `member.joined` adds the member as offline — a `member.presence` follows as soon as their client
+  opens its event stream;
 - `member.renamed` updates the username, `member.left` removes the row;
 - `member.presence` sets their presence. It is a *state*, not a toggle — the server re-announces
-  `online` when a second device logs in — so it is always applied as "set".
+  `online` when a second device opens its stream — so it is always applied as "set". On the wire it
+  is the enum `raindrop.v1.Presence`; `Wire.presence` turns it into the name `PresenceStatus.parse`
+  reads, and a value newer than this build reads as `unknown`, which is filed under offline.
 
 The roster is re-read after every reconnect. While the stream is down it falls back to polling every
 **fifteen seconds** (`_fallbackPollInterval`) — slower than chat's three, because a roster a few
@@ -62,5 +64,6 @@ Only `online` gets a dedicated color (`AppSurfaces.onlineIndicator`, see [Themin
 ## Related
 
 - [Theming](theming.md) — `onlineIndicator`, the one presence-specific color.
-- The server's [Members doc](../../RaindropServer/docs/members.md) — why presence is only ever as
-  sharp as live sessions, and what a restart or an unclean disconnect does to it.
+- The server's [Members doc](../../RaindropServer/docs/members.md) — presence is "has an event stream
+  open": this client's heartbeat on that stream is what keeps it online, and a client that dies without
+  closing reads as offline about a minute later.

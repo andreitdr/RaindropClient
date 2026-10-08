@@ -26,9 +26,10 @@ anywhere, it's pure local bookkeeping over `AppPrefs.serverProfilesJson` (see [S
 
 [`session_controller.dart`](../lib/features/servers/controllers/session_controller.dart).
 
-`ServerSession` bundles a server's `ServerProfile`, its `ApiClient`, the bearer token, and the signed-in
-`UserProfile`. The per-domain API wrappers (`UsersApi`, `ChannelsApi`, `MembersApi`,
-`TextMessagesApi`, `RolesApi`, `VoiceApi` — see [Network layer](network-layer.md)) hang off the one client
+`ServerSession` bundles a server's `ServerProfile`, its `RaindropChannel` (`client`: one pinned HTTP/2
+connection), the bearer token, and the signed-in `UserProfile`. The per-domain API wrappers
+(`UsersApi`, `ChannelsApi`, `MembersApi`, `TextMessagesApi`, `RolesApi`, `VoiceApi`, `E2eeApi`,
+`AttachmentsApi`; see [Network layer](network-layer.md)) hang off the one channel
 as `late final` fields **rather than being passed in separately**, so adding a new domain is one line here
 and nothing at the call sites that build a session.
 
@@ -38,10 +39,10 @@ already-connected server:
 
 1. Look up the `ServerProfile` in `ServersController`'s list; `null` if not found.
 2. Read the session token from `SecureStore`; `null` (not signed in) if there isn't one.
-3. Build an `ApiClient` pinned to whatever fingerprint is stored for this server, and register that
+3. Build a `RaindropChannel` pinned to whatever fingerprint is stored for this server, and register that
    fingerprint with `PinRegistry` so the voice engine's own sockets trust the server too (see
    [Voice](voice.md#how-a-call-is-carried)). `adopt` does the same for a first connection.
-4. Call `GET /api/users/me` to confirm the token is still valid.
+4. Call `UserService.GetMe` to confirm the token is still valid.
    - Valid → returns a populated `ServerSession`.
    - `invalid_session` → clears the stored token and returns `null`.
 
@@ -53,9 +54,9 @@ Two mutating methods:
 
 - `.adopt(session)` — called once [`ConnectServerFlow.persist`](connecting-to-a-server.md) hands back
   a fresh session, so the shell picks it up immediately without waiting for `build` to re-run.
-- `.logout()` — best-effort `POST /api/users/logout` (a failure there is ignored — the token is being
+- `.logout()` — best-effort `UserService.Logout` (a failure there is ignored — the token is being
   discarded locally regardless), then clears the stored token and sets state to `null`.
-- `.leave({password, preserveData})` — `POST /api/users/me/leave`, then clears the stored token and
+- `.leave({password, preserveData})` — `UserService.LeaveServer`, then clears the stored token and
   sets state to `null`, same as a logout. **Its failures are not swallowed**, unlike `logout()`'s: a
   wrong password comes back as `invalid_credentials` and has to reach the dialog that asked for it.
   Forgetting the server locally is the caller's next step, not part of this.
@@ -76,7 +77,7 @@ author's UUID (see the server's [Messages doc](../../RaindropServer/docs/message
 message row needs this to show a name.
 
 `userLookupProvider` is a `FutureProvider.family<PublicUserProfile?, UserRef>` (`UserRef` =
-`(serverId, userId)`) wrapping `POST /api/users/lookup`. **Riverpod's own per-argument caching is the
+`(serverId, userId)`) wrapping `UserService.LookupUser`. **Riverpod's own per-argument caching is the
 cache** — one request per distinct author, however many messages that author wrote, for as long as the
 provider's arguments keep matching. A failed lookup resolves to `null` rather than throwing.
 

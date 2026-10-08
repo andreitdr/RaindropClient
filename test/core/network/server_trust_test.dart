@@ -2,25 +2,31 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:raindrop_client/core/network/grpc/protocol.dart' as pb;
 import 'package:raindrop_client/core/network/server_trust.dart';
 import 'package:raindrop_client/core/network/users_api.dart';
 
-// Captured from a running RaindropServer's GET /api/server/info, so this
-// checks the Dart verifier against what .NET actually signs.
-const _info = {
-  'protocolVersion': '1',
-  'tlsFingerprint': 'B5:F1:C9:84:E9:BB:01:2C:0F:73:72:A3:50:19:77:14:5C:5A:3D:CD:22:4B:1A:7B:98:4E:FA:D0:9F:80:79:75',
-  'payloadFormats': ['application/json'],
-  'identityKey': 'BB+JzxqycAN/b7ie4UUbXzC1ctO1eB6KKbgkrs2X+yMrAx2XZvPTPShYsOIIFXi13tmOmkl9v2y6bYze6V1RnDg=',
-  'tlsBindingSignature': 'TVg9ue1EUkZxRsBtpESjjERgZON3aIfoiPHNtI96qBkcYzzNH4r3An1fBchu0vcH9Y+rwj+Y9yu7KjByX8YxkA==',
-  'capabilities': ['tls.identity-binding.v1'],
-};
+// Captured from a running RaindropServer's handshake, so this checks the Dart
+// verifier against what .NET actually signs.
+const _fingerprint =
+    'B5:F1:C9:84:E9:BB:01:2C:0F:73:72:A3:50:19:77:14:5C:5A:3D:CD:22:4B:1A:7B:98:4E:FA:D0:9F:80:79:75';
+final _info = pb.GetServerInfoResponse(
+  protocolVersion: '2',
+  tlsFingerprint: _fingerprint,
+  identityKey: base64.decode(
+    'BB+JzxqycAN/b7ie4UUbXzC1ctO1eB6KKbgkrs2X+yMrAx2XZvPTPShYsOIIFXi13tmOmkl9v2y6bYze6V1RnDg=',
+  ),
+  tlsBindingSignature: base64.decode(
+    'TVg9ue1EUkZxRsBtpESjjERgZON3aIfoiPHNtI96qBkcYzzNH4r3An1fBchu0vcH9Y+rwj+Y9yu7KjByX8YxkA==',
+  ),
+  capabilities: ['tls.identity-binding.v1'],
+);
 
 const _presented =
     'b5f1c984e9bb012c0f7372a3501977145c5a3dcd224b1a7b984efad09f807975';
 
 void main() {
-  final info = ServerInfo.fromJson(Map<String, dynamic>.from(_info));
+  final info = ServerInfo.fromProto(_info);
 
   test('accepts the signature the server made', () {
     expect(
@@ -79,11 +85,12 @@ void main() {
   });
 
   test('a server without identity keys passes on fingerprint alone', () {
-    final legacy = ServerInfo.fromJson({
-      'protocolVersion': '1',
-      'tlsFingerprint': _info['tlsFingerprint'],
-      'payloadFormats': <String>[],
-    });
+    final legacy = ServerInfo.fromProto(
+      pb.GetServerInfoResponse(
+        protocolVersion: '2',
+        tlsFingerprint: _fingerprint,
+      ),
+    );
     expect(legacy.identityKey, isNull);
     expect(ServerTrust.isConsistent(legacy, _presented), isTrue);
   });

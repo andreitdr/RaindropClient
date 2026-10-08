@@ -1,16 +1,17 @@
-import 'dart:convert';
 import 'dart:typed_data';
 
-import 'api_client.dart';
+import 'grpc/protocol.dart' as pb;
+import 'grpc/wire.dart';
+import 'raindrop_channel.dart';
 
-/// Dart mirrors of the C# records in `RaindropServer/Users/Contracts.cs` and
-/// `ServerIdentity.cs`. JSON is camelCased by ASP.NET's default serializer,
-/// so `UserId` on the wire is `userId` here.
+/// The app's view of `raindrop.v1.ServerService` and `UserService`
+/// (RaindropProto's `server.proto` and `users.proto`): plain models the UI
+/// works with, read from the protobuf messages by their `fromProto`
+/// factories.
 class ServerInfo {
   const ServerInfo({
     required this.protocolVersion,
     this.tlsFingerprint,
-    required this.payloadFormats,
     this.identityKey,
     this.tlsBindingSignature,
     this.capabilities = const [],
@@ -18,7 +19,6 @@ class ServerInfo {
 
   final String protocolVersion;
   final String? tlsFingerprint;
-  final List<String> payloadFormats;
 
   /// The server's long-lived P-256 identity key (uncompressed point), pinned
   /// alongside the fingerprint. See `ServerTrust`.
@@ -30,17 +30,16 @@ class ServerInfo {
   /// Optional features the server offers, e.g. `tls.identity-binding.v1`.
   final List<String> capabilities;
 
-  factory ServerInfo.fromJson(Map<String, dynamic> j) => ServerInfo(
-    protocolVersion: j['protocolVersion'] as String,
-    tlsFingerprint: j['tlsFingerprint'] as String?,
-    payloadFormats: List<String>.from(j['payloadFormats'] as List? ?? const []),
-    identityKey: _bytes(j['identityKey']),
-    tlsBindingSignature: _bytes(j['tlsBindingSignature']),
-    capabilities: List<String>.from(j['capabilities'] as List? ?? const []),
+  factory ServerInfo.fromProto(pb.GetServerInfoResponse m) => ServerInfo(
+    protocolVersion: m.protocolVersion,
+    tlsFingerprint: m.hasTlsFingerprint() ? m.tlsFingerprint : null,
+    identityKey: Wire.optionalBytes(m.hasIdentityKey(), m.identityKey),
+    tlsBindingSignature: Wire.optionalBytes(
+      m.hasTlsBindingSignature(),
+      m.tlsBindingSignature,
+    ),
+    capabilities: List.unmodifiable(m.capabilities),
   );
-
-  static Uint8List? _bytes(Object? value) =>
-      value is String ? base64.decode(value) : null;
 }
 
 /// One of `active`, `left_preserved`, `erased` (an authenticated user's own state).
@@ -59,14 +58,12 @@ class UserProfile {
   final DateTime createdAtUtc;
   final DateTime? lastLoginAtUtc;
 
-  factory UserProfile.fromJson(Map<String, dynamic> j) => UserProfile(
-    userId: j['userId'] as String,
-    username: j['username'] as String,
-    state: j['state'] as String,
-    createdAtUtc: DateTime.parse(j['createdAtUtc'] as String),
-    lastLoginAtUtc: j['lastLoginAtUtc'] == null
-        ? null
-        : DateTime.parse(j['lastLoginAtUtc'] as String),
+  factory UserProfile.fromProto(pb.UserProfile m) => UserProfile(
+    userId: m.userId,
+    username: m.username,
+    state: Wire.userState(m.state),
+    createdAtUtc: Wire.time(m.createdAt),
+    lastLoginAtUtc: Wire.optionalTime(m.hasLastLoginAt(), m.lastLoginAt),
   );
 }
 
@@ -82,11 +79,11 @@ class PublicUserProfile {
   final String? username;
   final String state;
 
-  factory PublicUserProfile.fromJson(Map<String, dynamic> j) =>
+  factory PublicUserProfile.fromProto(pb.PublicUserProfile m) =>
       PublicUserProfile(
-        userId: j['userId'] as String,
-        username: j['username'] as String?,
-        state: j['state'] as String,
+        userId: m.userId,
+        username: m.hasUsername() ? m.username : null,
+        state: Wire.userState(m.state),
       );
 }
 
@@ -101,10 +98,10 @@ class SessionResult {
   final String token;
   final DateTime expiresAtUtc;
 
-  factory SessionResult.fromJson(Map<String, dynamic> j) => SessionResult(
-    user: UserProfile.fromJson(Map<String, dynamic>.from(j['user'] as Map)),
-    token: j['token'] as String,
-    expiresAtUtc: DateTime.parse(j['expiresAtUtc'] as String),
+  factory SessionResult.fromProto(pb.Session m) => SessionResult(
+    user: UserProfile.fromProto(m.user),
+    token: m.token,
+    expiresAtUtc: Wire.time(m.expiresAt),
   );
 }
 
@@ -123,14 +120,16 @@ class UserStateResult {
   final String? username;
   final DateTime? dataExpiresAtUtc;
 
-  factory UserStateResult.fromJson(Map<String, dynamic> j) => UserStateResult(
-    userId: j['userId'] as String,
-    state: j['state'] as String,
-    username: j['username'] as String?,
-    dataExpiresAtUtc: j['dataExpiresAtUtc'] == null
-        ? null
-        : DateTime.parse(j['dataExpiresAtUtc'] as String),
-  );
+  factory UserStateResult.fromProto(pb.GetUserStatusResponse m) =>
+      UserStateResult(
+        userId: m.userId,
+        state: Wire.userState(m.state),
+        username: m.hasUsername() ? m.username : null,
+        dataExpiresAtUtc: Wire.optionalTime(
+          m.hasDataExpiresAt(),
+          m.dataExpiresAt,
+        ),
+      );
 }
 
 class UsernameAvailability {
@@ -144,11 +143,11 @@ class UsernameAvailability {
   final bool available;
   final String? reason;
 
-  factory UsernameAvailability.fromJson(Map<String, dynamic> j) =>
+  factory UsernameAvailability.fromProto(pb.CheckUsernameResponse m) =>
       UsernameAvailability(
-        username: j['username'] as String,
-        available: j['available'] as bool,
-        reason: j['reason'] as String?,
+        username: m.username,
+        available: m.available,
+        reason: m.hasReason() ? m.reason : null,
       );
 }
 
@@ -163,36 +162,49 @@ class LeaveResult {
   final DateTime? dataExpiresAtUtc;
   final String message;
 
-  factory LeaveResult.fromJson(Map<String, dynamic> j) => LeaveResult(
-    state: j['state'] as String,
-    dataExpiresAtUtc: j['dataExpiresAtUtc'] == null
-        ? null
-        : DateTime.parse(j['dataExpiresAtUtc'] as String),
-    message: j['message'] as String,
+  factory LeaveResult.fromProto(pb.LeaveServerResponse m) => LeaveResult(
+    state: Wire.userState(m.state),
+    dataExpiresAtUtc: Wire.optionalTime(m.hasDataExpiresAt(), m.dataExpiresAt),
+    message: m.message,
   );
 }
 
-/// Typed wrapper over the `/api/users` + `/api/server/info` surface
-/// documented in the server's CLAUDE.md. One instance per connected server,
-/// built from that server's [ApiClient].
+/// `raindrop.v1.UserService`, plus the handshake in `ServerService`. One
+/// instance per connected server, built on that server's [RaindropChannel].
+/// Every call either answers or throws an `ApiException`.
 class UsersApi {
-  UsersApi(this._client);
+  UsersApi(this._channel)
+    : _server = pb.ServerServiceClient(_channel.channel),
+      _users = pb.UserServiceClient(_channel.channel);
 
-  final ApiClient _client;
+  final RaindropChannel _channel;
+  final pb.ServerServiceClient _server;
+  final pb.UserServiceClient _users;
 
-  Future<ServerInfo> serverInfo() async =>
-      ServerInfo.fromJson(await _client.get('/api/server/info'));
+  /// The handshake: the one call made before anything is pinned or signed in.
+  Future<ServerInfo> serverInfo() async => ServerInfo.fromProto(
+    await _channel.call(
+      (o) => _server.getServerInfo(pb.GetServerInfoRequest(), options: o),
+    ),
+  );
 
   Future<UserStateResult> status(String userId) async =>
-      UserStateResult.fromJson(
-        await _client.post('/api/users/status', body: {'userId': userId}),
+      UserStateResult.fromProto(
+        await _channel.call(
+          (o) => _users.getUserStatus(
+            pb.GetUserStatusRequest(userId: userId),
+            options: o,
+          ),
+        ),
       );
 
   Future<UsernameAvailability> usernameAvailable(String username) async =>
-      UsernameAvailability.fromJson(
-        await _client.post(
-          '/api/users/username-available',
-          body: {'username': username},
+      UsernameAvailability.fromProto(
+        await _channel.call(
+          (o) => _users.checkUsername(
+            pb.CheckUsernameRequest(username: username),
+            options: o,
+          ),
         ),
       );
 
@@ -200,22 +212,30 @@ class UsersApi {
     required String userId,
     required String username,
     required String password,
-  }) async => SessionResult.fromJson(
-    await _client.post(
-      '/api/users/register',
-      body: {'userId': userId, 'username': username, 'password': password},
-    ),
+  }) async => SessionResult.fromProto(
+    (await _channel.call(
+      (o) => _users.register(
+        pb.RegisterRequest(
+          userId: userId,
+          username: username,
+          password: password,
+        ),
+        options: o,
+      ),
+    )).session,
   );
 
   Future<SessionResult> login({
     String? userId,
     String? username,
     required String password,
-  }) async => SessionResult.fromJson(
-    await _client.post(
-      '/api/users/login',
-      body: {'userId': userId, 'username': username, 'password': password},
-    ),
+  }) async => SessionResult.fromProto(
+    (await _channel.call(
+      (o) => _users.login(
+        pb.LoginRequest(userId: userId, username: username, password: password),
+        options: o,
+      ),
+    )).session,
   );
 
   /// Restores a preserved account. Like [login], the username stands in for
@@ -225,58 +245,81 @@ class UsersApi {
     String? userId,
     String? username,
     required String password,
-  }) async => SessionResult.fromJson(
-    await _client.post(
-      '/api/users/rejoin',
-      body: {'userId': userId, 'username': username, 'password': password},
-    ),
+  }) async => SessionResult.fromProto(
+    (await _channel.call(
+      (o) => _users.rejoin(
+        pb.RejoinRequest(
+          userId: userId,
+          username: username,
+          password: password,
+        ),
+        options: o,
+      ),
+    )).session,
   );
 
-  Future<void> logout(String token) =>
-      _client.post('/api/users/logout', token: token);
+  Future<void> logout(String token) => _channel.call(
+    (o) => _users.logout(pb.LogoutRequest(), options: o),
+    token: token,
+  );
 
-  Future<UserProfile> me(String token) async =>
-      UserProfile.fromJson(await _client.get('/api/users/me', token: token));
+  Future<UserProfile> me(String token) async => UserProfile.fromProto(
+    (await _channel.call(
+      (o) => _users.getMe(pb.GetMeRequest(), options: o),
+      token: token,
+    )).user,
+  );
 
   Future<PublicUserProfile> lookup(String token, String userId) async =>
-      PublicUserProfile.fromJson(
-        await _client.post(
-          '/api/users/lookup',
-          body: {'userId': userId},
+      PublicUserProfile.fromProto(
+        (await _channel.call(
+          (o) => _users.lookupUser(
+            pb.LookupUserRequest(userId: userId),
+            options: o,
+          ),
           token: token,
-        ),
+        )).user,
       );
 
   Future<SessionResult> changePassword(
     String token, {
     required String currentPassword,
     required String newPassword,
-  }) async => SessionResult.fromJson(
-    await _client.post(
-      '/api/users/me/password',
+  }) async => SessionResult.fromProto(
+    (await _channel.call(
+      (o) => _users.changePassword(
+        pb.ChangePasswordRequest(
+          currentPassword: currentPassword,
+          newPassword: newPassword,
+        ),
+        options: o,
+      ),
       token: token,
-      body: {'currentPassword': currentPassword, 'newPassword': newPassword},
-    ),
+    )).session,
   );
 
   Future<UserProfile> changeUsername(String token, String username) async =>
-      UserProfile.fromJson(
-        await _client.post(
-          '/api/users/me/username',
+      UserProfile.fromProto(
+        (await _channel.call(
+          (o) => _users.changeUsername(
+            pb.ChangeUsernameRequest(username: username),
+            options: o,
+          ),
           token: token,
-          body: {'username': username},
-        ),
+        )).user,
       );
 
   Future<LeaveResult> leave(
     String token, {
     required String password,
     required bool preserveData,
-  }) async => LeaveResult.fromJson(
-    await _client.post(
-      '/api/users/me/leave',
+  }) async => LeaveResult.fromProto(
+    await _channel.call(
+      (o) => _users.leaveServer(
+        pb.LeaveServerRequest(password: password, preserveData: preserveData),
+        options: o,
+      ),
       token: token,
-      body: {'password': password, 'preserveData': preserveData},
     ),
   );
 }

@@ -1,9 +1,10 @@
 # Live updates (the event stream)
 
-The client sends through the REST API as it always has — posting a message is still
-`POST /api/channels/text/messages/send` — and **receives** everything over the server's event stream:
-a WebSocket at `GET /api/events` down which the server pushes every change this account may see, from
-this client, from its other devices, and from every other member. Server-side reference:
+The client **sends** through ordinary gRPC calls (posting a message is
+`TextChannelService.SendEncryptedMessage`) and **receives** everything over the server's event stream.
+That stream is `EventService.Connect`, a bidirectional gRPC stream: the server pushes every change this
+account may see, whether from this client, its other devices or any other member. The client sends a
+heartbeat back up it every 20 seconds. Server-side reference:
 [Events](../../RaindropServer/docs/events.md).
 
 So a message one member posts shows up for everyone else as the server accepts it, a deletion turns
@@ -13,41 +14,41 @@ none of it waiting on a poll.
 ## The pieces
 
 ```
-core/network/api_client.dart     ApiClient.openWebSocket — the pinned, authenticated upgrade
-core/network/event_stream.dart   EventStream — one reconnecting stream, ServerEvent, the event names
+core/network/event_stream.dart   EventStream — one reconnecting, heartbeating stream; ServerEvent
 features/servers/controllers/
   server_events.dart             serverEventsProvider(serverId) — one stream per signed-in server
   live_sync.dart                 LiveSync — what each controller uses to follow it
 ```
 
-### `ApiClient.openWebSocket` — same pin, same token
+### `EventStream`: one reconnecting stream
 
-The upgrade goes through the **same `CertificatePinner`** as every REST call and carries the same
-`Authorization: Bearer` header, so a pinned server stays pinned and the token never goes in a URL
-(see [Network layer](network-layer.md)). It is done by hand over an `HttpClient` — the documented
-`WebSocket.fromUpgradedSocket` route — rather than with `WebSocket.connect`, because that reports every
-refused upgrade identically. Doing it here keeps the status code and the server's `{error, message}`
-body, so a `401` surfaces as `ApiException('invalid_session')` exactly as it would from `get`. It also
-checks `Sec-WebSocket-Accept`, per RFC 6455.
+It lives in `core/`, so it knows nothing about chat or rosters. It rides the server's one
+`RaindropChannel`: the same pinned HTTP/2 connection as every call, with the token as
+`authorization` metadata (see [Network layer](network-layer.md)). It:
 
-### `EventStream` — one reconnecting connection
+- **Delivers every event as a `ServerEvent` on `events`**, `ready` included. A `ServerEvent` wraps the
+  typed `pb.ServerEvent`, and answers `type` (`message.created`, `e2ee.handshake`, …, the names the
+  server publishes under, so a feature's `switch` reads like the server's docs), `userId` and
+  `channelId` from whichever `oneof` case it carries. A feature filters on those, then reads its case
+  (`event.proto.messageCreated`) with the same `fromProto` its wrapper uses for a call's answer.
+- **Heartbeats.** After each `ready` it sends a `Heartbeat` every `ready.heartbeat_interval` (20 s). A
+  stream the server stops hearing from is ended as `connection_lost`, and its member then reads as
+  offline, which is how presence notices a client that was killed rather than closed.
+- **Resubscribes.** `resubscribe()` asks for a fresh `ready` on the open stream.
+  `serverEventsProvider` calls it when the app returns to the foreground, so every screen re-reads
+  without the stream being torn down.
+- **Reports `EventStreamStatus`** on `statusChanges`: `connecting` → `live` (on `ready`) →
+  `disconnected` on a drop, then back round.
+- **Reconnects with exponential backoff** (1 s, 2 s, 4 s … capped at 30 s, with jitter so a server
+  that just restarted is not hit by every client in the same instant), resetting after each `ready`.
+- **Stops at `sessionEnded`**, because retrying with a dead token cannot work. That is a stream that
+  ended with `ErrorInfo.reason` `session_ended`, or was refused at the start as `invalid_session` /
+  `missing_token`. Every other ending (`server_stopping`, `too_slow`, `connection_lost`, a network
+  failure) is a drop.
 
-`core/`, so it knows nothing about chat or rosters. It:
-
-- delivers every frame as a `ServerEvent(type, data)` on `events` — `ready` included — with `data`
-  left as the decoded map, so each feature parses it with the `fromJson` it already has (the payloads
-  are the same records the REST API returns);
-- reports `EventStreamStatus` on `statusChanges`: `connecting` → `live` (on `ready`) → `disconnected`
-  on a drop, then back round;
-- reconnects with exponential backoff (1 s, 2 s, 4 s … capped at 30 s, with jitter so a server that
-  just restarted is not hit by every client in the same instant), resetting after each `ready`;
-- **stops** at `sessionEnded` — a `4401` close, or a `401` on the upgrade — because retrying with a
-  dead token cannot work.
-
-Event names are constants in `ServerEventTypes`. A name this build does not know is ignored, which is
-what lets a newer server — or a server plugin — add its own without breaking this client.
-
-The stream asks for JSON and reads text frames only; see [Wire format](wire-format.md).
+A `oneof` case this build does not know reads as `unknown` and is ignored. A server plugin's event
+arrives as `plugin`, its `type` the plugin's own name. That is what lets a newer server, or a plugin,
+add events without breaking this client.
 
 ### `serverEventsProvider` — one per signed-in server
 
@@ -57,10 +58,10 @@ session does, whether or not a pane showing that server is on screen. A new sess
 token) is a new stream.
 
 When the stream reports `sessionEnded`, the provider invalidates `serverSessionProvider(serverId)`.
-Re-resolving the session calls `/api/users/me`, finds the token gone, clears it, and the shell routes
-to `ReauthPrompt` — see [Servers & sessions](servers-and-sessions.md). This is what happens after a
-**server restart**, which logs everyone out: the stream backs off while the server is down, gets a
-`401` when it is back, and the user is asked for their password.
+Re-resolving the session calls `UserService.GetMe`, finds the token gone and clears it, and the shell
+routes to `ReauthPrompt` (see [Servers & sessions](servers-and-sessions.md)). This is what happens
+after a **server restart**, which logs everyone out: the stream backs off while the server is down, is
+refused as `invalid_session` when it is back, and the user is asked for their password.
 
 ### `LiveSync` — how a controller follows the stream
 
@@ -81,8 +82,8 @@ Two rules make this correct rather than merely fast:
   fetch, and holds events that arrive meanwhile in an `_early` list that it folds into the result. An
   event landing while the first page is in flight is buffered, not lost.
 
-The fallback poll is what keeps the client working against a server too old to have `/api/events`,
-or through a network that drops WebSockets: the stream keeps retrying in the background, and the
+The fallback poll keeps the client current while the stream is down: a network that drops
+long-lived connections, or a server restarting. The stream keeps retrying in the background, and the
 moment it goes live the poll stops.
 
 ## Who follows what
@@ -110,7 +111,7 @@ silently dropped every later re-read.
 
 ## Related
 
-- The server's [Events doc](../../RaindropServer/docs/events.md) — every event type, close codes, and
+- The server's [Events doc](../../RaindropServer/docs/events.md) — every event, how a stream ends, and
   the server's guarantees.
-- [Network layer](network-layer.md) — `ApiClient` and pinning.
+- [Network layer](network-layer.md) — `RaindropChannel` and pinning.
 - [Servers & sessions](servers-and-sessions.md) — how a `sessionEnded` becomes a reauth prompt.

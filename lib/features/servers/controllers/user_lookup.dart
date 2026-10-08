@@ -11,7 +11,7 @@ import 'session_controller.dart';
 /// Which UUID on which server is being asked about.
 typedef UserRef = ({String serverId, String userId});
 
-/// Resolves a UUID into something to show, through `POST /api/users/lookup`.
+/// Resolves a UUID into something to show, through `UserService.LookupUser`.
 ///
 /// Messages carry their author's UUID and nothing else, so every message row
 /// needs this. Riverpod's per-argument caching is the cache: one request per

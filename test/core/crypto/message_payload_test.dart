@@ -5,7 +5,27 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:msgpack_dart/msgpack_dart.dart' as msgpack;
 import 'package:raindrop_client/core/crypto/message_payload.dart';
 
+/// A version 1 descriptor as older clients wrote it, for the legacy tests.
+Map<String, Object?> v1Descriptor(AttachmentDescriptor f) => {
+  'i': f.attachmentId,
+  'k': f.key,
+  'n': f.name,
+  'm': f.mimeType,
+  's': f.size,
+  'h': f.ciphertextSha256,
+  'pw': ?f.width,
+  'ph': ?f.height,
+  if (f.thumbnail case final t?)
+    't': {'i': t.attachmentId, 'k': t.key, 'h': t.ciphertextSha256},
+};
+
 void main() {
+  test('this build writes version 2: 0x02, then protobuf', () {
+    final bytes = MessagePayload.text('hi', clientMessageId: 'c').encode();
+    expect(bytes.first, 0x02);
+    expect(MessagePayload.version, 2);
+  });
+
   test('a text payload round-trips', () {
     final payload = MessagePayload.text('héllo 👋', clientMessageId: 'local-1');
     final decoded = MessagePayload.tryDecode(payload.encode())!;
@@ -21,7 +41,11 @@ void main() {
   test('anything else decodes to null rather than throwing', () {
     expect(MessagePayload.tryDecode(Uint8List.fromList([1, 2, 3])), isNull);
     expect(MessagePayload.tryDecode(Uint8List(0)), isNull);
-    // A future version is not guessed at.
+    // A future version is not guessed at, in either encoding.
+    expect(
+      MessagePayload.tryDecode(Uint8List.fromList([3, 10, 1, 120])),
+      isNull,
+    );
     expect(
       MessagePayload.tryDecode(
         msgpack.serialize({'v': 2, 't': 'text', 'b': 'x', 'c': 'c', 's': 0}),
@@ -30,7 +54,26 @@ void main() {
     );
   });
 
-  test('unknown fields in ext survive, unknown types are still decoded', () {
+  test(
+    'a version 1 (MessagePack) payload still decodes, attestation and all',
+    () {
+      final bytes = msgpack.serialize({
+        'v': 1,
+        't': 'text',
+        'b': 'from before the switch',
+        'c': 'old-1',
+        's': 1700000000000,
+        'a': Uint8List.fromList(List.filled(64, 5)),
+      });
+      final decoded = MessagePayload.tryDecode(bytes)!;
+      expect(decoded.body, 'from before the switch');
+      expect(decoded.clientMessageId, 'old-1');
+      expect(decoded.sentAt.millisecondsSinceEpoch, 1700000000000);
+      expect(decoded.attestation, List.filled(64, 5));
+    },
+  );
+
+  test('unknown types are still decoded', () {
     final bytes = msgpack.serialize({
       'v': 1,
       't': 'poll',
@@ -39,9 +82,15 @@ void main() {
       's': 0,
       'x': {'question': 'lunch?'},
     });
-    final decoded = MessagePayload.tryDecode(bytes)!;
-    expect(decoded.type, 'poll');
-    expect(decoded.ext['question'], 'lunch?');
+    expect(MessagePayload.tryDecode(bytes)!.type, 'poll');
+
+    final v2 = MessagePayload(
+      type: 'poll',
+      body: '',
+      clientMessageId: 'c',
+      sentAt: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+    ).encode();
+    expect(MessagePayload.tryDecode(v2)!.type, 'poll');
   });
 
   AttachmentDescriptor file({
@@ -81,6 +130,41 @@ void main() {
     expect(decoded.attestsFiles, isTrue);
   });
 
+  test('a version 1 files payload still decodes its descriptors', () {
+    final bytes = msgpack.serialize({
+      'v': 1,
+      't': 'files',
+      'b': 'look',
+      'c': 'c',
+      's': 0,
+      'x': {
+        'f': [v1Descriptor(file())],
+      },
+    });
+    final f = MessagePayload.tryDecode(bytes)!.files.single;
+    expect(f.name, 'holiday.jpg');
+    expect(f.thumbnail!.attachmentId, '7c9e6679-7425-40de-944b-e07fc1f90ae7');
+  });
+
+  test('a v2 descriptor with a key of the wrong length is left out', () {
+    final good = file(id: 'b');
+    final bad = AttachmentDescriptor(
+      attachmentId: 'a',
+      key: Uint8List(16),
+      name: 'x',
+      mimeType: 'y',
+      size: 1,
+      ciphertextSha256: Uint8List(32),
+    );
+    final bytes = MessagePayload.files('', [
+      bad,
+      good,
+    ], clientMessageId: 'c').encode();
+    expect(MessagePayload.tryDecode(bytes)!.files.map((f) => f.attachmentId), [
+      'b',
+    ]);
+  });
+
   test('a descriptor this build cannot read is left out, not guessed at', () {
     final bytes = msgpack.serialize({
       'v': 1,
@@ -98,7 +182,7 @@ void main() {
             's': 1,
             'h': Uint8List(32),
           },
-          file(id: 'b').encode(),
+          v1Descriptor(file(id: 'b')),
         ],
       },
     });
@@ -122,18 +206,16 @@ void main() {
       body: 'hi',
       clientMessageId: 'c1',
       sentAt: DateTime.fromMillisecondsSinceEpoch(1700000000000, isUtc: true),
-      ext: {
-        'f': [
-          AttachmentDescriptor(
-            attachmentId: '0F8FAD5B-D9CB-469F-A165-70867728950E',
-            key: Uint8List(32),
-            name: 'a.png',
-            mimeType: 'image/png',
-            size: 1,
-            ciphertextSha256: Uint8List.fromList(List.generate(32, (i) => i)),
-          ).encode(),
-        ],
-      },
+      files: [
+        AttachmentDescriptor(
+          attachmentId: '0F8FAD5B-D9CB-469F-A165-70867728950E',
+          key: Uint8List(32),
+          name: 'a.png',
+          mimeType: 'image/png',
+          size: 1,
+          ciphertextSha256: Uint8List.fromList(List.generate(32, (i) => i)),
+        ),
+      ],
     );
 
     const golden =

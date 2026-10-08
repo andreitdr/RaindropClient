@@ -1,12 +1,16 @@
-/// Dart mirrors of the C# records in `RaindropServer/Channels/Voice/
-/// VoiceContracts.cs`, and the wrapper over `/api/channels/voice`.
+/// The app's view of `raindrop.v1.VoiceService` (RaindropProto's
+/// `voice.proto`): call control only.
 ///
 /// The server decides who may join, speak and moderate; the audio itself
 /// travels over a media transport it names in [VoiceJoinResult.transport] —
-/// see `core/voice/` for the engine that speaks it.
+/// see `core/voice/` for the engine that speaks it. That engine's signalling
+/// is the one connection to the server that is not gRPC: LiveKit's own
+/// WebSocket, relayed at [VoiceJoinResult.path].
 library;
 
-import 'api_client.dart';
+import 'grpc/protocol.dart' as pb;
+import 'grpc/wire.dart';
+import 'raindrop_channel.dart';
 
 /// Why somebody is no longer in a call, as `voice.left` names it. An open set
 /// like event types: a name this build does not know is treated as [left].
@@ -58,15 +62,15 @@ class VoiceParticipant {
   /// Whether they could be heard at all right now.
   bool get canBeHeard => !selfMute && !selfDeaf && !serverMute && !suppressed;
 
-  factory VoiceParticipant.fromJson(Map<String, dynamic> j) => VoiceParticipant(
-    channelId: j['channelId'] as String,
-    userId: j['userId'] as String,
-    selfMute: j['selfMute'] as bool? ?? false,
-    selfDeaf: j['selfDeaf'] as bool? ?? false,
-    serverMute: j['serverMute'] as bool? ?? false,
-    suppressed: j['suppressed'] as bool? ?? false,
-    connected: j['connected'] as bool? ?? false,
-    joinedAtUtc: DateTime.parse(j['joinedAtUtc'] as String),
+  factory VoiceParticipant.fromProto(pb.VoiceParticipant m) => VoiceParticipant(
+    channelId: m.channelId,
+    userId: m.userId,
+    selfMute: m.selfMute,
+    selfDeaf: m.selfDeaf,
+    serverMute: m.serverMute,
+    suppressed: m.suppressed,
+    connected: m.connected,
+    joinedAtUtc: Wire.time(m.joinedAt),
   );
 }
 
@@ -82,10 +86,10 @@ class VoiceLeft {
   final String userId;
   final String reason;
 
-  factory VoiceLeft.fromJson(Map<String, dynamic> j) => VoiceLeft(
-    channelId: j['channelId'] as String,
-    userId: j['userId'] as String,
-    reason: j['reason'] as String? ?? VoiceLeaveReasons.left,
+  factory VoiceLeft.fromProto(pb.VoiceLeftEvent m) => VoiceLeft(
+    channelId: m.channelId,
+    userId: m.userId,
+    reason: m.reason.isEmpty ? VoiceLeaveReasons.left : m.reason,
   );
 }
 
@@ -104,13 +108,12 @@ class VoiceStatus {
   final int maximumParticipants;
   final List<VoiceParticipant> participants;
 
-  factory VoiceStatus.fromJson(Map<String, dynamic> j) => VoiceStatus(
-    available: j['available'] as bool? ?? false,
-    transport: j['transport'] as String? ?? 'none',
-    maximumParticipants: (j['maximumParticipants'] as num?)?.toInt() ?? 0,
+  factory VoiceStatus.fromProto(pb.GetVoiceStatusResponse m) => VoiceStatus(
+    available: m.available,
+    transport: m.transport.isEmpty ? 'none' : m.transport,
+    maximumParticipants: m.maximumParticipants,
     participants: [
-      for (final p in j['participants'] as List? ?? const [])
-        VoiceParticipant.fromJson(Map<String, dynamic>.from(p as Map)),
+      for (final p in m.participants) VoiceParticipant.fromProto(p),
     ],
   );
 }
@@ -153,29 +156,32 @@ class VoiceJoinResult {
     return Uri(scheme: 'wss', host: host, port: port, path: path ?? '/');
   }
 
-  factory VoiceJoinResult.fromJson(Map<String, dynamic> j) => VoiceJoinResult(
-    channelId: j['channelId'] as String,
-    transport: j['transport'] as String,
-    url: j['url'] as String?,
-    path: j['path'] as String?,
-    token: j['token'] as String,
-    expiresAtUtc: DateTime.parse(j['expiresAtUtc'] as String),
-    you: VoiceParticipant.fromJson(Map<String, dynamic>.from(j['you'] as Map)),
+  factory VoiceJoinResult.fromProto(pb.JoinVoiceResponse m) => VoiceJoinResult(
+    channelId: m.channelId,
+    transport: m.transport,
+    url: m.hasUrl() ? m.url : null,
+    path: m.hasPath() ? m.path : null,
+    token: m.token,
+    expiresAtUtc: Wire.time(m.expiresAt),
+    you: VoiceParticipant.fromProto(m.you),
     participants: [
-      for (final p in j['participants'] as List? ?? const [])
-        VoiceParticipant.fromJson(Map<String, dynamic>.from(p as Map)),
+      for (final p in m.participants) VoiceParticipant.fromProto(p),
     ],
   );
 }
 
-/// Typed wrapper over `/api/channels/voice`. One per connected server.
+/// `raindrop.v1.VoiceService`. One per connected server.
 class VoiceApi {
-  VoiceApi(this._client);
+  VoiceApi(this._channel) : _voice = pb.VoiceServiceClient(_channel.channel);
 
-  final ApiClient _client;
+  final RaindropChannel _channel;
+  final pb.VoiceServiceClient _voice;
 
-  Future<VoiceStatus> status(String token) async => VoiceStatus.fromJson(
-    await _client.get('/api/channels/voice', token: token),
+  Future<VoiceStatus> status(String token) async => VoiceStatus.fromProto(
+    await _channel.call(
+      (o) => _voice.getVoiceStatus(pb.GetVoiceStatusRequest(), options: o),
+      token: token,
+    ),
   );
 
   /// Joins a call. Needs `connect`; the server answers `channel_full`,
@@ -185,40 +191,44 @@ class VoiceApi {
     required String channelId,
     bool selfMute = false,
     bool selfDeaf = false,
-  }) async => VoiceJoinResult.fromJson(
-    await _client.post(
-      '/api/channels/voice/join',
-      body: {
-        'channelId': channelId,
-        'selfMute': selfMute,
-        'selfDeaf': selfDeaf,
-      },
+  }) async => VoiceJoinResult.fromProto(
+    await _channel.call(
+      (o) => _voice.joinVoice(
+        pb.JoinVoiceRequest(
+          channelId: channelId,
+          selfMute: selfMute,
+          selfDeaf: selfDeaf,
+        ),
+        options: o,
+      ),
       token: token,
     ),
   );
 
   /// Leaves the named call. Safe to repeat: false when this session was not
   /// in it.
-  Future<bool> leave(String token, {required String channelId}) async {
-    final body = await _client.post(
-      '/api/channels/voice/leave',
-      body: {'channelId': channelId},
-      token: token,
-    );
-    return body['left'] as bool? ?? false;
-  }
+  Future<bool> leave(String token, {required String channelId}) async =>
+      (await _channel.call(
+        (o) => _voice.leaveVoice(
+          pb.LeaveVoiceRequest(channelId: channelId),
+          options: o,
+        ),
+        token: token,
+      )).left;
 
   /// Tells everybody you muted or deafened yourself.
   Future<VoiceParticipant> setSelfState(
     String token, {
     required bool selfMute,
     required bool selfDeaf,
-  }) async => VoiceParticipant.fromJson(
-    await _client.post(
-      '/api/channels/voice/state',
-      body: {'selfMute': selfMute, 'selfDeaf': selfDeaf},
+  }) async => VoiceParticipant.fromProto(
+    (await _channel.call(
+      (o) => _voice.setVoiceSelfState(
+        pb.SetVoiceSelfStateRequest(selfMute: selfMute, selfDeaf: selfDeaf),
+        options: o,
+      ),
       token: token,
-    ),
+    )).participant,
   );
 
   /// Mutes (or unmutes) a member in every call, for everyone. Needs
@@ -227,9 +237,11 @@ class VoiceApi {
     String token, {
     required String userId,
     required bool muted,
-  }) => _client.post(
-    '/api/channels/voice/mute',
-    body: {'userId': userId, 'muted': muted},
+  }) => _channel.call(
+    (o) => _voice.muteVoiceMember(
+      pb.MuteVoiceMemberRequest(userId: userId, muted: muted),
+      options: o,
+    ),
     token: token,
   );
 }

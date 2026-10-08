@@ -34,16 +34,16 @@ The sibling checkouts are not optional: `native/raindrop_crypto_builder` builds
 | [Channels](channels.md) | The channel list, creating/renaming/deleting channels, the sidebar |
 | [Live updates](live-updates.md) | The event stream: `EventStream`, `serverEventsProvider`, `LiveSync`, reconnects and fallback polling |
 | [Messages & chat](messages-chat.md) | `ChatController`, pushed messages, optimistic send, deleting a message, tombstones, history paging |
-| [Attachments](attachments.md) | End-to-end encrypted files: picking and dropping, the server's rules, chunked uploads, thumbnails, previews (image/video/audio), saving, what stays on disk |
+| [Attachments](attachments.md) | End-to-end encrypted files: picking and dropping, the server's rules, streamed uploads, thumbnails, previews (image/video/audio), saving, what stays on disk |
 | [Members & presence](members-presence.md) | The roster pane, presence grouping, pushed presence |
 | [Voice](voice.md) | Voice channels: joining a call, mute/deafen, per-member volume and mute, mute for everyone, the LiveKit engine and its pinning |
 | [Layout](layout.md) | The customizable main view: pane order/widths, buttons in slots, the layout file, the layout editor |
 | [Settings](settings.md) | Theme selection/editor, the layout editor, voice & audio, encryption (devices, linking, recovery key), connected-server management |
-| [Network layer](network-layer.md) | `ApiClient`, `CertificatePinner`, the per-domain API wrappers |
+| [Network layer](network-layer.md) | gRPC: `RaindropChannel`, the generated code and how to regenerate it, `ApiException`, `CertificatePinner`, the per-service API wrappers |
 | [Storage](storage.md) | `AppPrefs` vs. `SecureStore` — what goes where and why |
 | [End-to-end encryption](crypto.md) | The Rust MLS core in [`../RaindropCrypto`](../../RaindropCrypto/docs/README.md), the bridge and its build glue, `CryptoEngine`, the encrypted store |
 | [Routing](routing.md) | The `go_router` route table |
-| [Wire format](wire-format.md) | JSON today, MessagePack readiness |
+| [Wire format](wire-format.md) | Protobuf over gRPC, and the protobuf payload inside encrypted messages (v1 MessagePack still read) |
 | [CI & releases](ci-and-releases.md) | The GitHub Actions workflows, the two-repository checkout they need, and the desktop packaging |
 | [Roadmap](roadmap.md) | Everything implemented today, everything that is not, and what is deliberately not planned |
 
@@ -52,9 +52,10 @@ The sibling checkouts are not optional: `native/raindrop_crypto_builder` builds
 - **Stack:** Flutter, targeting macOS, Windows, Linux, iOS and Android as real targets (web is not a
   target). State management is Riverpod (`Notifier`/`AsyncNotifier`/`.family`, no code generation);
   navigation is `go_router`.
-- **Server relationship:** this client has no other client to check compatibility against — its
-  `core/network/` contracts must track [RaindropServer's API](../../RaindropServer/docs/README.md)
-  exactly.
+- **Server relationship:** everything this client says to a server is gRPC, defined in
+  [RaindropProto](../../RaindropProto/README.md) and generated into `core/network/grpc/generated/` —
+  the same files the server compiles, so the two cannot disagree about a field. What a call *means*
+  still has to track [RaindropServer](../../RaindropServer/docs/README.md), which has no other client.
 - **What's implemented:** connecting to a server (register/login/rejoin), reading and posting to text
   channels with **end-to-end encrypted messages**, end-to-end encrypted file attachments with inline
   image/video/audio previews, creating/renaming/deleting channels and deleting messages (each gated on
@@ -68,8 +69,8 @@ The sibling checkouts are not optional: `native/raindrop_crypto_builder` builds
   channel's MLS group through the server's delivery service, so text, files and call media are all
   encrypted for real. See [Crypto](crypto.md).
 - **What's not implemented yet:** background voice on phones, push-to-talk, camera and screen sharing,
-  changing your username or password from the app, any role-editing UI, notifications, and MessagePack
-  on the wire. See [Roadmap](roadmap.md).
+  changing your username or password from the app, any role-editing UI, and notifications. See
+  [Roadmap](roadmap.md).
 
 ## Keeping this wiki current
 
