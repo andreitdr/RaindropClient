@@ -1,16 +1,21 @@
-/// Dart mirrors of `RaindropServer/Attachments/AttachmentContracts.cs` and the
-/// wrapper over `/api/attachments/*`: uploading encrypted files in chunks and
-/// downloading them again. Everything here moves ciphertext — encrypting and
-/// decrypting is `AttachmentCipher`'s job, and the key never comes near the
-/// server.
+/// The app's view of `raindrop.v1.AttachmentService` (RaindropProto's
+/// `attachments.proto`): streaming encrypted files up and back down.
+/// Everything here moves ciphertext — encrypting and decrypting is
+/// `AttachmentCipher`'s job, and the key never comes near the server.
 library;
 
-import 'dart:convert';
+import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
-import 'api_client.dart';
+import 'package:fixnum/fixnum.dart';
 
-/// Advertised by `GET /api/server/info` while the server accepts files.
+import 'api_exception.dart';
+import 'grpc/protocol.dart' as pb;
+import 'grpc/wire.dart';
+import 'raindrop_channel.dart';
+
+/// Advertised by `ServerService.GetServerInfo` while the server accepts files.
 const attachmentsCapability = 'attachments.v1';
 
 /// What the server accepts, so a file can be refused before any of it is
@@ -27,8 +32,11 @@ class AttachmentPolicy {
     this.maximumThumbnailBytes = 512 * 1024,
     this.previewExtensions = const [],
     this.previewAutoLoadMaximumBytes = 0,
-    this.uploadChunkBytes = 8 * 1024 * 1024,
+    this.uploadFrameBytes = defaultFrameBytes,
   });
+
+  /// What a server that does not say uses: 256 KiB per stream frame.
+  static const defaultFrameBytes = 256 * 1024;
 
   final bool enabled;
   final int maximumFileBytes;
@@ -47,33 +55,29 @@ class AttachmentPolicy {
 
   /// The largest previewable file loaded without the member asking.
   final int previewAutoLoadMaximumBytes;
-  final int uploadChunkBytes;
 
-  factory AttachmentPolicy.fromJson(Map<String, dynamic> j) => AttachmentPolicy(
-    enabled: j['enabled'] as bool? ?? false,
-    maximumFileBytes: (j['maximumFileBytes'] as num?)?.toInt() ?? 0,
+  /// The most bytes one frame of an upload stream may carry.
+  final int uploadFrameBytes;
+
+  factory AttachmentPolicy.fromProto(pb.AttachmentPolicy m) => AttachmentPolicy(
+    enabled: m.enabled,
+    maximumFileBytes: m.maximumFileBytes.toInt(),
     maximumFileBytesByExtension: {
-      for (final e
-          in (j['maximumFileBytesByExtension'] as Map? ?? const {}).entries)
-        '${e.key}': (e.value as num).toInt(),
+      for (final e in m.maximumFileBytesByExtension.entries)
+        e.key: e.value.toInt(),
     },
-    allowedExtensions: (j['allowedExtensions'] as List?)?.cast<String>(),
-    blockedExtensions: List<String>.from(
-      j['blockedExtensions'] as List? ?? const [],
-    ),
-    allowFilesWithoutExtension:
-        j['allowFilesWithoutExtension'] as bool? ?? true,
-    maximumFilesPerMessage:
-        (j['maximumFilesPerMessage'] as num?)?.toInt() ?? 10,
-    maximumThumbnailBytes:
-        (j['maximumThumbnailBytes'] as num?)?.toInt() ?? 512 * 1024,
-    previewExtensions: List<String>.from(
-      j['previewExtensions'] as List? ?? const [],
-    ),
-    previewAutoLoadMaximumBytes:
-        (j['previewAutoLoadMaximumBytes'] as num?)?.toInt() ?? 0,
-    uploadChunkBytes:
-        (j['uploadChunkBytes'] as num?)?.toInt() ?? 8 * 1024 * 1024,
+    allowedExtensions: m.hasAllowedExtensions()
+        ? List.unmodifiable(m.allowedExtensions.extensions)
+        : null,
+    blockedExtensions: List.unmodifiable(m.blockedExtensions),
+    allowFilesWithoutExtension: m.allowFilesWithoutExtension,
+    maximumFilesPerMessage: m.maximumFilesPerMessage,
+    maximumThumbnailBytes: m.maximumThumbnailBytes.toInt(),
+    previewExtensions: List.unmodifiable(m.previewExtensions),
+    previewAutoLoadMaximumBytes: m.previewAutoLoadMaximumBytes.toInt(),
+    uploadFrameBytes: m.uploadFrameBytes > 0
+        ? m.uploadFrameBytes
+        : defaultFrameBytes,
   );
 
   /// The largest file accepted with [extension] (lower case, no dot).
@@ -140,7 +144,7 @@ class UploadStatus {
     required this.state,
     required this.ciphertextSize,
     required this.receivedSize,
-    required this.chunkSize,
+    this.frameBytes = AttachmentPolicy.defaultFrameBytes,
   });
 
   final String attachmentId;
@@ -149,30 +153,42 @@ class UploadStatus {
   final String state;
   final int ciphertextSize;
 
-  /// Where the next chunk starts.
+  /// Where the next upload stream starts.
   final int receivedSize;
-  final int chunkSize;
+
+  /// The most bytes one frame of an upload stream may carry.
+  final int frameBytes;
 
   bool get complete => state != 'uploading';
 
-  factory UploadStatus.fromJson(Map<String, dynamic> j) => UploadStatus(
-    attachmentId: j['attachmentId'] as String,
-    state: j['state'] as String,
-    ciphertextSize: (j['ciphertextSize'] as num).toInt(),
-    receivedSize: (j['receivedSize'] as num).toInt(),
-    chunkSize: (j['chunkSize'] as num).toInt(),
+  factory UploadStatus.fromProto(pb.UploadStatus m) => UploadStatus(
+    attachmentId: m.attachmentId,
+    state: Wire.uploadState(m.state),
+    ciphertextSize: m.ciphertextSize.toInt(),
+    receivedSize: m.receivedSize.toInt(),
+    frameBytes: m.frameBytes > 0
+        ? m.frameBytes
+        : AttachmentPolicy.defaultFrameBytes,
   );
 }
 
-/// Typed wrapper over `/api/attachments/*`. One per connected server.
+/// `raindrop.v1.AttachmentService`. One per connected server.
 class AttachmentsApi {
-  AttachmentsApi(this._client);
+  AttachmentsApi(this._channel)
+    : _attachments = pb.AttachmentServiceClient(_channel.channel);
 
-  final ApiClient _client;
+  final RaindropChannel _channel;
+  final pb.AttachmentServiceClient _attachments;
 
   Future<AttachmentPolicy> policy(String token) async =>
-      AttachmentPolicy.fromJson(
-        await _client.get('/api/attachments/policy', token: token),
+      AttachmentPolicy.fromProto(
+        (await _channel.call(
+          (o) => _attachments.getAttachmentPolicy(
+            pb.GetAttachmentPolicyRequest(),
+            options: o,
+          ),
+          token: token,
+        )).policy,
       );
 
   /// Starts an upload of an encrypted file for [channelId]. Only [extension]
@@ -183,49 +199,92 @@ class AttachmentsApi {
     required String extension,
     required int ciphertextSize,
     String kind = 'file',
-  }) async => UploadStatus.fromJson(
-    await _client.post(
-      '/api/attachments/uploads/create',
-      body: {
-        'channelId': channelId,
-        'extension': extension,
-        'ciphertextSize': ciphertextSize,
-        'kind': kind,
-      },
+  }) async => UploadStatus.fromProto(
+    (await _channel.call(
+      (o) => _attachments.createUpload(
+        pb.CreateUploadRequest(
+          channelId: channelId,
+          extension_2: extension,
+          ciphertextSize: Int64(ciphertextSize),
+          kind: Wire.attachmentKindOf(kind),
+        ),
+        options: o,
+      ),
       token: token,
-    ),
+    )).status,
   );
 
-  /// Sends the chunk starting at [offset]; the server refuses one that does
-  /// not start where it has got to (`upload_offset_mismatch`).
-  Future<UploadStatus> chunk(
+  /// Streams [data] — the ciphertext from [offset] on — into the upload, in
+  /// frames of at most [frameBytes]. The server refuses a stream that does
+  /// not start where it has got to (`upload_offset_mismatch`). A stream that
+  /// breaks keeps what the server committed: ask [status] where it stands
+  /// and stream again from there.
+  ///
+  /// [onProgress] is told how many bytes of this stream have been handed to
+  /// the connection.
+  Future<UploadStatus> upload(
     String token, {
     required String attachmentId,
     required int offset,
+    required Stream<List<int>> data,
+    int frameBytes = AttachmentPolicy.defaultFrameBytes,
+    void Function(int sent)? onProgress,
+  }) async {
+    Stream<pb.UploadRequest> frames() async* {
+      yield pb.UploadRequest(
+        header: pb.UploadHeader(
+          attachmentId: attachmentId,
+          offset: Int64(offset),
+        ),
+      );
+      var sent = 0;
+      await for (final chunk in data) {
+        for (var at = 0; at < chunk.length; at += frameBytes) {
+          final end = at + frameBytes < chunk.length
+              ? at + frameBytes
+              : chunk.length;
+          yield pb.UploadRequest(data: chunk.sublist(at, end));
+          sent += end - at;
+          onProgress?.call(sent);
+        }
+      }
+    }
+
+    return UploadStatus.fromProto(
+      (await _channel.call(
+        (o) => _attachments.upload(frames(), options: o),
+        token: token,
+        // A large file takes as long as it takes; the stream is the deadline.
+        timeout: null,
+      )).status,
+    );
+  }
+
+  /// Uploads [bytes] whole — a thumbnail, small enough to send in one go.
+  Future<UploadStatus> uploadBytes(
+    String token, {
+    required String attachmentId,
     required Uint8List bytes,
-    void Function(int sent, int total)? onProgress,
-  }) async => UploadStatus.fromJson(
-    await _client.putBytes(
-      '/api/attachments/uploads/chunk',
-      bytes,
-      headers: {
-        'Raindrop-Attachment-Id': attachmentId,
-        'Raindrop-Upload-Offset': '$offset',
-      },
-      token: token,
-      onProgress: onProgress,
-    ),
+    int frameBytes = AttachmentPolicy.defaultFrameBytes,
+  }) => upload(
+    token,
+    attachmentId: attachmentId,
+    offset: 0,
+    data: Stream.value(bytes),
+    frameBytes: frameBytes,
   );
 
   Future<UploadStatus> status(
     String token, {
     required String attachmentId,
-  }) async => UploadStatus.fromJson(
-    await _client.post(
-      '/api/attachments/uploads/status',
-      body: {'attachmentId': attachmentId},
+  }) async => UploadStatus.fromProto(
+    (await _channel.call(
+      (o) => _attachments.getUploadStatus(
+        pb.GetUploadStatusRequest(attachmentId: attachmentId),
+        options: o,
+      ),
       token: token,
-    ),
+    )).status,
   );
 
   /// Finishes an upload; the server checks what it stored against
@@ -234,38 +293,69 @@ class AttachmentsApi {
     String token, {
     required String attachmentId,
     required Uint8List ciphertextSha256,
-  }) async => UploadStatus.fromJson(
-    await _client.post(
-      '/api/attachments/uploads/complete',
-      body: {
-        'attachmentId': attachmentId,
-        'ciphertextSha256': base64.encode(ciphertextSha256),
-      },
+  }) async => UploadStatus.fromProto(
+    (await _channel.call(
+      (o) => _attachments.completeUpload(
+        pb.CompleteUploadRequest(
+          attachmentId: attachmentId,
+          ciphertextSha256: ciphertextSha256,
+        ),
+        options: o,
+      ),
       token: token,
-    ),
+    )).status,
   );
 
   Future<void> cancel(String token, {required String attachmentId}) =>
-      _client.post(
-        '/api/attachments/uploads/cancel',
-        body: {'attachmentId': attachmentId},
+      _channel.call(
+        (o) => _attachments.cancelUpload(
+          pb.CancelUploadRequest(attachmentId: attachmentId),
+          options: o,
+        ),
         token: token,
       );
 
-  /// Downloads an attachment's ciphertext into [savePath], resuming from
-  /// [fromByte] when part of it is already there.
+  /// Downloads an attachment's ciphertext into [savePath]. With [fromByte],
+  /// asks for the rest of the file only and appends it, to resume a download.
+  /// A failure throws [ApiException]; on a resumed download, what was already
+  /// in [savePath] stays.
   Future<void> download(
     String token, {
     required String attachmentId,
     required String savePath,
     int fromByte = 0,
     void Function(int received, int total)? onProgress,
-  }) => _client.downloadTo(
-    '/api/attachments/download',
-    savePath,
-    body: {'attachmentId': attachmentId},
-    token: token,
-    fromByte: fromByte,
-    onProgress: onProgress,
-  );
+  }) async {
+    final call = _attachments.download(
+      pb.DownloadRequest(attachmentId: attachmentId, offset: Int64(fromByte)),
+      options: _channel.options(token: token, timeout: null),
+    );
+
+    IOSink? sink;
+    var total = -1;
+    var received = 0;
+    try {
+      await for (final frame in _channel.stream(call)) {
+        if (frame.hasHeader()) {
+          total = frame.header.ciphertextSize.toInt() - fromByte;
+          // Opened only once the server has said yes, so a refusal leaves the
+          // file exactly as it was.
+          sink = File(savePath)
+              .openWrite(mode: fromByte > 0 ? FileMode.append : FileMode.write);
+          continue;
+        }
+        final out = sink;
+        if (out == null) {
+          throw ApiException.network(
+            'the download sent data before its header',
+          );
+        }
+        out.add(frame.data);
+        received += frame.data.length;
+        onProgress?.call(received, total);
+      }
+    } finally {
+      await sink?.close();
+    }
+  }
 }

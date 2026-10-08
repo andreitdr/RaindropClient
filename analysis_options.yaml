@@ -10,3 +10,5 @@ analyzer:
     - linux/**
     # Vendored build glue (cargokit) with its own dependencies.
     - native/**
+    # Generated from RaindropProto by tool/gen_protos.sh; never edited by hand.
+    - lib/core/network/grpc/generated/**

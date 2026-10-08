@@ -18,10 +18,10 @@ The user enters a host, port (default `5001`), and an optional local nickname. S
    the client by** — see the server's [Users doc](../../RaindropServer/docs/users.md) — and it doubles
    as this client's local storage key (`ServerProfile.id`), so there's no second synthetic id to keep
    in sync with it.
-2. `GET /api/server/info` (`flow.probe()`) to confirm the server is reachable and see its supported
-   wire formats. This is also what triggers the TLS handshake `CertificatePinner` observes — see
-   [Network layer](network-layer.md).
-3. `POST /api/users/status` (`flow.checkStatus()`) with that GUID. On a real first connection this
+2. `ServerService.GetServerInfo` (`flow.probe()`) to confirm the server is reachable and see its
+   capabilities. This first call also opens the gRPC connection, and so triggers the TLS handshake
+   `CertificatePinner` observes (see [Network layer](network-layer.md)).
+3. `UserService.GetUserStatus` (`flow.checkStatus()`) with that GUID. On a real first connection this
    always comes back `unregistered` — the `active`/`left_preserved` branches only matter for GUID
    re-import (below).
 4. Hands off to `/connect/auth` with the flow, the status result, and the display name.
@@ -75,4 +75,4 @@ If login fails with `account_left`, the prompt offers a "Rejoin instead" button
 - [Servers & sessions](servers-and-sessions.md) — `ServersController`, `ServerSession`, and cold-start
   session resolution (what runs *without* the user doing anything, on every app launch).
 - [Storage](storage.md) — where the GUID, pinned fingerprint, and session token each end up.
-- [Network layer](network-layer.md) — `ApiClient`, `CertificatePinner`, `UsersApi`.
+- [Network layer](network-layer.md) — `RaindropChannel`, `CertificatePinner`, `UsersApi`.

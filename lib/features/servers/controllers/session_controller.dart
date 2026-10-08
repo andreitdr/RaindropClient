@@ -1,13 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/server_profile.dart';
-import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/attachments_api.dart';
 import '../../../core/network/channels_api.dart';
 import '../../../core/network/e2ee_api.dart';
 import '../../../core/network/members_api.dart';
 import '../../../core/network/pin_registry.dart';
+import '../../../core/network/raindrop_channel.dart';
 import '../../../core/network/roles_api.dart';
 import '../../../core/network/server_trust.dart';
 import '../../../core/network/text_messages_api.dart';
@@ -17,7 +17,7 @@ import '../../../core/storage/secure_store.dart';
 import 'servers_controller.dart';
 
 /// A live, authenticated connection to one server: its profile, the pinned
-/// [ApiClient] for it, and the account currently signed in.
+/// [RaindropChannel] to it, and the account currently signed in.
 ///
 /// The per-domain API wrappers hang off the one client rather than being
 /// passed in, so adding a domain (voice signaling, a member roster) is a
@@ -31,7 +31,7 @@ class ServerSession {
   });
 
   final ServerProfile profile;
-  final ApiClient client;
+  final RaindropChannel client;
   final String token;
   final UserProfile currentUser;
 
@@ -46,7 +46,7 @@ class ServerSession {
 }
 
 /// Resolves whether we already have a valid session for a connected server
-/// (token in SecureStore, verified against `/api/users/me`), one per
+/// (token in SecureStore, verified with `UserService.GetMe`), one per
 /// [ServerProfile.id]. `null` means "not signed in here" — the shell routes
 /// to the onboarding login/register flow for that server instead.
 final serverSessionProvider =
@@ -115,7 +115,7 @@ class ServerSessionController
       PinRegistry.instance.pin(profile.host, profile.port, fingerprint);
     }
 
-    final client = ApiClient.forServer(
+    final client = RaindropChannel.forServer(
       host: profile.host,
       port: profile.port,
       pinnedFingerprint: fingerprint,
@@ -176,7 +176,7 @@ class ServerSessionController
     state = const AsyncData(null);
   }
 
-  /// Leaves the server for good (`POST /api/users/me/leave`): the account is
+  /// Leaves the server for good (`UserService.LeaveServer`): the account is
   /// kept, reserved but inactive, until the server's retention runs out when
   /// [preserveData] is set, and erased at once otherwise. Unlike [logout] a
   /// failure is not swallowed — a wrong password must reach the dialog.

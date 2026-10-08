@@ -8,7 +8,7 @@ import 'live_sync.dart';
 import 'session_controller.dart';
 
 /// What the signed-in account may do on a server as a whole, from
-/// `GET /api/roles/me`, one entry per server id, and kept current by the
+/// `RoleService.GetMyRoles`, one entry per server id, and kept current by the
 /// event stream: any role event re-reads it.
 ///
 /// Per-channel permissions are not here — they ride on each channel

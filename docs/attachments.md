@@ -10,8 +10,7 @@ ciphertext, and the rules it enforces (size, allowed and blocked extensions) are
 | Piece | File | Role |
 |---|---|---|
 | `AttachmentCipher` / `RustAttachmentCipher` | `core/crypto/attachment_cipher.dart` | Encrypts and decrypts files in the Rust core's `raindrop/attachment/v1` format, through the bridge (`bridge/api/attachment.dart`). Paths cross the bridge, not bytes. `attachmentCiphertextLength` is the same length formula in Dart |
-| `AttachmentsApi`, `AttachmentPolicy` | `core/network/attachments_api.dart` | `/api/attachments/*`: policy, create, chunk, status, complete, cancel, download. `AttachmentPolicy.refusalFor` applies the server's rules before anything is sent. Also `extensionOf`, `formatBytes` |
-| `ApiClient.putBytes` / `downloadTo` | `core/network/api_client.dart` | A raw `application/octet-stream` PUT, and a streamed download into a file with `Range` resume. Errors are the usual `ApiException` |
+| `AttachmentsApi`, `AttachmentPolicy` | `core/network/attachments_api.dart` | `raindrop.v1.AttachmentService`: policy, create, `upload` (a client stream: a header, then frames of at most the server's `frame_bytes`, 256 KiB), status, complete, cancel, and `download` (a server stream from an offset, appended into a file to resume). `AttachmentPolicy.refusalFor` applies the server's rules before anything is sent. Also `extensionOf`, `formatBytes` |
 | `AttachmentDescriptor`, `ThumbnailDescriptor` | `core/crypto/message_payload.dart` | What a `files` message says about each file, inside the encryption |
 | `AttachmentCache` | `core/storage/attachment_cache.dart` | Where ciphertext, plaintext and uploads live on disk, and `safeFileName` |
 | `attachmentPolicyProvider`, `AttachmentTransfers` | `features/chat/controllers/attachment_transfers.dart` | The server's rules (null when it takes no files), plus uploading and opening files on one server |
@@ -31,9 +30,11 @@ ciphertext, and the rules it enforces (size, allowed and blocked extensions) are
    encrypts in this server (`channelGroupsProvider`). A file's key travels inside the encrypted
    message, so there is no sending a file without end-to-end encryption.
 3. **Upload** (`AttachmentTransfers.upload`, per file): encrypt into `raindrop-upload/` under a fresh
-   key; `uploads/create` with the extension and ciphertext length; send chunks of the server's
-   `chunkSize`. After a dropped connection or `upload_offset_mismatch`, ask `uploads/status` and carry on
-   from there (three tries). Then `uploads/complete` with the ciphertext's SHA-256.
+   key; `CreateUpload` with the extension and ciphertext length; then **one `Upload` stream** of the
+   encrypted file from the server's `received_size` (`File.openRead(offset)`), split into frames of the
+   server's `frame_bytes`, with progress counted as frames go out. A stream that breaks keeps what the
+   server committed: after a dropped connection or `upload_offset_mismatch`, ask `GetUploadStatus` and
+   stream the rest from there (three tries). Then `CompleteUpload` with the ciphertext's SHA-256.
 4. **Thumbnail.** For an image (up to 64 MB, decoded with `image` in an isolate) or a video (a frame
    grabbed headless with media_kit), a JPEG of at most 320 px, uploaded as its own `thumbnail`
    attachment. The descriptor also records the pixel size (so the timeline reserves the space) and, for
@@ -79,8 +80,8 @@ such as a PDF page or a code snippet. The owner's `preview.extensions` still dec
 
 ### Opening and saving
 
-`AttachmentTransfers.open` downloads the ciphertext into the cache (resuming a partial copy with
-`Range`), then decrypts it into the temporary plaintext folder. `decryptFile` refuses a ciphertext whose
+`AttachmentTransfers.open` downloads the ciphertext into the cache (a `Download` stream from the size of
+any partial copy, appended to it), then decrypts it into the temporary plaintext folder. `decryptFile` refuses a ciphertext whose
 hash is not the one in the message, and one that fails its tags, and then the cached copy is thrown
 away. Each file is fetched and decrypted once per run. Thumbnails are decrypted in memory
 (`decryptBytes`).
@@ -123,7 +124,7 @@ that those are the files stored with the message.
 - `test/core/crypto/attachment_cipher_test.dart` (real Rust library): a file round-trips through the
   bridge; a substituted or tampered file is refused and leaves nothing behind.
 - `test/integration/e2ee_attachments_test.dart` (live server): uploads a file holding a known secret
-  in chunks; checks the server's refusals (blocked type, too large, impossible size, early download,
+  in two streams, the second resuming where the server says the first got to; checks the server's refusals (blocked type, too large, impossible size, early download,
   resending); has a second member decrypt it byte for byte and resume a download; runs a v2 report (and
   a forged one); confirms deleting the message takes the file. Grep the server's database **and
   attachments folder** for the secret afterwards: it must appear in neither.

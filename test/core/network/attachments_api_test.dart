@@ -1,22 +1,39 @@
+import 'package:fixnum/fixnum.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:raindrop_client/core/crypto/attachment_cipher.dart';
 import 'package:raindrop_client/core/network/attachments_api.dart';
+import 'package:raindrop_client/core/network/grpc/protocol.dart' as pb;
 import 'package:raindrop_client/core/storage/attachment_cache.dart';
 
 void main() {
   const mb = 1024 * 1024;
 
-  final policy = AttachmentPolicy.fromJson({
-    'enabled': true,
-    'maximumFileBytes': 25 * mb,
-    'maximumFileBytesByExtension': {'mp4': 500 * mb},
-    'allowedExtensions': null,
-    'blockedExtensions': ['exe', 'bat'],
-    'allowFilesWithoutExtension': false,
-    'maximumFilesPerMessage': 10,
-    'previewExtensions': ['png', 'mp4'],
-    'previewAutoLoadMaximumBytes': 10 * mb,
-    'uploadChunkBytes': 8 * mb,
+  final policy = AttachmentPolicy.fromProto(
+    pb.AttachmentPolicy(
+      enabled: true,
+      maximumFileBytes: Int64(25 * mb),
+      maximumFileBytesByExtension: {'mp4': Int64(500 * mb)}.entries,
+      blockedExtensions: ['exe', 'bat'],
+      allowFilesWithoutExtension: false,
+      maximumFilesPerMessage: 10,
+      previewExtensions: ['png', 'mp4'],
+      previewAutoLoadMaximumBytes: Int64(10 * mb),
+      uploadFrameBytes: 256 * 1024,
+    ),
+  );
+
+  test('an absent allow-list means any extension, an empty one none', () {
+    expect(policy.allowedExtensions, isNull);
+    expect(policy.uploadFrameBytes, 256 * 1024);
+    final none = AttachmentPolicy.fromProto(
+      pb.AttachmentPolicy(
+        enabled: true,
+        maximumFileBytes: Int64(mb),
+        allowedExtensions: pb.ExtensionList(),
+      ),
+    );
+    expect(none.allowedExtensions, isEmpty);
+    expect(none.refusalFor('a.png', 1), isNotNull);
   });
 
   test('a file is checked the way the server checks it', () {
@@ -36,11 +53,14 @@ void main() {
   });
 
   test('an allow-list accepts only what it names', () {
-    final strict = AttachmentPolicy.fromJson({
-      'enabled': true,
-      'maximumFileBytes': mb,
-      'allowedExtensions': ['png'],
-    });
+    final strict = AttachmentPolicy.fromProto(
+      pb.AttachmentPolicy(
+        enabled: true,
+        maximumFileBytes: Int64(mb),
+        allowFilesWithoutExtension: true,
+        allowedExtensions: pb.ExtensionList(extensions: ['png']),
+      ),
+    );
     expect(strict.refusalFor('a.png', 1), isNull);
     expect(strict.refusalFor('a.zip', 1), isNotNull);
   });

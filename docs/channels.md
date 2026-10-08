@@ -7,9 +7,9 @@ Feature folder: [`lib/features/channels/`](../lib/features/channels/). Server-si
 
 [`ChannelsController`](../lib/features/channels/controllers/channels_controller.dart)
 (`channelsProvider`, `AsyncNotifierProvider.family<..., List<Channel>, String>` keyed by `serverId`)
-fetches `GET /api/channels` once per server and then follows the [event stream](live-updates.md):
+fetches `ChannelService.ListChannels` once per server and then follows the [event stream](live-updates.md):
 `channel.created` and `channel.renamed` upsert the channel (the server sends each member the channel
-with *their own* `yourPermissions`, so it is exactly the row a re-read would give), `channel.deleted`
+with *their own* `your_permissions`, so it is exactly the row a re-read would give), `channel.deleted`
 removes it, and any `role.*` or `member.roles` event re-reads the list — a role change can change which
 channels this account sees and what it may do in them, and working that out here would mean
 re-deriving the server's resolver. The list is re-read after every reconnect; it has no fallback poll,
@@ -22,7 +22,7 @@ since it changes rarely and never polled before. It also re-fetches whenever the
 The same controller has the three writes — `create(name)`, `rename(id, name)` and `delete(id)` — calling
 `ChannelsApi.create/rename/delete`. Each folds the server's answer into the list itself and throws the
 server's `ApiException` for the caller to show. The `channel.*` event the server then pushes back to the
-member who caused the change merges on id (`_applyTo`), so the REST response and the echo cannot leave a
+member who caused the change merges on id (`_applyTo`), so the call's answer and the echo cannot leave a
 channel showing twice. There is nothing to do for a deleted channel that was selected: `resolveChannel`
 already falls back to another one (see [Selection](#selection)).
 
@@ -31,10 +31,10 @@ What a member may do arrives two ways, and the difference matters:
 - **Per channel**, in `yourPermissions`: `rename_channels`, `delete_channels` and `manage_messages`. A
   channel's *creator* holds the first three implicitly, and the server reports it that way.
 - **Server-wide**: `create_channels` is not about any channel — and a server with no channels has nowhere
-  to report it — so it is read once from `GET /api/roles/me` by
+  to report it — so it is read once from `RoleService.GetMyRoles` by
   [`serverPermissionsProvider`](../lib/features/servers/controllers/server_permissions.dart)
-  (`RolesApi`), which re-reads on `role.*` / `member.roles` events. Until it is known (or against a server
-  without the endpoint) it reads as "may not", so the button stays hidden rather than being offered and
+  (`RolesApi`), which re-reads on `role.*` / `member.roles` events. Until it is known it reads as
+  "may not", so the button stays hidden rather than being offered and
   refused.
 
 ## `Channel` — the model the UI reads

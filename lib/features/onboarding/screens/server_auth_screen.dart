@@ -15,7 +15,7 @@ typedef ConnectHandoff = ({
 });
 
 /// Step 2 of adding a server: register, log in, or rejoin, depending on
-/// what `/api/users/status` said about this brand-new GUID. Almost every
+/// what `UserService.GetUserStatus` said about this brand-new GUID. Almost every
 /// real connection lands on `unregistered` — the other two branches exist
 /// for the rare case where a client re-imports a GUID it already used here.
 ///

@@ -21,7 +21,7 @@ see [Architecture overview](architecture-overview.md)), so nothing in the route 
 redirect guard.
 
 `/connect/auth` carries its handoff via `extra` rather than encoding it into the URL, because
-`ConnectServerFlow` holds a **live `ApiClient`** (an open TLS connection with in-memory pinning state)
+`ConnectServerFlow` holds a **live `RaindropChannel`** (an open gRPC connection with in-memory pinning state)
 that can't meaningfully round-trip through a query string — it has to be passed as a live Dart object.
 The same reasoning applies to `/settings/theme-editor`'s `extra`, which carries live
 `AppThemeDefinition` objects rather than, say, a theme id that would need a second lookup.

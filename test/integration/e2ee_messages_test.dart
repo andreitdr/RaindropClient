@@ -10,11 +10,12 @@ import 'package:raindrop_client/core/crypto/bridge/frb_generated.dart';
 import 'package:raindrop_client/core/crypto/crypto_engine.dart';
 import 'package:raindrop_client/core/crypto/message_payload.dart';
 import 'package:raindrop_client/core/crypto/mls_crypto_engine.dart';
-import 'package:raindrop_client/core/network/api_client.dart';
+import 'package:raindrop_client/core/network/raindrop_channel.dart';
 import 'package:raindrop_client/core/network/api_exception.dart';
 import 'package:raindrop_client/core/network/channels_api.dart';
 import 'package:raindrop_client/core/network/e2ee_api.dart';
 import 'package:raindrop_client/core/network/event_stream.dart';
+import 'package:raindrop_client/core/network/grpc/protocol.dart' as pb;
 import 'package:raindrop_client/core/network/text_messages_api.dart';
 import 'package:raindrop_client/core/network/users_api.dart';
 import 'package:raindrop_client/features/security/controllers/channel_groups.dart';
@@ -58,7 +59,7 @@ void main() {
       externalLibrary: ExternalLibrary.open(File(_library).absolute.path),
     );
     final parts = _server!.split(':');
-    final client = ApiClient.forServer(
+    final client = RaindropChannel.forServer(
       host: parts[0],
       port: int.parse(parts[1]),
     );
@@ -206,7 +207,7 @@ void main() {
       // Revoking Dave's device: members are told to reconcile, and one of them
       // removes him, which rotates the keys past him.
       alice.groups.onEvent(
-        ServerEvent(E2eeEventTypes.groupReconcile, {'channelId': channelId}),
+        ServerEvent(pb.ServerEvent(groupReconcile: pb.GroupReconcileEvent(channelId: channelId))),
       );
       await Future<void>.delayed(const Duration(seconds: 3));
       await bob.groups.catchUp(channelId);

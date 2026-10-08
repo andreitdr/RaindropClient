@@ -1,13 +1,14 @@
-/// Dart mirrors of the C# records in `RaindropServer/Channels/
-/// ChannelContracts.cs`. JSON is camelCased by ASP.NET's default serializer,
-/// so `ChannelId` on the wire is `channelId` here.
+/// The app's view of `raindrop.v1.ChannelService` (RaindropProto's
+/// `channels.proto`).
 ///
 /// What lives inside a channel is per-type and stays out of this file, the
 /// same way the server splits `Channels/` from `Channels/Text/` — see
 /// `text_messages_api.dart`.
 library;
 
-import 'api_client.dart';
+import 'grpc/protocol.dart' as pb;
+import 'grpc/wire.dart';
+import 'raindrop_channel.dart';
 
 /// The wire names for a channel type. Anything else is a type this client is
 /// too old to render, which is why [ChannelSummary.type] stays a string.
@@ -24,7 +25,7 @@ abstract final class ChannelTypeNames {
 ///
 /// A server running a newer build may send a name that is not here, which is
 /// why [ChannelSummary.yourPermissions] stays a list of strings — the extra
-/// name is simply one this client does not act on. `GET /api/roles/permissions`
+/// name is simply one this client does not act on. `RoleService.ListPermissions`
 /// is where the full catalogue lives if a screen ever needs to render it.
 abstract final class ChannelPermissionNames {
   static const viewChannel = 'view_channel';
@@ -62,15 +63,13 @@ class ChannelSummary {
 
   bool can(String permission) => yourPermissions.contains(permission);
 
-  factory ChannelSummary.fromJson(Map<String, dynamic> j) => ChannelSummary(
-    channelId: j['channelId'] as String,
-    type: j['type'] as String,
-    name: j['name'] as String,
-    createdBy: j['createdBy'] as String,
-    createdAtUtc: DateTime.parse(j['createdAtUtc'] as String),
-    yourPermissions: List<String>.from(
-      j['yourPermissions'] as List? ?? const [],
-    ),
+  factory ChannelSummary.fromProto(pb.Channel m) => ChannelSummary(
+    channelId: m.channelId,
+    type: m.type,
+    name: m.name,
+    createdBy: m.createdBy,
+    createdAtUtc: Wire.time(m.createdAt),
+    yourPermissions: List.unmodifiable(m.yourPermissions),
   );
 }
 
@@ -83,28 +82,27 @@ class ChannelDeleted {
   final String channelId;
   final String message;
 
-  factory ChannelDeleted.fromJson(Map<String, dynamic> j) => ChannelDeleted(
-    channelId: j['channelId'] as String,
-    message: j['message'] as String? ?? '',
-  );
+  factory ChannelDeleted.fromProto(pb.DeleteChannelResponse m) =>
+      ChannelDeleted(channelId: m.channelId, message: m.message);
 }
 
-/// Typed wrapper over the `/api/channels` surface. One instance per
-/// connected server, built from that server's [ApiClient].
+/// `raindrop.v1.ChannelService`. One instance per connected server, built on
+/// that server's [RaindropChannel].
 class ChannelsApi {
-  ChannelsApi(this._client);
+  ChannelsApi(this._channel)
+    : _channels = pb.ChannelServiceClient(_channel.channel);
 
-  final ApiClient _client;
+  final RaindropChannel _channel;
+  final pb.ChannelServiceClient _channels;
 
   /// Every channel on the server the caller may see, of every type, ordered
   /// by name — what the channel sidebar draws from.
   Future<List<ChannelSummary>> list(String token) async {
-    final body = await _client.get('/api/channels', token: token);
-    final channels = body['channels'] as List? ?? const [];
-    return [
-      for (final c in channels)
-        ChannelSummary.fromJson(Map<String, dynamic>.from(c as Map)),
-    ];
+    final response = await _channel.call(
+      (o) => _channels.listChannels(pb.ListChannelsRequest(), options: o),
+      token: token,
+    );
+    return [for (final c in response.channels) ChannelSummary.fromProto(c)];
   }
 
   /// Creates a channel and returns it as the creator sees it. Needs the
@@ -114,12 +112,14 @@ class ChannelsApi {
     String token, {
     required String name,
     String type = ChannelTypeNames.text,
-  }) async => ChannelSummary.fromJson(
-    await _client.post(
-      '/api/channels/create',
-      body: {'type': type, 'name': name},
+  }) async => ChannelSummary.fromProto(
+    (await _channel.call(
+      (o) => _channels.createChannel(
+        pb.CreateChannelRequest(type: type, name: name),
+        options: o,
+      ),
       token: token,
-    ),
+    )).channel,
   );
 
   /// Renames a channel. Needs `rename_channels` in it, which the channel's
@@ -128,12 +128,14 @@ class ChannelsApi {
     String token, {
     required String channelId,
     required String name,
-  }) async => ChannelSummary.fromJson(
-    await _client.post(
-      '/api/channels/rename',
-      body: {'channelId': channelId, 'name': name},
+  }) async => ChannelSummary.fromProto(
+    (await _channel.call(
+      (o) => _channels.renameChannel(
+        pb.RenameChannelRequest(channelId: channelId, name: name),
+        options: o,
+      ),
       token: token,
-    ),
+    )).channel,
   );
 
   /// Deletes a channel and every message in it. Needs `delete_channels` in
@@ -141,10 +143,12 @@ class ChannelsApi {
   Future<ChannelDeleted> delete(
     String token, {
     required String channelId,
-  }) async => ChannelDeleted.fromJson(
-    await _client.post(
-      '/api/channels/delete',
-      body: {'channelId': channelId},
+  }) async => ChannelDeleted.fromProto(
+    await _channel.call(
+      (o) => _channels.deleteChannel(
+        pb.DeleteChannelRequest(channelId: channelId),
+        options: o,
+      ),
       token: token,
     ),
   );

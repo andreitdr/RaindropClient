@@ -1,13 +1,21 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:fixnum/fixnum.dart';
 import 'package:msgpack_dart/msgpack_dart.dart' as msgpack;
 
-/// What goes *inside* an end-to-end encrypted message: MessagePack, so it is
-/// compact and a newer client can add fields an older one ignores.
+import '../network/grpc/protocol.dart' as pb;
+
+/// What goes *inside* an end-to-end encrypted message — the plaintext of an
+/// MLS application message, which only the channel's members ever see.
 ///
-/// `{v: 1, t: type, b: body, c: clientMessageId, s: sentAt (ms), x: ext,
-/// a: attestation}`
+/// Version 2, what this build writes, is the byte `0x02` followed by a
+/// protobuf `raindrop.v1.MessagePayload` (RaindropProto's `payload.proto`), so
+/// a newer client can add fields an older one skips. Version 1 was MessagePack
+/// — `{v: 1, t: type, b: body, c: clientMessageId, s: sentAt (ms), x: {f:
+/// files}, a: attestation}` — whose first byte is always a map marker, never
+/// `0x02`; it is still read, so history from before the switch decrypts as it
+/// did.
 ///
 /// [attestation] is the sending device's Ed25519 signature over
 /// [attestationBytes]. Recipients do not need it (MLS already tells them who
@@ -19,21 +27,23 @@ import 'package:msgpack_dart/msgpack_dart.dart' as msgpack;
 /// understands and a placeholder for the rest. MLS pads the ciphertext to a
 /// multiple of 256 bytes, so the size of this says little about the text.
 ///
-/// A `files` message carries its caption in [body] and its files in [files]
-/// (`x.f`): each one's attachment id on the server, its own key, name, MIME
-/// type, size and ciphertext hash — see [AttachmentDescriptor]. Its
-/// attestation is the v2 one ([attestsFiles]), which also covers the files.
+/// A `files` message carries its caption in [body] and its files in [files]:
+/// each one's attachment id on the server, its own key, name, MIME type, size
+/// and ciphertext hash — see [AttachmentDescriptor]. Its attestation is the v2
+/// one ([attestsFiles]), which also covers the files. (The attestation's
+/// versions are its own, and have nothing to do with the encoding's.)
 class MessagePayload {
   const MessagePayload({
     required this.type,
     required this.body,
     required this.clientMessageId,
     required this.sentAt,
-    this.ext = const {},
+    this.files = const [],
     this.attestation,
   });
 
-  static const version = 1;
+  /// The version byte this build writes in front of the protobuf message.
+  static const version = 2;
 
   /// The [type] of a plain text message.
   static const textType = 'text';
@@ -52,18 +62,9 @@ class MessagePayload {
   /// timeline.
   final DateTime sentAt;
 
-  final Map<String, Object?> ext;
-
   /// The files a `files` message carries, in the order they are shown; empty
   /// for any other message, and for descriptors this build cannot read.
-  List<AttachmentDescriptor> get files {
-    final list = ext['f'];
-    if (list is! List) return const [];
-    return [
-      for (final item in list)
-        if (item is Map) ?AttachmentDescriptor.tryDecode(item),
-    ];
-  }
+  final List<AttachmentDescriptor> files;
 
   /// Whether the attestation is the v2 one, which also signs [files].
   bool get attestsFiles => type == filesType && files.isNotEmpty;
@@ -134,7 +135,7 @@ class MessagePayload {
     body: body,
     clientMessageId: clientMessageId,
     sentAt: sentAt,
-    ext: ext,
+    files: files,
     attestation: signature,
   );
 
@@ -156,27 +157,60 @@ class MessagePayload {
     body: caption,
     clientMessageId: clientMessageId,
     sentAt: DateTime.now().toUtc(),
-    ext: {
-      'f': [for (final file in files) file.encode()],
-    },
+    files: files,
   );
 
-  Uint8List encode() => msgpack.serialize({
-    'v': version,
-    't': type,
-    'b': body,
-    'c': clientMessageId,
-    's': sentAt.millisecondsSinceEpoch,
-    'x': ext,
-    'a': ?attestation,
-  });
+  /// The bytes to encrypt: [version], then the protobuf message.
+  Uint8List encode() {
+    final message = pb.MessagePayload(
+      type: type,
+      body: body,
+      clientMessageId: clientMessageId,
+      sentAtUnixMs: Int64(sentAt.millisecondsSinceEpoch),
+      attestation: attestation,
+      files: [for (final file in files) file.toProto()],
+    );
+    return Uint8List.fromList([version, ...message.writeToBuffer()]);
+  }
 
   /// Decodes a payload, or returns null for bytes that are not one — a newer
   /// version, or garbage — which the chat shows as a placeholder.
   static MessagePayload? tryDecode(Uint8List bytes) {
+    if (bytes.isEmpty) return null;
+    return bytes[0] == version ? _decodeV2(bytes) : _decodeV1(bytes);
+  }
+
+  static MessagePayload? _decodeV2(Uint8List bytes) {
+    final pb.MessagePayload message;
+    try {
+      message = pb.MessagePayload.fromBuffer(Uint8List.sublistView(bytes, 1));
+    } on Object {
+      return null;
+    }
+    return MessagePayload(
+      type: message.type,
+      body: message.body,
+      clientMessageId: message.clientMessageId,
+      sentAt: DateTime.fromMillisecondsSinceEpoch(
+        message.sentAtUnixMs.toInt(),
+        isUtc: true,
+      ),
+      files: [
+        for (final file in message.files)
+          ?AttachmentDescriptor.tryFromProto(file),
+      ],
+      attestation: message.hasAttestation()
+          ? Uint8List.fromList(message.attestation)
+          : null,
+    );
+  }
+
+  /// Version 1, MessagePack: read so older history still decrypts, never
+  /// written.
+  static MessagePayload? _decodeV1(Uint8List bytes) {
     try {
       final map = msgpack.deserialize(bytes);
-      if (map is! Map || map['v'] != version) return null;
+      if (map is! Map || map['v'] != 1) return null;
       final type = map['t'];
       final body = map['b'];
       final clientMessageId = map['c'];
@@ -188,19 +222,18 @@ class MessagePayload {
         return null;
       }
       final ext = map['x'];
+      final files = ext is Map ? ext['f'] : null;
       return MessagePayload(
         type: type,
         body: body,
         clientMessageId: clientMessageId,
         sentAt: DateTime.fromMillisecondsSinceEpoch(sentAt, isUtc: true),
-        ext: ext is Map
-            ? {for (final e in ext.entries) '${e.key}': e.value}
-            : const {},
-        attestation: switch (map['a']) {
-          final Uint8List a => a,
-          final List<int> a => Uint8List.fromList(a),
-          _ => null,
-        },
+        files: [
+          if (files is List)
+            for (final item in files)
+              if (item is Map) ?AttachmentDescriptor.tryDecode(item),
+        ],
+        attestation: _bytes(map['a']),
       );
     } on Object {
       return null;
@@ -255,20 +288,43 @@ class AttachmentDescriptor {
   /// For audio or video, how long it plays.
   final Duration? duration;
 
-  Map<String, Object?> encode() => {
-    'i': attachmentId,
-    'k': key,
-    'n': name,
-    'm': mimeType,
-    's': size,
-    'h': ciphertextSha256,
-    't': ?thumbnail?.encode(),
-    'pw': ?width,
-    'ph': ?height,
-    'd': ?duration?.inMilliseconds,
-  };
+  pb.AttachmentDescriptor toProto() => pb.AttachmentDescriptor(
+    attachmentId: attachmentId,
+    key: key,
+    name: name,
+    mimeType: mimeType,
+    size: Int64(size),
+    ciphertextSha256: ciphertextSha256,
+    thumbnail: thumbnail?.toProto(),
+    width: width,
+    height: height,
+    durationMs: duration == null ? null : Int64(duration!.inMilliseconds),
+  );
 
-  /// Decodes one descriptor, or returns null for one this build cannot read.
+  /// Reads one descriptor, or returns null for one this build cannot use —
+  /// a key or hash of the wrong length is never guessed at.
+  static AttachmentDescriptor? tryFromProto(pb.AttachmentDescriptor m) {
+    if (m.key.length != 32 || m.ciphertextSha256.length != 32) return null;
+    return AttachmentDescriptor(
+      attachmentId: m.attachmentId,
+      key: Uint8List.fromList(m.key),
+      name: m.name,
+      mimeType: m.mimeType,
+      size: m.size.toInt(),
+      ciphertextSha256: Uint8List.fromList(m.ciphertextSha256),
+      thumbnail: m.hasThumbnail()
+          ? ThumbnailDescriptor.tryFromProto(m.thumbnail)
+          : null,
+      width: m.hasWidth() ? m.width : null,
+      height: m.hasHeight() ? m.height : null,
+      duration: m.hasDurationMs()
+          ? Duration(milliseconds: m.durationMs.toInt())
+          : null,
+    );
+  }
+
+  /// Decodes one version 1 (MessagePack) descriptor, or returns null for one
+  /// this build cannot read.
   static AttachmentDescriptor? tryDecode(Map<Object?, Object?> map) {
     final id = map['i'];
     final key = _bytes(map['k']);
@@ -318,12 +374,22 @@ class ThumbnailDescriptor {
   final Uint8List key;
   final Uint8List ciphertextSha256;
 
-  Map<String, Object?> encode() => {
-    'i': attachmentId,
-    'k': key,
-    'h': ciphertextSha256,
-  };
+  pb.ThumbnailDescriptor toProto() => pb.ThumbnailDescriptor(
+    attachmentId: attachmentId,
+    key: key,
+    ciphertextSha256: ciphertextSha256,
+  );
 
+  static ThumbnailDescriptor? tryFromProto(pb.ThumbnailDescriptor m) {
+    if (m.key.length != 32 || m.ciphertextSha256.length != 32) return null;
+    return ThumbnailDescriptor(
+      attachmentId: m.attachmentId,
+      key: Uint8List.fromList(m.key),
+      ciphertextSha256: Uint8List.fromList(m.ciphertextSha256),
+    );
+  }
+
+  /// Decodes a version 1 (MessagePack) thumbnail.
   static ThumbnailDescriptor? tryDecode(Map<Object?, Object?> map) {
     final id = map['i'];
     final key = _bytes(map['k']);

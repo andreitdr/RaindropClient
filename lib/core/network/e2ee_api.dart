@@ -1,16 +1,17 @@
-/// Dart mirror of the C# records in `RaindropServer/E2ee/Contracts.cs`: the
-/// server side of end-to-end encryption identities. Everything here is public
-/// keys and opaque blobs; the private keys never leave `core/crypto/`.
-///
-/// Byte fields travel as base64 in JSON.
+/// The app's view of `raindrop.v1.DeviceService` and `DeliveryService`
+/// (RaindropProto's `devices.proto` and `delivery.proto`): the server side of
+/// end-to-end encryption. Everything here is public keys and opaque blobs —
+/// protobuf `bytes` — and the private keys never leave `core/crypto/`.
 library;
 
-import 'dart:convert';
 import 'dart:typed_data';
 
-import 'api_client.dart';
+import 'grpc/protocol.dart' as pb;
+import 'grpc/wire.dart';
+import 'raindrop_channel.dart';
 
-/// Wire names of the events this surface publishes.
+/// The names of the events this surface publishes, as `ServerEvent.type`
+/// reports them.
 abstract final class E2eeEventTypes {
   static const deviceAdded = 'e2ee.device.added';
   static const deviceRevoked = 'e2ee.device.revoked';
@@ -49,12 +50,10 @@ class DeviceRef {
   final String userId;
   final String deviceId;
 
-  Map<String, dynamic> toJson() => {'userId': userId, 'deviceId': deviceId};
+  pb.DeviceRef toProto() => pb.DeviceRef(userId: userId, deviceId: deviceId);
 
-  factory DeviceRef.fromJson(Map<String, dynamic> j) => DeviceRef(
-    userId: j['userId'] as String,
-    deviceId: j['deviceId'] as String,
-  );
+  factory DeviceRef.fromProto(pb.DeviceRef m) =>
+      DeviceRef(userId: m.userId, deviceId: m.deviceId);
 
   @override
   bool operator ==(Object other) =>
@@ -81,10 +80,10 @@ class GroupState {
   final Uint8List? groupInfo;
   final int groupInfoEpoch;
 
-  factory GroupState.fromJson(Map<String, dynamic> j) => GroupState(
-    epoch: (j['epoch'] as num).toInt(),
-    groupInfo: _bytes(j['groupInfo']),
-    groupInfoEpoch: (j['groupInfoEpoch'] as num).toInt(),
+  factory GroupState.fromProto(pb.GroupState m) => GroupState(
+    epoch: m.epoch.toInt(),
+    groupInfo: Wire.optionalBytes(m.hasGroupInfo(), m.groupInfo),
+    groupInfoEpoch: m.groupInfoEpoch.toInt(),
   );
 }
 
@@ -133,10 +132,10 @@ class DeviceSummary {
   final Uint8List certificate;
   final DateTime createdAtUtc;
 
-  factory DeviceSummary.fromJson(Map<String, dynamic> j) => DeviceSummary(
-    deviceId: j['deviceId'] as String,
-    certificate: base64.decode(j['certificate'] as String),
-    createdAtUtc: DateTime.parse(j['createdAtUtc'] as String).toUtc(),
+  factory DeviceSummary.fromProto(pb.Device m) => DeviceSummary(
+    deviceId: m.deviceId,
+    certificate: Wire.bytes(m.certificate),
+    createdAtUtc: Wire.time(m.createdAt),
   );
 }
 
@@ -153,21 +152,23 @@ class UserDevices {
   final Uint8List? identityKey;
   final List<DeviceSummary> devices;
 
-  factory UserDevices.fromJson(Map<String, dynamic> j) => UserDevices(
-    userId: j['userId'] as String,
-    identityKey: _bytes(j['identityKey']),
-    devices: [
-      for (final d in j['devices'] as List? ?? const [])
-        DeviceSummary.fromJson(Map<String, dynamic>.from(d as Map)),
-    ],
+  factory UserDevices.fromProto(pb.UserDevices m) => UserDevices(
+    userId: m.userId,
+    identityKey: Wire.optionalBytes(m.hasIdentityKey(), m.identityKey),
+    devices: [for (final d in m.devices) DeviceSummary.fromProto(d)],
   );
 }
 
-/// Typed wrapper over `/api/e2ee/*`. One instance per connected server.
+/// `raindrop.v1.DeviceService` and `DeliveryService`. One instance per
+/// connected server.
 class E2eeApi {
-  E2eeApi(this._client);
+  E2eeApi(this._channel)
+    : _devices = pb.DeviceServiceClient(_channel.channel),
+      _delivery = pb.DeliveryServiceClient(_channel.channel);
 
-  final ApiClient _client;
+  final RaindropChannel _channel;
+  final pb.DeviceServiceClient _devices;
+  final pb.DeliveryServiceClient _delivery;
 
   // ── Devices ──
 
@@ -177,74 +178,88 @@ class E2eeApi {
   Future<DeviceSummary> registerDevice(
     String token,
     Uint8List certificate,
-  ) async => DeviceSummary.fromJson(
-    await _client.post(
-      '/api/e2ee/devices/register',
-      body: {'certificate': base64.encode(certificate)},
+  ) async => DeviceSummary.fromProto(
+    (await _channel.call(
+      (o) => _devices.registerDevice(
+        pb.RegisterDeviceRequest(certificate: certificate),
+        options: o,
+      ),
       token: token,
-    ),
+    )).device,
   );
 
   Future<List<UserDevices>> listDevices(
     String token,
     List<String> userIds,
   ) async {
-    final body = await _client.post(
-      '/api/e2ee/devices/list',
-      body: {'userIds': userIds},
+    final response = await _channel.call(
+      (o) => _devices.listDevices(
+        pb.ListDevicesRequest(userIds: userIds),
+        options: o,
+      ),
       token: token,
     );
-    return [
-      for (final u in body['users'] as List? ?? const [])
-        UserDevices.fromJson(Map<String, dynamic>.from(u as Map)),
-    ];
+    return [for (final u in response.users) UserDevices.fromProto(u)];
   }
 
   /// Revokes one of this user's devices. Needs a bound session unless it is
   /// this session's own device.
-  Future<void> revokeDevice(String token, String deviceId) => _client.post(
-    '/api/e2ee/devices/revoke',
-    body: {'deviceId': deviceId},
+  Future<void> revokeDevice(String token, String deviceId) => _channel.call(
+    (o) => _devices.revokeDevice(
+      pb.RevokeDeviceRequest(deviceId: deviceId),
+      options: o,
+    ),
     token: token,
   );
 
   /// Forgets this user's identity key and backup and revokes every device.
-  Future<void> resetIdentity(String token, String password) => _client.post(
-    '/api/e2ee/identity/reset',
-    body: {'password': password},
+  Future<void> resetIdentity(String token, String password) => _channel.call(
+    (o) => _devices.resetIdentity(
+      pb.ResetIdentityRequest(password: password),
+      options: o,
+    ),
     token: token,
   );
 
   // ── Session binding ──
 
-  Future<Uint8List> sessionChallenge(String token) async {
-    final body = await _client.post(
-      '/api/e2ee/session/challenge',
+  Future<Uint8List> sessionChallenge(String token) async => Wire.bytes(
+    (await _channel.call(
+      (o) => _devices.createSessionChallenge(
+        pb.CreateSessionChallengeRequest(),
+        options: o,
+      ),
       token: token,
-    );
-    return base64.decode(body['nonce'] as String);
-  }
+    )).nonce,
+  );
 
   Future<void> bindSession(
     String token, {
     required String deviceId,
     required Uint8List signature,
-  }) => _client.post(
-    '/api/e2ee/session/bind',
-    body: {'deviceId': deviceId, 'signature': base64.encode(signature)},
+  }) => _channel.call(
+    (o) => _devices.bindSession(
+      pb.BindSessionRequest(deviceId: deviceId, signature: signature),
+      options: o,
+    ),
     token: token,
   );
 
   // ── Key backup ──
 
   /// The sealed backup, or null when the user has none.
-  Future<Uint8List?> getBackup(String token) async =>
-      _bytes((await _client.get('/api/e2ee/backup', token: token))['blob']);
+  Future<Uint8List?> getBackup(String token) async {
+    final response = await _channel.call(
+      (o) => _devices.getKeyBackup(pb.GetKeyBackupRequest(), options: o),
+      token: token,
+    );
+    return Wire.optionalBytes(response.hasBlob(), response.blob);
+  }
 
   /// Replaces the sealed backup. Needs a bound session.
-  Future<void> putBackup(String token, Uint8List blob) => _client.post(
-    '/api/e2ee/backup/put',
-    body: {'blob': base64.encode(blob)},
+  Future<void> putBackup(String token, Uint8List blob) => _channel.call(
+    (o) =>
+        _devices.putKeyBackup(pb.PutKeyBackupRequest(blob: blob), options: o),
     token: token,
   );
 
@@ -254,22 +269,26 @@ class E2eeApi {
     String token,
     String channelId,
     Uint8List groupInfo,
-  ) async => GroupState.fromJson(
-    await _client.post(
-      '/api/e2ee/groups/create',
-      body: {'channelId': channelId, 'groupInfo': base64.encode(groupInfo)},
+  ) async => GroupState.fromProto(
+    (await _channel.call(
+      (o) => _delivery.createGroup(
+        pb.CreateGroupRequest(channelId: channelId, groupInfo: groupInfo),
+        options: o,
+      ),
       token: token,
-    ),
+    )).state,
   );
 
   /// Throws `group_not_found` while the channel has no group yet.
   Future<GroupState> groupState(String token, String channelId) async =>
-      GroupState.fromJson(
-        await _client.post(
-          '/api/e2ee/groups/state',
-          body: {'channelId': channelId},
+      GroupState.fromProto(
+        (await _channel.call(
+          (o) => _delivery.getGroupState(
+            pb.GetGroupStateRequest(channelId: channelId),
+            options: o,
+          ),
           token: token,
-        ),
+        )).state,
       );
 
   /// Submits a commit made in the group's current epoch. Returns the new
@@ -280,30 +299,31 @@ class E2eeApi {
     Uint8List commit, {
     Uint8List? welcome,
     List<DeviceRef> welcomeRecipients = const [],
-  }) async {
-    final body = await _client.post(
-      '/api/e2ee/groups/commit',
-      body: {
-        'channelId': channelId,
-        'commit': base64.encode(commit),
-        'welcome': ?(welcome == null ? null : base64.encode(welcome)),
-        'welcomeRecipients': [for (final r in welcomeRecipients) r.toJson()],
-      },
-      token: token,
-    );
-    return (body['epoch'] as num).toInt();
-  }
+  }) async => (await _channel.call(
+    (o) => _delivery.submitCommit(
+      pb.SubmitCommitRequest(
+        channelId: channelId,
+        commit: commit,
+        welcome: welcome,
+        welcomeRecipients: [for (final r in welcomeRecipients) r.toProto()],
+      ),
+      options: o,
+    ),
+    token: token,
+  )).epoch.toInt();
 
   Future<GroupState> putGroupInfo(
     String token,
     String channelId,
     Uint8List groupInfo,
-  ) async => GroupState.fromJson(
-    await _client.post(
-      '/api/e2ee/groups/info',
-      body: {'channelId': channelId, 'groupInfo': base64.encode(groupInfo)},
+  ) async => GroupState.fromProto(
+    (await _channel.call(
+      (o) => _delivery.putGroupInfo(
+        pb.PutGroupInfoRequest(channelId: channelId, groupInfo: groupInfo),
+        options: o,
+      ),
       token: token,
-    ),
+    )).state,
   );
 
   Future<GroupSync> syncGroup(
@@ -311,35 +331,36 @@ class E2eeApi {
     String channelId,
     int fromEpoch,
   ) async {
-    final body = await _client.post(
-      '/api/e2ee/groups/sync',
-      body: {'channelId': channelId, 'fromEpoch': fromEpoch},
+    final response = await _channel.call(
+      (o) => _delivery.syncGroup(
+        pb.SyncGroupRequest(
+          channelId: channelId,
+          fromEpoch: Wire.int64(fromEpoch),
+        ),
+        options: o,
+      ),
       token: token,
     );
     return GroupSync(
-      epoch: (body['epoch'] as num).toInt(),
+      epoch: response.epoch.toInt(),
       commits: [
-        for (final c in body['commits'] as List? ?? const [])
-          (
-            epoch: ((c as Map)['epoch'] as num).toInt(),
-            message: base64.decode(c['message'] as String),
-          ),
+        for (final c in response.commits)
+          (epoch: c.epoch.toInt(), message: Wire.bytes(c.message)),
       ],
-      resyncRequired: body['resyncRequired'] as bool? ?? false,
+      resyncRequired: response.resyncRequired,
     );
   }
 
   /// Every device that should be in the channel's group right now.
   Future<List<DeviceRef>> roster(String token, String channelId) async {
-    final body = await _client.post(
-      '/api/e2ee/groups/roster',
-      body: {'channelId': channelId},
+    final response = await _channel.call(
+      (o) => _delivery.getGroupRoster(
+        pb.GetGroupRosterRequest(channelId: channelId),
+        options: o,
+      ),
       token: token,
     );
-    return [
-      for (final d in body['devices'] as List? ?? const [])
-        DeviceRef.fromJson(Map<String, dynamic>.from(d as Map)),
-    ];
+    return [for (final d in response.devices) DeviceRef.fromProto(d)];
   }
 
   // ── Key packages ──
@@ -350,25 +371,24 @@ class E2eeApi {
     String token,
     List<Uint8List> keyPackages, {
     Uint8List? lastResort,
-  }) async {
-    final body = await _client.post(
-      '/api/e2ee/keypackages/upload',
-      body: {
-        'keyPackages': [for (final k in keyPackages) base64.encode(k)],
-        'lastResort': ?(lastResort == null ? null : base64.encode(lastResort)),
-      },
-      token: token,
-    );
-    return (body['oneTime'] as num).toInt();
-  }
+  }) async => (await _channel.call(
+    (o) => _delivery.uploadKeyPackages(
+      pb.UploadKeyPackagesRequest(
+        keyPackages: keyPackages,
+        lastResort: lastResort,
+      ),
+      options: o,
+    ),
+    token: token,
+  )).oneTime;
 
-  Future<int> keyPackageCount(String token) async =>
-      ((await _client.get(
-                '/api/e2ee/keypackages/count',
-                token: token,
-              ))['oneTime']
-              as num)
-          .toInt();
+  Future<int> keyPackageCount(String token) async => (await _channel.call(
+    (o) => _delivery.getKeyPackageCount(
+      pb.GetKeyPackageCountRequest(),
+      options: o,
+    ),
+    token: token,
+  )).oneTime;
 
   /// One key package per device that has one, for adding them to the
   /// channel's group.
@@ -377,21 +397,20 @@ class E2eeApi {
     String channelId,
     List<DeviceRef> devices,
   ) async {
-    final body = await _client.post(
-      '/api/e2ee/keypackages/claim',
-      body: {
-        'channelId': channelId,
-        'devices': [for (final d in devices) d.toJson()],
-      },
+    final response = await _channel.call(
+      (o) => _delivery.claimKeyPackages(
+        pb.ClaimKeyPackagesRequest(
+          channelId: channelId,
+          devices: [for (final d in devices) d.toProto()],
+        ),
+        options: o,
+      ),
       token: token,
     );
     return {
-      for (final k in body['keyPackages'] as List? ?? const [])
-        DeviceRef(
-          userId: (k as Map)['userId'] as String,
-          deviceId: k['deviceId'] as String,
-        ): base64.decode(
-          k['keyPackage'] as String,
+      for (final k in response.keyPackages)
+        DeviceRef(userId: k.userId, deviceId: k.deviceId): Wire.bytes(
+          k.keyPackage,
         ),
     };
   }
@@ -399,66 +418,72 @@ class E2eeApi {
   // ── Welcomes ──
 
   Future<List<PendingWelcome>> welcomes(String token) async {
-    final body = await _client.get('/api/e2ee/welcomes', token: token);
+    final response = await _channel.call(
+      (o) => _delivery.listWelcomes(pb.ListWelcomesRequest(), options: o),
+      token: token,
+    );
     return [
-      for (final w in body['welcomes'] as List? ?? const [])
+      for (final w in response.welcomes)
         PendingWelcome(
-          welcomeId: (w as Map)['welcomeId'] as String,
-          channelId: w['channelId'] as String,
-          epoch: (w['epoch'] as num).toInt(),
-          welcome: base64.decode(w['welcome'] as String),
+          welcomeId: w.welcomeId,
+          channelId: w.channelId,
+          epoch: w.epoch.toInt(),
+          welcome: Wire.bytes(w.welcome),
         ),
     ];
   }
 
   Future<void> ackWelcomes(String token, List<String> welcomeIds) =>
-      _client.post(
-        '/api/e2ee/welcomes/ack',
-        body: {'welcomeIds': welcomeIds},
+      _channel.call(
+        (o) => _delivery.ackWelcomes(
+          pb.AckWelcomesRequest(welcomeIds: welcomeIds),
+          options: o,
+        ),
         token: token,
       );
 
   // ── Device linking ──
 
   /// New device: opens a link. Returns the link id for the link code.
-  Future<String> startLink(String token, Uint8List offer) async {
-    final body = await _client.post(
-      '/api/e2ee/device-link/start',
-      body: {'offer': base64.encode(offer)},
-      token: token,
-    );
-    return body['linkId'] as String;
-  }
+  Future<String> startLink(String token, Uint8List offer) async =>
+      (await _channel.call(
+        (o) => _devices.startDeviceLink(
+          pb.StartDeviceLinkRequest(offer: offer),
+          options: o,
+        ),
+        token: token,
+      )).linkId;
 
   /// Existing device: the new device's offer, to check against the code.
-  Future<Uint8List> linkOffer(String token, String linkId) async =>
-      base64.decode(
-        (await _client.post(
-              '/api/e2ee/device-link/offer',
-              body: {'linkId': linkId},
-              token: token,
-            ))['offer']
-            as String,
-      );
+  Future<Uint8List> linkOffer(String token, String linkId) async => Wire.bytes(
+    (await _channel.call(
+      (o) => _devices.getDeviceLinkOffer(
+        pb.GetDeviceLinkOfferRequest(linkId: linkId),
+        options: o,
+      ),
+      token: token,
+    )).offer,
+  );
 
   Future<void> approveLink(String token, String linkId, Uint8List approval) =>
-      _client.post(
-        '/api/e2ee/device-link/approve',
-        body: {'linkId': linkId, 'approval': base64.encode(approval)},
+      _channel.call(
+        (o) => _devices.approveDeviceLink(
+          pb.ApproveDeviceLinkRequest(linkId: linkId, approval: approval),
+          options: o,
+        ),
         token: token,
       );
 
   /// New device: the approval once an existing device has given it, else
   /// null. Delivered once.
-  Future<Uint8List?> takeLinkApproval(String token, String linkId) async =>
-      _bytes(
-        (await _client.post(
-          '/api/e2ee/device-link/approval',
-          body: {'linkId': linkId},
-          token: token,
-        ))['approval'],
-      );
+  Future<Uint8List?> takeLinkApproval(String token, String linkId) async {
+    final response = await _channel.call(
+      (o) => _devices.takeDeviceLinkApproval(
+        pb.TakeDeviceLinkApprovalRequest(linkId: linkId),
+        options: o,
+      ),
+      token: token,
+    );
+    return Wire.optionalBytes(response.hasApproval(), response.approval);
+  }
 }
-
-Uint8List? _bytes(Object? value) =>
-    value is String ? base64.decode(value) : null;

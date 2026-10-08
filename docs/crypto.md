@@ -115,7 +115,8 @@ with it, because the server forgets session bindings when sessions end. The serv
 - **Forgetting a server** closes its engine (`cryptoEngineProvider`) before deleting the store, because
   Windows will not delete an open file. `MlsCryptoEngine.dispose` is idempotent for that reason.
 
-`E2eeApi` (`core/network/e2ee_api.dart`) is the typed wrapper over `/api/e2ee/*`, reached as
+`E2eeApi` (`core/network/e2ee_api.dart`) is the typed wrapper over `raindrop.v1.DeviceService` and
+`DeliveryService` (every key, certificate and MLS message as protobuf `bytes`), reached as
 `ServerSession.e2eeApi`. Besides identities it covers the delivery service:
 - groups: `createGroup`, `groupState`, `submitCommit` (throws `epoch_conflict` when another commit won),
   `putGroupInfo`, `syncGroup`, `roster`

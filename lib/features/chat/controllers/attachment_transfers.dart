@@ -178,38 +178,36 @@ class AttachmentTransfers {
     final id = status.attachmentId;
     final total = sealed.ciphertextLength;
 
-    final file = await encrypted.open();
-    try {
-      var offset = status.receivedSize;
-      var failures = 0;
-      while (offset < total) {
-        await file.setPosition(offset);
-        final chunk = await file.read(min(status.chunkSize, total - offset));
-        try {
-          final after = await api.chunk(
-            session.token,
-            attachmentId: id,
-            offset: offset,
-            bytes: chunk,
-            onProgress: (sent, _) => onProgress((offset + sent) / total),
-          );
-          offset = after.receivedSize;
-          failures = 0;
-        } on ApiException catch (e) {
-          // A dropped connection or a chunk the server already had: ask where
-          // it got to and carry on from there, a few times before giving up.
-          final retriable =
-              e.code == 'network_error' || e.code == 'upload_offset_mismatch';
-          if (!retriable || ++failures > 3) rethrow;
-          await Future<void>.delayed(Duration(seconds: failures));
-          offset = (await api.status(
-            session.token,
-            attachmentId: id,
-          )).receivedSize;
-        }
+    // One stream from wherever the server has got to. A stream that breaks
+    // keeps what the server committed, so each retry asks where that is and
+    // streams the rest of the file from there.
+    var offset = status.receivedSize;
+    var failures = 0;
+    while (offset < total) {
+      final from = offset;
+      try {
+        final after = await api.upload(
+          session.token,
+          attachmentId: id,
+          offset: from,
+          data: encrypted.openRead(from, total),
+          frameBytes: status.frameBytes,
+          onProgress: (sent) => onProgress((from + sent) / total),
+        );
+        offset = after.receivedSize;
+        failures = 0;
+      } on ApiException catch (e) {
+        // A dropped connection, or bytes the server already had: ask where it
+        // got to and carry on from there, a few times before giving up.
+        final retriable =
+            e.code == 'network_error' || e.code == 'upload_offset_mismatch';
+        if (!retriable || ++failures > 3) rethrow;
+        await Future<void>.delayed(Duration(seconds: failures));
+        offset = (await api.status(
+          session.token,
+          attachmentId: id,
+        )).receivedSize;
       }
-    } finally {
-      await file.close();
     }
 
     await api.complete(
@@ -235,11 +233,11 @@ class AttachmentTransfers {
         ciphertextSize: sealed.sealed.ciphertextLength,
         kind: 'thumbnail',
       );
-      await api.chunk(
+      await api.uploadBytes(
         session.token,
         attachmentId: status.attachmentId,
-        offset: 0,
         bytes: sealed.ciphertext,
+        frameBytes: status.frameBytes,
       );
       await api.complete(
         session.token,

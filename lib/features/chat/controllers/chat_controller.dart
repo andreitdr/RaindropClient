@@ -160,7 +160,11 @@ class ChatController
 
     final ChannelMessage wire;
     try {
-      wire = ChannelMessage.fromJson(event.data);
+      wire = ChannelMessage.fromProto(
+        event.type == ServerEventTypes.messageCreated
+            ? event.proto.messageCreated
+            : event.proto.messageDeleted,
+      );
     } on Object {
       return; // A payload this build cannot read is one it ignores.
     }

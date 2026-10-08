@@ -4,7 +4,8 @@ Feature folder: [`lib/features/chat/`](../lib/features/chat/). Server-side refer
 [Messages](../../RaindropServer/docs/messages.md).
 
 Text channels are real: `ChannelsApi` fetches the channel list (see [Channels](channels.md)) and
-`TextMessagesApi` wraps `/api/channels/text/messages/{send-encrypted,send,history,delete}` (see
+`TextMessagesApi` wraps `raindrop.v1.TextChannelService` (`SendEncryptedMessage`, `SendMessage`,
+`GetHistory`, `DeleteMessage`, `ReportMessage`; see
 [Network layer](network-layer.md)).
 [`ChatController`](../lib/features/chat/controllers/chat_controller.dart) owns one channel's timeline,
 keyed by a `(serverId, channelId)` pair — the same client can be signed into several servers at once,
@@ -24,9 +25,11 @@ is set up, and then messages stay plaintext as before.
 - **Opening a channel** joins its MLS group before the first page is decoded (`ensureJoined`). A device
   that cannot join still sees the timeline, with placeholders.
 - **Sending:**
-  1. The text goes into a `MessagePayload` (`core/crypto/message_payload.dart`, MessagePack
-     `{v, t: type, b: body, c: clientMessageId, s, x}`, `type` an open string).
-  2. It is encrypted in the channel's group and posted to `send-encrypted`.
+  1. The text goes into a `MessagePayload` (`core/crypto/message_payload.dart`: version byte `0x02`,
+     then protobuf `raindrop.v1.MessagePayload` with type, body, client message id, send time and files;
+     `type` an open string). Version 1 MessagePack payloads from older clients still decode; see
+     [Wire format](wire-format.md#inside-an-end-to-end-encrypted-message).
+  2. It is encrypted in the channel's group and sent with `SendEncryptedMessage`.
   3. It is then kept in the local cache (`rememberSent`), because a device cannot decrypt what it sent.
   4. On `stale_epoch` the group catches up and the message is encrypted once more.
   5. The server's echo can arrive before the send returns. `ChannelGroups` keeps the plaintext of
@@ -175,4 +178,4 @@ messages they wrote.
 - [Channels](channels.md) — where a channel's `canSendMessages` disables the composer up front, and
   where `canManageMessages` comes from.
 - [Network layer](network-layer.md) — `TextMessagesApi`'s exact request/response shapes.
-- [Wire format](wire-format.md) — currently JSON only.
+- [Wire format](wire-format.md) — protobuf, outside and inside the encryption.

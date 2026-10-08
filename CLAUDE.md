@@ -12,18 +12,15 @@ link it from `docs/README.md`. If a change affects the server's API contract, al
 doc under [`../RaindropServer/docs/`](../RaindropServer/docs/README.md).
 
 RaindropClient is the Flutter client for [RaindropServer](../RaindropServer/CLAUDE.md) — a
-decentralised, self-hosted chat server. Read that file when touching anything in `core/network/`;
-this client's contracts must track that server's exactly, and it has no other client to check
+decentralised, self-hosted chat server. Everything it says to a server is gRPC, defined in the sibling
+[RaindropProto](../RaindropProto/CLAUDE.md) repo — read that file before changing anything in
+`core/network/`; a change to a call or a message starts there, and is regenerated on both sides. What a
+call *means* still has to track the server's CLAUDE.md exactly: this client has no other client to check
 compatibility against.
 
 ## Commands
 
-The Flutter SDK lives at `/Volumes/SSD/SDK/flutter` and is not on this shell's `PATH`; prefix
-commands with it or add it to `PATH` for the session:
-
-```bash
-export PATH="/Volumes/SSD/SDK/flutter/bin:$PATH"
-```
+The Flutter SDK is on `PATH` (on the reference dev machine it lives at `~/sdks/flutter`).
 
 ```bash
 flutter pub get
@@ -46,17 +43,29 @@ flutter_rust_bridge_codegen generate
 The Dart package, the Rust crate and the codegen must all be flutter_rust_bridge **2.13.0**. See
 `docs/crypto.md`.
 
+The wire protocol lives in `../RaindropProto`. Its Dart is generated into
+`lib/core/network/grpc/generated/` and **committed**, so nothing has to run before `flutter run`; after
+any change to RaindropProto, regenerate it and commit the result (needs `brew install protobuf` and
+`dart pub global activate protoc_plugin`, 25.x):
+
+```bash
+tool/gen_protos.sh
+```
+
 Integration tests against a live server (the real Rust core, the real server) are under
 `test/integration/` and skip themselves unless `RAINDROP_TEST_SERVER=host:port` names a server with a
 fresh database; see `docs/crypto.md#tests`.
 
-Unit tests live under `test/` (`flutter test`) — pure logic only (models, merges, settings round-trips),
-plus one widget test for the layout editor's hit-testing (`test/core/layout/`). To sanity-check the network layer against a real server, run the
-server per its own CLAUDE.md (`dotnet run --project ServerCli` from `RaindropServer/`, default
-`https://localhost:5001`) and drive `core/network/api_client.dart` and the API wrappers beside it
-(`users_api.dart`, `channels_api.dart`, `text_messages_api.dart`) from a scratch script — they depend
-only on `dio`, `crypto`, and `dart:io`, not on Flutter, so `dart run` works without a device
-attached.
+Unit tests live under `test/` (`flutter test`) — pure logic only (models, merges, settings round-trips,
+the payload encodings), plus one widget test for the layout editor's hit-testing (`test/core/layout/`).
+To check the network layer against a real server, run the server per its own CLAUDE.md
+(`dotnet run --project ServerCli` from `RaindropServer/`, default `https://localhost:5001`) and run
+`test/integration/transport_test.dart`, which needs no Rust core — the handshake and the pin, error
+codes, and the event stream:
+
+```bash
+RAINDROP_TEST_SERVER=localhost:5001 flutter test test/integration/transport_test.dart
+```
 
 Android and web toolchains are not set up on the reference dev machine (`flutter doctor` will show
 Android SDK and Chrome missing); macOS, iOS, Windows, and Linux desktop targets build as-is.
@@ -74,11 +83,13 @@ core/
   theme/      — AppThemeDefinition (JSON-backed theme model), AppTheme's ThemeData builder, the
                 AppSurfaces color-role extension, and the catalog/active-theme controllers
   widgets/    — Panel (flat chrome surface), AdaptiveSwitch/AdaptiveActivityIndicator/showAdaptiveConfirm
-  network/    — ApiClient (TLS-pinned Dio wrapper, plus the pinned WebSocket upgrade),
+  network/    — RaindropChannel (one TLS-pinned gRPC connection per server; turns failures into
+                ApiException from the ErrorInfo reason), grpc/ (the code generated from RaindropProto,
+                imported as `pb` through grpc/protocol.dart, and Wire's enum/time conversions),
                 CertificatePinner, ServerTrust (identity-key pin, follows signed certificate changes),
-                PinRegistry (the same pins, process-wide, for the voice engine's
-                own sockets), EventStream (the server's push channel), and one wrapper per server
-                domain with its DTOs: UsersApi, ChannelsApi, TextMessagesApi, MembersApi, RolesApi,
+                PinRegistry (the same pins, process-wide, for the voice engine's own sockets),
+                EventStream (the bidirectional push stream, heartbeating), and one wrapper per service
+                with its models: UsersApi, ChannelsApi, TextMessagesApi, MembersApi, RolesApi,
                 VoiceApi, E2eeApi, AttachmentsApi
   voice/      — VoiceEngine (a call's audio, transport-agnostic) + LiveKitVoiceEngine, the only code
                 that imports livekit_client / flutter_webrtc
@@ -184,9 +195,9 @@ lifecycle:
    the client by — see `RaindropServer/CLAUDE.md`'s "client holds a separate GUID per server" — and it
    doubles as this client's local storage key (`ServerProfile.id`), so there's no second synthetic id
    to keep in sync with it.
-2. `GET /api/server/info` to confirm the server is reachable and see its wire formats; this is also
-   what triggers the TLS handshake `CertificatePinner` observes.
-3. `POST /api/users/status` with that GUID. On a real first connection this always comes back
+2. `ServerService.GetServerInfo` to confirm the server is reachable and see its capabilities; this is
+   also what triggers the TLS handshake `CertificatePinner` observes.
+3. `UserService.GetUserStatus` with that GUID. On a real first connection this always comes back
    `unregistered` — the `active`/`left_preserved` branches in `ServerAuthScreen` exist for GUID re-import,
    not the common path.
 4. Register, log in, or rejoin. On success, `ConnectServerFlow.persist` pins the fingerprint observed
@@ -195,13 +206,13 @@ lifecycle:
 
 `ServerSessionController` (`features/servers/controllers/session_controller.dart`) resolves the
 *current* session for an already-connected server on cold start: read the token from `SecureStore`,
-call `/api/users/me` to confirm it's still valid, and fall back to `ReauthPrompt` (password only — the
+call `UserService.GetMe` to confirm it's still valid, and fall back to `ReauthPrompt` (password only — the
 GUID and pin are already on file) if it isn't. A session's token, once obtained, lives only in
 `SecureStore`; `AppPrefs` only ever holds the non-secret server list (host/port/nickname) and UI
 settings.
 
 **Leaving is the server rail's right-click menu** (`features/servers/widgets/`): "Leave server" asks
-for the password and whether to erase the account (`POST /api/users/me/leave`, `preserveData`
+for the password and whether to erase the account (`UserService.LeaveServer`, `preserveData`
 inverted), hangs up a call on that server, then forgets the server locally; "Remove from this device"
 is the local-only half, and the only one available while signed out. The rail also carries the
 settings button by default, since it is the one pane shown for every server signed in or not.
@@ -210,39 +221,46 @@ Alongside the fingerprint, the client pins the server's **identity key** (`core/
 When a pinned certificate stops matching, session restore follows the change only if that pinned key
 signed the new certificate; otherwise the mismatch stands.
 
-`core/network/tls_pinning.dart` explains why pinning is implemented as an `HttpClient
-.badCertificateCallback`: it only fires when the platform's default trust check *fails*, which is
-exactly the self-signed-certificate case the server defaults to. A CA-issued certificate validates
+`core/network/tls_pinning.dart` explains why pinning is implemented as the gRPC channel's
+`onBadCertificate` handler (and `HttpClient.badCertificateCallback` for LiveKit's sockets): it only fires
+when the platform's default trust check *fails*, which is exactly the self-signed-certificate case the
+server defaults to. A pin refusal and an unreachable server both surface from gRPC as a failure to
+connect; the pinner's `rejected` flag is what makes the first `certificate_mismatch`. A CA-issued certificate validates
 normally and never reaches this code — matching the server's own documented trust model.
 
 ### Messages
 
-Text channels are real: `ChannelsApi` fetches `GET /api/channels`, and `TextMessagesApi` wraps
-`/api/channels/text/messages/{send,history}`. `ChatController`
+Text channels are real: `ChannelsApi` wraps `ChannelService`, and `TextMessagesApi` wraps
+`TextChannelService` (`SendEncryptedMessage`, `GetHistory`, `DeleteMessage`, `ReportMessage`). `ChatController`
 (`features/chat/controllers/chat_controller.dart`) owns one channel's timeline, keyed by a
 `(serverId, channelId)` pair — the same client can be signed into several servers at once, and
 channel ids are only unique within one.
 
-**Receiving is pushed.** Sending stays REST; everything that changes on the server — from this client,
-its other devices, or any other member — arrives over the event stream (`GET /api/events`, see
-`docs/live-updates.md` and the server's `docs/events.md`). `EventStream` (`core/network/`) keeps one
-reconnecting, TLS-pinned WebSocket per signed-in server; `serverEventsProvider(serverId)` owns it for
-the life of the session; and each controller follows it through `LiveSync`
-(`features/servers/controllers/live_sync.dart`), which hands it events, asks it to **re-read after
-every `ready`** (the server replays nothing, so that is how a reconnect catches up), and polls only
-while the stream is down — which keeps the client working against a server without `/api/events`.
-`ChatController` merges `message.created`/`message.deleted` on id (a deletion is a tombstone in place);
-its fallback poll is three seconds. The provider is `autoDispose` so leaving a channel drops its
-subscription.
+**Receiving is pushed.** Sending is ordinary unary calls; everything that changes on the server — from
+this client, its other devices, or any other member — arrives over the event stream
+(`EventService.Connect`, a bidirectional gRPC stream; see `docs/live-updates.md` and the server's
+`docs/events.md`). `EventStream` (`core/network/`) keeps one reconnecting stream per signed-in server on
+that server's `RaindropChannel`, sends a `Heartbeat` every `ready.heartbeat_interval` (that is what keeps
+this member online in everybody's roster), and `resubscribe()`s — asking for a fresh `ready` — when the
+app returns to the foreground; `serverEventsProvider(serverId)` owns it for the life of the session; and
+each controller follows it through `LiveSync` (`features/servers/controllers/live_sync.dart`), which
+hands it events, asks it to **re-read after every `ready`** (the server replays nothing, so that is how a
+reconnect catches up), and polls only while the stream is down. A `ServerEvent` wraps the typed
+`pb.ServerEvent`; its `type` is the server's event name (`message.created`, …) derived from the `oneof`
+case, and `userId`/`channelId` are read the same way, so a feature filters first and then reads its
+case (`event.proto.messageCreated`) with the wrapper's `fromProto`. `ChatController` merges
+`message.created`/`message.deleted` on id (a deletion is a tombstone in place); its fallback poll is
+three seconds. The provider is `autoDispose` so leaving a channel drops its subscription.
 
 Two rules for anything new that follows the stream: create the `LiveSync` *before* the first fetch
 and buffer events that arrive during it (`_early`), and reset per-build fields at the top of `build` —
-Riverpod reuses the notifier instance on rebuild. A `4401` close (session ended, e.g. after a server
-restart) invalidates `serverSessionProvider`, which is what routes the shell to `ReauthPrompt`.
+Riverpod reuses the notifier instance on rebuild. A stream ended as `session_ended` (or refused as
+`invalid_session`, e.g. after a server restart) invalidates `serverSessionProvider`, which is what routes
+the shell to `ReauthPrompt`.
 
 **Messages are end-to-end encrypted** when the server offers it (`e2ee.delivery.v1`) and this device
-is set up: `ChatController` encrypts through `ChannelGroups` (`features/security/`) and posts to
-`send-encrypted`; received and paged messages are decrypted (or read from the local encrypted cache) in
+is set up: `ChatController` encrypts through `ChannelGroups` (`features/security/`) and sends it with
+`SendEncryptedMessage`; received and paged messages are decrypted (or read from the local encrypted cache) in
 `_decode`, and each `ChatMessage` carries a `MessageSecurity` — `encrypted`, `undecryptable` (sent
 before this device joined; shown with a lock), or `plaintext` (pre-encryption; open-lock marker). See
 `docs/messages-chat.md#end-to-end-encryption`.
@@ -257,7 +275,7 @@ away what was typed.
 Two server rules the client has to honour rather than work around:
 
 - A message carries its author's **UUID**, never a name. `userLookupProvider`
-  (`features/servers/controllers/user_lookup.dart`) resolves it through `POST /api/users/lookup`,
+  (`features/servers/controllers/user_lookup.dart`) resolves it through `UserService.LookupUser`,
   using Riverpod's per-argument caching as the cache: one request per distinct author, however many
   messages they wrote.
 - A **deleted message still arrives**, with null content and `deleted` set. It is rendered as
@@ -273,18 +291,20 @@ confirm dialog says the server owner keeps a copy — the server archives delete
 
 **Channels are managed from the sidebar.** `ChannelsController` has `create`/`rename`/`delete` (the echoed
 `channel.*` event merges on id). Rename/delete are per-channel permissions (`Channel.canRename`/`canDelete`);
-`create_channels` is server-wide, so it comes from `serverPermissionsProvider` (`GET /api/roles/me`, re-read on
+`create_channels` is server-wide, so it comes from `serverPermissionsProvider` (`RoleService.GetMyRoles`, re-read on
 role events). The "+" and the per-channel menu (hover "…"/right-click on desktop, long-press on touch) appear
 only when allowed; `channel_name_dialog.dart` pre-checks names with a copy of the server's policy and shows
 server errors such as `channel_name_taken` inline.
 
 History pages backwards through the server's opaque cursor — pass `nextCursor` back untouched, never
-parse it. The chat pane exposes that as a "Load earlier messages" row at the top of the list.
+parse it (`next_cursor` on the wire; absent at the beginning of the channel). The chat pane exposes that as a "Load earlier messages" row at the top of the list.
 
 **Files** ([`docs/attachments.md`](docs/attachments.md)) are end-to-end encrypted: each is encrypted
-under its own key by the Rust core (`AttachmentCipher`), uploaded in chunks, and described — key, name,
+under its own key by the Rust core (`AttachmentCipher`), streamed up (`AttachmentsApi.upload`: one
+`Upload` client stream from the server's `received_size`, in frames of its `frame_bytes`, resumed from
+`GetUploadStatus` after a break), and described — key, name,
 type, hash, a sender-made thumbnail — inside a `files` message, attested under v2. The composer's
-paperclip and desktop drag-and-drop check every file against the server's `GET /api/attachments/policy`
+paperclip and desktop drag-and-drop check every file against the server's `GetAttachmentPolicy`
 first; it shows only with `attachments.v1`, `attach_files` in the channel, and encryption on this
 device. Received files preview inline (image, video and audio through `media_kit`) only when the
 server's `preview.extensions` lists them, `AttachmentPreviewRegistry` knows them (the plugin seam), and
@@ -294,8 +314,8 @@ folder emptied at startup and exit.
 
 ### Members and presence
 
-`MembersApi` fetches `GET /api/members`: every active member with a `presence` of `online` or
-`offline`. `MembersController` reads it once and then follows `member.joined`/`.renamed`/`.left`/
+`MembersApi` wraps `MemberService.ListMembers`: every active member with a `presence` of `online` or
+`offline` (the enum `raindrop.v1.Presence` on the wire, turned back into the name by `Wire.presence`). `MembersController` reads it once and then follows `member.joined`/`.renamed`/`.left`/
 `.presence` events (presence is a state, applied as "set"), re-reading after every reconnect and
 polling every fifteen seconds only while the stream is down. It is `autoDispose`, so the pane stops
 following when it is hidden (which it is below 1000px unless toggled on). `ChannelsController`
@@ -316,9 +336,10 @@ away from arriving in the wrong one. Only the `online` status has a colour of it
 (`AppSurfaces.onlineIndicator`); everything else borrows a muted foreground rather than adding a
 colour every theme JSON would have to define.
 
-Presence comes from the server's live sessions, so it is only as sharp as those are: everybody reads
-as offline after a server restart, and a client killed rather than closed reads as online until its
-session lapses. See the server's own CLAUDE.md for why, and for what would sharpen it.
+Presence comes from the server's event streams: a member is online while their client has its stream
+open and heartbeating, so a client killed rather than closed reads as offline about a minute later, and
+everybody reads as offline after a server restart until their clients reconnect. See the server's own
+CLAUDE.md.
 
 ### Voice
 
@@ -331,7 +352,8 @@ of the app never imports the media library.
   the call. It never auto-rejoins after being replaced by another device, removed, or the call ending;
   it ends with a `notice` the shell shows once.
 - **Signalling goes through the server this client already pins** (`/api/channels/voice/signal`, relayed
-  to LiveKit). LiveKit's SDK opens its own sockets, so the pins are also installed process-wide:
+  to LiveKit) — the one connection to the server that is not gRPC, because it is LiveKit's own
+  WebSocket protocol; joining, leaving and mute are `VoiceService` calls. LiveKit's SDK opens its own sockets, so the pins are also installed process-wide:
   `PinRegistry` + `PinnedHttpOverrides` as `HttpOverrides.global` in `main.dart`, registered by
   `ServerSessionController` (and on `adopt`). LiveKit's own pinning option cannot trust a self-signed
   certificate — it checks chain and hostname first.
@@ -356,16 +378,20 @@ of the app never imports the media library.
 - **Background voice on phones** (iOS background audio, Android microphone foreground service), and
   rejoining automatically after a dropped connection.
 - Push-to-talk, camera and screen sharing, microphone gain; changing your username or password from
-  the app; any role-editing or report-moderation UI; notifications; MessagePack on the wire.
+  the app; any role-editing or report-moderation UI; notifications.
 
 The full, maintained inventory is [`docs/roadmap.md`](docs/roadmap.md) — update it in the same change
 that closes one of these.
 
 ### Wire format
 
-The server negotiates JSON or MessagePack via `Content-Type`/`Accept` and documents that MessagePack's
-win only shows up on larger, more numeric payloads than user management (see its CLAUDE.md). This
-client only speaks JSON for now (`ApiClient` sends `application/json` unconditionally) — add
-MessagePack encoding once chat or voice metadata is the thing being fetched. `msgpack_dart` is already a
-dependency, used for the *inside* of an end-to-end encrypted message (`core/crypto/message_payload.dart`),
-not for the HTTP bodies.
+Protobuf over gRPC, nothing else (see `docs/wire-format.md` and RaindropProto's conventions): UUIDs as
+lower-case strings, `Timestamp`s, crypto blobs as `bytes`, open sets (permissions, channel types, leave
+reasons, capabilities) as strings, closed sets as enums that `Wire` turns back into names, and refusals
+as gRPC statuses whose `ErrorInfo.reason` becomes `ApiException.code`. There is no JSON on the wire and
+no `dio`.
+
+The plaintext *inside* an end-to-end encrypted message (`core/crypto/message_payload.dart`) is protobuf
+too — version byte `0x02`, then `raindrop.v1.MessagePayload`. Version 1 was MessagePack and is still
+read (its first byte is a map marker, never `0x02`), so `msgpack_dart` stays for that alone. The
+attestation bytes are built from fields, not from either encoding, so reports verify the same.

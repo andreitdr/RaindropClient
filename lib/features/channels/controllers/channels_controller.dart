@@ -7,7 +7,7 @@ import '../../servers/controllers/live_sync.dart';
 import '../../servers/controllers/session_controller.dart';
 import '../models/channel.dart';
 
-/// A connected server's channel list, fetched from `GET /api/channels`, one
+/// A connected server's channel list, fetched from `ChannelService.ListChannels`, one
 /// entry per server id, and kept current by the event stream: channels
 /// created, renamed or deleted anywhere arrive as events, and a role change —
 /// which can change which channels this account sees, and what it may do in
@@ -157,7 +157,13 @@ class ChannelsController extends FamilyAsyncNotifier<List<Channel>, String> {
         try {
           // The server sends each member the channel as *they* see it, with
           // their own permissions, so this is exactly the row a re-read gives.
-          channel = Channel.fromSummary(ChannelSummary.fromJson(event.data));
+          channel = Channel.fromSummary(
+            ChannelSummary.fromProto(
+              event.type == ServerEventTypes.channelCreated
+                  ? event.proto.channelCreated
+                  : event.proto.channelRenamed,
+            ),
+          );
         } on Object {
           return null;
         }

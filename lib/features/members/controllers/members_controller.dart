@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/event_stream.dart';
+import '../../../core/network/grpc/wire.dart';
 import '../../servers/controllers/live_sync.dart';
 import '../../servers/controllers/session_controller.dart';
 import '../models/member.dart';
@@ -84,7 +85,8 @@ class MembersController
 
     switch (event.type) {
       case ServerEventTypes.memberJoined:
-        final username = event.data['username'] as String?;
+        final joined = event.proto.memberJoined;
+        final username = joined.hasUsername() ? joined.username : null;
         if (index >= 0 || username == null) return roster;
         // Offline until told otherwise — a `member.presence` follows as soon
         // as their first session opens.
@@ -98,7 +100,8 @@ class MembersController
         ];
 
       case ServerEventTypes.memberRenamed:
-        final username = event.data['username'] as String?;
+        final renamed = event.proto.memberRenamed;
+        final username = renamed.hasUsername() ? renamed.username : null;
         if (index < 0 || username == null) return roster;
         final member = roster[index];
         return [...roster]
@@ -116,7 +119,7 @@ class MembersController
         if (index < 0) return roster;
         final member = roster[index];
         final presence = PresenceStatus.parse(
-          event.data['presence'] as String?,
+          Wire.presence(event.proto.memberPresence.presence),
         );
         if (member.presence == presence) return roster;
         return [...roster]
