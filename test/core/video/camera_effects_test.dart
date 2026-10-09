@@ -59,6 +59,64 @@ typedef _Process =
       int height,
     );
 
+/// The per-frame function, by address, exactly as the platform code gets it.
+_Process _processor() => Pointer<NativeFunction<_ProcessNative>>.fromAddress(
+  videoEffectsProcessAddress().toInt(),
+).asFunction<_Process>();
+
+/// An I420 frame in native memory, with padded strides.
+class _Frame {
+  _Frame({required this.width, required this.height})
+    : yStride = width + 8,
+      chromaStride = width ~/ 2 + 4 {
+    y = calloc<Uint8>(yStride * height);
+    u = calloc<Uint8>(chromaStride * ((height + 1) ~/ 2));
+    v = calloc<Uint8>(chromaStride * ((height + 1) ~/ 2));
+  }
+
+  final int width;
+  final int height;
+  final int yStride;
+  final int chromaStride;
+
+  late final Pointer<Uint8> y;
+  late final Pointer<Uint8> u;
+  late final Pointer<Uint8> v;
+
+  /// Stripes rather than flat grey: a blur of a uniform plane is the same
+  /// uniform plane, so flat content could not tell blurring from doing nothing.
+  void paintStripes() {
+    for (var row = 0; row < height; row++) {
+      for (var column = 0; column < width; column++) {
+        y[row * yStride + column] = _stripe(column);
+      }
+    }
+    for (var row = 0; row < (height + 1) ~/ 2; row++) {
+      for (var column = 0; column < width ~/ 2; column++) {
+        u[row * chromaStride + column] = 110;
+        v[row * chromaStride + column] = 130;
+      }
+    }
+  }
+
+  bool get differsFromStripes {
+    for (var row = 0; row < height; row++) {
+      for (var column = 0; column < width; column++) {
+        if (y[row * yStride + column] != _stripe(column)) return true;
+      }
+    }
+    return false;
+  }
+
+  void free() {
+    calloc.free(y);
+    calloc.free(u);
+    calloc.free(v);
+  }
+
+  static int _stripe(int column) => (column ~/ 4).isEven ? 30 : 220;
+}
+
 void main() {
   final library = _library();
 
@@ -79,7 +137,7 @@ void main() {
       expect(capabilities.available, isA<bool>());
     });
 
-    test('effects are refused outright when no model is bundled', () async {
+    test('a build with no model refuses to create effects at all', () async {
       if (videoEffectsCapabilities().available) return;
 
       await expectLater(
@@ -98,6 +156,77 @@ void main() {
           ),
         ),
       );
+    });
+
+    test('a real handle really blurs a frame, and a destroyed one does not', () async {
+      if (!videoEffectsCapabilities().available) return;
+
+      final handle = await videoEffectsCreate(
+        config: const VideoEffectsConfig(
+          kind: 1, // blur
+          blurStrength: 1,
+          maskHz: 15,
+        ),
+      );
+
+      final process = _processor();
+      final frame = _Frame(width: 64, height: 64);
+
+      try {
+        // Segmentation runs on its own thread, and frames before the first
+        // mask are passed through untouched by design — so this waits for one
+        // rather than asserting on the first frame.
+        var blurred = false;
+        for (var attempt = 0; attempt < 40 && !blurred; attempt++) {
+          frame.paintStripes();
+          final outcome = process(
+            handle.toInt(),
+            frame.y,
+            frame.yStride,
+            frame.u,
+            frame.chromaStride,
+            frame.v,
+            frame.chromaStride,
+            frame.width,
+            frame.height,
+          );
+          expect(outcome, 0, reason: 'the effects refused a frame they own');
+          blurred = frame.differsFromStripes;
+          if (!blurred) await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+
+        expect(
+          blurred,
+          isTrue,
+          reason: 'no mask arrived within two seconds, so nothing was blurred',
+        );
+
+        final stats = await videoEffectsStats(handle: handle);
+        expect(stats.frames.toInt(), greaterThan(0));
+        expect(stats.masks.toInt(), greaterThan(0));
+      } finally {
+        await videoEffectsDestroy(handle: handle);
+      }
+
+      // The handle is gone: a late frame from a pipeline that has not stopped
+      // yet must be passed through, not crash and not be written to.
+      frame.paintStripes();
+      expect(
+        process(
+          handle.toInt(),
+          frame.y,
+          frame.yStride,
+          frame.u,
+          frame.chromaStride,
+          frame.v,
+          frame.chromaStride,
+          frame.width,
+          frame.height,
+        ),
+        lessThan(0),
+      );
+      expect(frame.differsFromStripes, isFalse);
+      frame.free();
     });
 
     test('the per-frame address is callable, and leaves a frame it refuses', () {

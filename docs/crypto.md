@@ -171,8 +171,9 @@ data-carrying enums, so there is still no `build_runner` step.
 - **Dart, the camera effects' C ABI** (`test/core/video/camera_effects_test.dart`): the same library,
   but it calls the per-frame function *by address*, with padded strides in real native memory, the
   way a capture pipeline does. It is the one place the C signature the platform code copies is
-  checked against the one Rust exports — nothing in either language's type system can do it. Skips
-  itself the same way.
+  checked against the one Rust exports — nothing in either language's type system can do it. It
+  opens a real effects handle, waits for the first mask and asserts the frame really changed, then
+  that a destroyed handle leaves it alone. Skips itself the same way.
 - **Against a live server** (`test/integration/e2ee_devices_test.dart`): the real Rust core against a
   real RaindropServer. It covers:
   - the first device establishing the identity

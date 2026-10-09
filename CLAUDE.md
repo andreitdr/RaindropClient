@@ -392,9 +392,10 @@ camera and moderate; the media goes over the transport it names on join (`liveki
   never uses it, so `native/raindrop_camera_effects` is a small plugin of ours that reaches it. Frames
   never come through Dart — `core/video/camera_effects_engine.dart` hands the platform a Rust handle and
   a function address, and the capture thread does the rest. The effects themselves are
-  `../RaindropCrypto`'s `raindrop_video`; **a build with no segmentation model offers no effect at all**
-  (`cameraEffectsAvailable`, which is the platform answer `canUseCameraEffects` plus that one). Windows
-  and Linux have no processor chain to insert into, and are still to do.
+  `../RaindropCrypto`'s `raindrop_video`, whose segmentation model is committed, so effects are on by
+  default on those three. **A build with no model offers no effect at all** rather than a wrong one —
+  that is `cameraEffectsAvailable`, the platform answer `canUseCameraEffects` plus what the native side
+  says it has. Windows and Linux have no processor chain to insert into, and are still to do.
 - **Calls are end-to-end encrypted** on a server with `e2ee.voice.v1`: the media key comes from the
   voice channel's MLS group (`ChannelGroups.mediaKey`, before joining — no key, no join), LiveKit's
   frame cryptor uses it (`VoiceEngine.connect(mediaKey:)`, `setMediaKey` on every epoch change), the
