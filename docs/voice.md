@@ -234,6 +234,17 @@ the platform can take a processor; a checkout of RaindropCrypto without that
 file still builds, and the sheet then says so rather than offering an effect
 that would blur an oval.
 
+**The picture for a replaced background is the user's own file**, chosen with
+the same `file_selector` dialog the layout import uses, and only its *path* is
+kept — in voice settings, and across the bridge. The native side opens and
+decodes the file itself, so a 4K photograph never becomes 24 MB of Dart list.
+The dialog offers exactly the formats `raindrop_video` compiles the `image`
+crate with (JPEG, PNG, WebP), so a file that gets through it is one that can
+actually be used; a file that has since moved or cannot be decoded fails the way
+every other effect failure does, as a warning with the camera still running.
+Choosing "Picture" when none has been chosen opens the dialog straight away,
+because otherwise it would change nothing visible.
+
 Two things the sheet does that are easy to miss:
 
 - **It waits for the first mask.** Segmentation runs well below the frame rate

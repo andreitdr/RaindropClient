@@ -11,6 +11,9 @@
 /// can be opened from Settings with no call in progress at all.
 library;
 
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart' as selector;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -254,6 +257,21 @@ class _CameraEffectsSheetState extends ConsumerState<_CameraEffectsSheet> {
   }
 }
 
+/// The pictures a background can be.
+///
+/// These are exactly the formats the native side decodes — `raindrop_video`
+/// builds the `image` crate with `jpeg`, `png` and `webp` and nothing else — so
+/// a file that gets through this dialog is one that can actually be used. Add a
+/// format in both places or in neither.
+const _pictureTypes = [
+  selector.XTypeGroup(
+    label: 'Pictures',
+    extensions: ['jpg', 'jpeg', 'png', 'webp'],
+    mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+    uniformTypeIdentifiers: ['public.jpeg', 'public.png', 'org.webmproject.webp'],
+  ),
+];
+
 /// Releases a preview without making [State.dispose] async.
 void unawaitedDispose(VoiceCameraPreview? preview) {
   if (preview != null) preview.dispose().ignore();
@@ -400,7 +418,18 @@ class _EffectPicker extends StatelessWidget {
           // looking for background blur should find out it is not available
           // here, not be left wondering where it went.
           onSelectionChanged: available
-              ? (selected) => onChanged(effect.copyWith(kind: selected.first))
+              ? (selected) {
+                  final kind = selected.first;
+                  // Picking "Picture" with no picture yet would otherwise
+                  // change nothing visible, so the dialog opens straight away.
+                  if (kind == VoiceCameraEffectKind.replace &&
+                      effect.backgroundPath == null) {
+                    onChanged(effect.copyWith(kind: kind));
+                    _choose();
+                    return;
+                  }
+                  onChanged(effect.copyWith(kind: kind));
+                }
               : null,
         ),
         if (!available) ...[
@@ -431,7 +460,51 @@ class _EffectPicker extends StatelessWidget {
             ],
           ),
         ],
+        if (available && effect.kind == VoiceCameraEffectKind.replace) ...[
+          const SizedBox(height: 4),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.wallpaper_outlined),
+            title: Text(
+              effect.backgroundPath == null
+                  ? 'No picture chosen'
+                  : _fileName(effect.backgroundPath!),
+            ),
+            subtitle: Text(
+              effect.backgroundPath == null
+                  // Said rather than left to be discovered: a replaced
+                  // background with no picture shows the real room, which reads
+                  // as the effect being broken.
+                  ? 'Choose one to use it — until then your camera is unchanged'
+                  : 'Shown behind you, scaled to fill the frame',
+            ),
+            trailing: TextButton(
+              onPressed: _choose,
+              child: Text(effect.backgroundPath == null ? 'Choose…' : 'Change…'),
+            ),
+          ),
+        ],
       ],
     );
   }
+
+  /// Opens the picture dialog and keeps whatever comes back.
+  ///
+  /// The path is all that is kept and all that is sent anywhere: the native
+  /// side opens and decodes the file itself, so the pixels never cross the
+  /// bridge — a 4K photograph would be 24 MB of Dart list otherwise.
+  Future<void> _choose() async {
+    final picture = await selector.openFile(acceptedTypeGroups: _pictureTypes);
+    if (picture == null) return;
+
+    onChanged(
+      effect.copyWith(
+        kind: VoiceCameraEffectKind.replace,
+        backgroundPath: () => picture.path,
+      ),
+    );
+  }
+
+  static String _fileName(String path) =>
+      path.split(Platform.pathSeparator).last;
 }
