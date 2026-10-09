@@ -40,6 +40,13 @@ class VoiceCallState {
     this.videoAvailable = false,
     this.videoFeeds = const [],
     this.untrustedVideo = const {},
+    this.screenShare = const VoiceScreenShareState.off(),
+    this.screenShareSuppressed = false,
+    this.screenShareBusy = false,
+    this.screenSharingAvailable = false,
+    this.screenShares = const {},
+    this.untrustedScreenShares = const {},
+    this.watching = const {},
   });
 
   final String? serverId;
@@ -91,19 +98,57 @@ class VoiceCallState {
   /// the camera button rather than offering one that always fails.
   final bool videoAvailable;
 
-  /// Every camera in the call, this client's own first. The whole list is
-  /// replaced on every change.
+  /// Every camera in the call and every share this client watches, its own
+  /// first. The whole list is replaced on every change.
   final List<VoiceVideoFeed> videoFeeds;
 
   /// Participants whose camera arrived unencrypted or stopped decrypting.
   /// Their tile says so; nothing untrusted is ever drawn.
   final Set<String> untrustedVideo;
 
-  /// The feed for one member, or null when they are not sending a camera this
+  /// What this client is sharing, as the engine reports it — which can be
+  /// less than was asked for, when a window's sound could not be captured.
+  final VoiceScreenShareState screenShare;
+
+  /// A share cannot be started: no `screen_share` permission, or this server
+  /// carries none.
+  final bool screenShareSuppressed;
+
+  /// A share is being started or stopped right now; the button refuses a
+  /// second tap.
+  final bool screenShareBusy;
+
+  /// This server carries screen sharing at all (`voice.screen.v1`). Whether
+  /// *this device* can share is a separate question — `canShareScreen` — since
+  /// a phone can still watch.
+  final bool screenSharingAvailable;
+
+  /// Members sharing a screen this client trusts, watched or not.
+  final Set<String> screenShares;
+
+  /// Members whose share arrived unencrypted or stopped decrypting. Never
+  /// shown or played.
+  final Set<String> untrustedScreenShares;
+
+  /// Members whose share this client has chosen to watch.
+  final Set<String> watching;
+
+  /// One member's camera, or null when they are not sending a camera this
   /// client is receiving — because they have it off, it is hidden here, or it
-  /// is not trusted.
-  VoiceVideoFeed? feedFor(String userId) =>
-      videoFeeds.where((feed) => feed.identity == userId).firstOrNull;
+  /// is not trusted. Never their screen share, which is not a camera.
+  VoiceVideoFeed? feedFor(String userId) => videoFeeds
+      .where(
+        (feed) => feed.identity == userId && feed.kind == VoiceVideoKind.camera,
+      )
+      .firstOrNull;
+
+  /// One member's screen share, or null when they are not sharing one this
+  /// client watches — or, for this client's own, when it is not sharing.
+  VoiceVideoFeed? screenFeedFor(String userId) => videoFeeds
+      .where(
+        (feed) => feed.identity == userId && feed.kind == VoiceVideoKind.screen,
+      )
+      .firstOrNull;
 
   /// [warning] takes a nullary function rather than a plain value so a
   /// warning can be *cleared*, which a `??` fallback could never express.
@@ -120,6 +165,13 @@ class VoiceCallState {
     bool? videoAvailable,
     List<VoiceVideoFeed>? videoFeeds,
     Set<String>? untrustedVideo,
+    VoiceScreenShareState? screenShare,
+    bool? screenShareSuppressed,
+    bool? screenShareBusy,
+    bool? screenSharingAvailable,
+    Set<String>? screenShares,
+    Set<String>? untrustedScreenShares,
+    Set<String>? watching,
   }) => VoiceCallState(
     serverId: serverId,
     channelId: channelId,
@@ -136,8 +188,34 @@ class VoiceCallState {
     videoAvailable: videoAvailable ?? this.videoAvailable,
     videoFeeds: videoFeeds ?? this.videoFeeds,
     untrustedVideo: untrustedVideo ?? this.untrustedVideo,
+    screenShare: screenShare ?? this.screenShare,
+    screenShareSuppressed: screenShareSuppressed ?? this.screenShareSuppressed,
+    screenShareBusy: screenShareBusy ?? this.screenShareBusy,
+    screenSharingAvailable:
+        screenSharingAvailable ?? this.screenSharingAvailable,
+    screenShares: screenShares ?? this.screenShares,
+    untrustedScreenShares: untrustedScreenShares ?? this.untrustedScreenShares,
+    watching: watching ?? this.watching,
   );
 }
+
+/// What this client has told the server about its screen share. A record so
+/// the three parts always travel together: a share's kind and sound mean
+/// nothing without it being on.
+typedef ScreenShareClaim = ({bool on, String? kind, bool audio});
+
+/// Not sharing.
+const ScreenShareClaim noScreenShare = (on: false, kind: null, audio: false);
+
+/// The share claim for [options]: what the server is asked to record before
+/// anything is captured.
+ScreenShareClaim screenShareClaimOf(VoiceScreenShareOptions options) => (
+  on: true,
+  kind: options.source.kind == VoiceScreenSourceKind.window
+      ? VoiceShareKinds.window
+      : VoiceShareKinds.screen,
+  audio: options.withAudio,
+);
 
 /// The server named a media transport this build cannot speak.
 class UnsupportedVoiceTransportException implements Exception {
@@ -166,9 +244,10 @@ class VoiceEncryptionUnavailableException implements Exception {
 /// — during a call, so a key that leaks exposes at most this much audio.
 const _rekeyInterval = Duration(minutes: 10);
 
-/// How long to wait for the media server to accept a camera after the server
-/// has been told it is on. Long enough for a relayed round trip on a slow
-/// connection, short enough that a user does not sit watching a dead button.
+/// How long to wait for the media server to accept a camera or a share after
+/// the server has been told about it. Long enough for a relayed round trip on
+/// a slow connection, short enough that a user does not sit watching a dead
+/// button.
 const _cameraGrantTimeout = Duration(seconds: 5);
 
 final voiceCallProvider = NotifierProvider<VoiceCallController, VoiceCallState>(
@@ -202,6 +281,10 @@ class VoiceCallController extends Notifier<VoiceCallState> {
   /// toggled in between has to repeat this claim, not [VoiceCallState.cameraOn],
   /// or it would take the camera back off the server mid-handshake.
   bool _cameraClaimed = false;
+
+  /// What this client last told the server about its screen share, for the
+  /// same reason as [_cameraClaimed].
+  ScreenShareClaim _shareClaim = noScreenShare;
 
   @override
   VoiceCallState build() {
@@ -237,6 +320,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
 
     final generation = ++_generation;
     _cameraClaimed = false;
+    _shareClaim = noScreenShare;
     final session = await ref.read(serverSessionProvider(serverId).future);
     if (session == null) throw StateError('Not signed in to this server.');
     if (generation != _generation) return;
@@ -253,9 +337,13 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     VoiceMediaKey? mediaKey;
     ChannelGroups? groups;
     var videoAvailable = false;
+    var screenSharingAvailable = false;
     try {
       final info = await session.usersApi.serverInfo();
       videoAvailable = info.capabilities.contains(voiceVideoCapability);
+      screenSharingAvailable = info.capabilities.contains(
+        voiceScreenCapability,
+      );
       if (info.capabilities.contains(e2eeVoiceCapability)) {
         groups = await ref.read(channelGroupsProvider(serverId).future);
         if (groups == null) {
@@ -309,6 +397,8 @@ class VoiceCallController extends Notifier<VoiceCallState> {
       suppressed: joined.you.suppressed,
       cameraSuppressed: joined.you.cameraSuppressed,
       videoAvailable: videoAvailable,
+      screenShareSuppressed: joined.you.screenShareSuppressed,
+      screenSharingAvailable: screenSharingAvailable,
     );
     _follow(serverId, session, engine);
 
@@ -434,7 +524,11 @@ class VoiceCallController extends Notifier<VoiceCallState> {
       final granted = await _awaitCameraGrant(engine);
       if (generation != _generation) return;
 
-      if (!granted || !await engine.setCameraEnabled(true, options: options ?? settings.camera)) {
+      if (!granted ||
+          !await engine.setCameraEnabled(
+            true,
+            options: options ?? settings.camera,
+          )) {
         // The server believes the camera is on and nothing is being sent.
         // Take the claim back, so the roster does not show a camera nobody has.
         await _sendSelfState(session, cameraOn: false);
@@ -466,36 +560,194 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     }
   }
 
+  /// Starts sharing [options] — or switches a running share to it.
+  ///
+  /// The camera's handshake, for the camera's reason: a call token names no
+  /// share until the server adds one, so tell the server first (which is where
+  /// the permission, the cap and the rule about sound live), wait for the media
+  /// server's grant, and only then capture and publish. Nothing is captured
+  /// for a share the server refused. If the grant never comes, the claim is
+  /// taken back, so the roster never shows a share nobody can watch.
+  ///
+  /// Refusals surface as the server's own words through
+  /// [VoiceCallState.warning], like the camera's.
+  Future<void> startScreenShare(VoiceScreenShareOptions options) async {
+    final engine = _engine;
+    final session = _session;
+    if (engine == null || session == null || !state.inCall) return;
+    if (state.screenShareBusy) return;
+
+    final generation = _generation;
+    final claim = screenShareClaimOf(options);
+    state = state.copyWith(screenShareBusy: true, warning: () => null);
+
+    try {
+      // Switching: the old share stops before the new one is claimed. A new
+      // claim can withdraw part of the old grant — the sound, going from a
+      // window to a screen — and the engine must not take that, under a live
+      // share, as the server silencing it.
+      if (engine.currentScreenShare.on) {
+        await engine.setScreenShareEnabled(false);
+        if (generation != _generation) return;
+      }
+
+      await _sendSelfState(session, share: claim);
+      if (generation != _generation) return;
+
+      final granted = await _awaitShareGrant(engine, withAudio: claim.audio);
+      if (generation != _generation) return;
+
+      if (!granted ||
+          !await engine.setScreenShareEnabled(true, options: options)) {
+        await _sendSelfState(session, share: noScreenShare);
+        if (generation == _generation) {
+          state = state.copyWith(
+            screenShare: const VoiceScreenShareState.off(),
+            screenShareBusy: false,
+            warning: () => 'Your screen could not be shared. Please try again.',
+          );
+        }
+        return;
+      }
+      if (generation != _generation) return;
+
+      // What the engine is really sending, which can be less than was asked:
+      // nothing, when the capture failed (it has said why), or no sound, when
+      // the window's could not be captured. The server is told the truth.
+      final sharing = engine.currentScreenShare;
+      if (!sharing.on) {
+        await _sendSelfState(session, share: noScreenShare);
+      } else if (claim.audio && !sharing.withAudio) {
+        await _sendSelfState(
+          session,
+          share: (on: true, kind: claim.kind, audio: false),
+        );
+      }
+
+      if (generation == _generation) {
+        state = state.copyWith(screenShare: sharing, screenShareBusy: false);
+      }
+    } on ApiException catch (e) {
+      if (generation == _generation) {
+        state = state.copyWith(
+          screenShareBusy: false,
+          warning: () => e.message,
+        );
+      }
+    } on Object {
+      if (generation == _generation) {
+        state = state.copyWith(
+          screenShareBusy: false,
+          warning: () => 'Your screen could not be shared.',
+        );
+      }
+    }
+  }
+
+  /// Stops sharing. The engine first, then the server — never the other way
+  /// round, or the grant would be withdrawn from under a live share.
+  Future<void> stopScreenShare() async {
+    final engine = _engine;
+    final session = _session;
+    if (engine == null || session == null) return;
+    if (state.screenShareBusy || !_shareClaim.on && !state.screenShare.on) {
+      return;
+    }
+
+    final generation = _generation;
+    state = state.copyWith(screenShareBusy: true);
+    try {
+      await engine.setScreenShareEnabled(false);
+      await _sendSelfState(session, share: noScreenShare);
+    } on ApiException {
+      // Not in the call any more, or unreachable: the engine has stopped, and
+      // the server's own reconciling withdraws the grant either way.
+    }
+    if (generation == _generation) {
+      state = state.copyWith(
+        screenShare: const VoiceScreenShareState.off(),
+        screenShareBusy: false,
+      );
+    }
+  }
+
+  /// Starts or stops receiving [userId]'s screen share. Local only: they are
+  /// never told, and nobody else is affected.
+  Future<void> setScreenShareWatched(String userId, bool watched) async {
+    final engine = _engine;
+    if (engine == null) return;
+    state = state.copyWith(
+      watching: watched
+          ? {...state.watching, userId}
+          : ({...state.watching}..remove(userId)),
+    );
+    await engine.setScreenShareWatched(userId, watched);
+  }
+
+  /// Waits for the media server to accept this client's share — its sound
+  /// too, when [withAudio]. Like [_awaitCameraGrant].
+  Future<bool> _awaitShareGrant(
+    VoiceEngine engine, {
+    required bool withAudio,
+  }) async {
+    bool allowed(VoicePublishRights rights) =>
+        rights.screen && (!withAudio || rights.screenAudio);
+
+    if (allowed(engine.currentPublishRights)) return true;
+
+    try {
+      await engine.publishRights
+          .firstWhere(allowed)
+          .timeout(_cameraGrantTimeout);
+      return true;
+    } on Object {
+      return allowed(engine.currentPublishRights);
+    }
+  }
+
   /// Changes the camera or the effect while it is already on.
   Future<void> applyCameraOptions(VoiceCameraOptions options) async {
     if (!state.cameraOn) return;
     await _engine?.applyCameraOptions(options);
   }
 
-  /// Sends this client's whole self-state: mute, deafen and the camera as last
-  /// claimed, with [cameraOn] changing that claim when given.
+  /// Sends this client's whole self-state: mute, deafen, and the camera and
+  /// the share as last claimed — with [cameraOn] or [share] changing that claim
+  /// when given.
   ///
   /// `SetVoiceSelfState` replaces all of it rather than applying a change, so
   /// every report goes through here — a camera report that left out the mute
-  /// would quietly unmute, and a mute that left out the camera would turn the
-  /// camera off at the server and take its grant away from under the track.
+  /// would quietly unmute, and a mute that left out the camera or the share
+  /// would end it at the server and take its grant away from under the track.
+  /// A claim the server refuses is put back, so the next mute does not ask for
+  /// it again.
   Future<VoiceParticipant> _sendSelfState(
     ServerSession session, {
     VoiceSettings? settings,
     bool? cameraOn,
-  }) {
+    ScreenShareClaim? share,
+  }) async {
     final VoiceSettings current = settings ?? ref.read(voiceSettingsProvider);
+    final cameraBefore = _cameraClaimed;
+    final shareBefore = _shareClaim;
     if (cameraOn != null) _cameraClaimed = cameraOn;
+    if (share != null) _shareClaim = share;
 
-    return session.voiceApi.setSelfState(
-      session.token,
-      selfMute: !current.micOn,
-      selfDeaf: current.selfDeaf,
-      cameraOn: _cameraClaimed,
-      // This client does not share its screen yet; the share arrives with its
-      // own claim beside the camera's.
-      screenShareOn: false,
-    );
+    try {
+      return await session.voiceApi.setSelfState(
+        session.token,
+        selfMute: !current.micOn,
+        selfDeaf: current.selfDeaf,
+        cameraOn: _cameraClaimed,
+        screenShareOn: _shareClaim.on,
+        screenShareKind: _shareClaim.kind,
+        screenShareAudio: _shareClaim.audio,
+      );
+    } on ApiException {
+      if (cameraOn != null) _cameraClaimed = cameraBefore;
+      if (share != null) _shareClaim = shareBefore;
+      rethrow;
+    }
   }
 
   /// Waits for the media server to accept this client's camera.
@@ -599,11 +851,26 @@ class VoiceCallController extends Notifier<VoiceCallState> {
       ..add(
         engine.cameraStates.listen((on) {
           // The engine's own word, which includes it turning the camera off
-          // itself — a track it could not encrypt, or a camera the OS took
-          // away. Not applied mid-handshake, which owns the state until it
-          // settles.
-          if (!state.cameraBusy) state = state.copyWith(cameraOn: on);
+          // itself — a track it could not encrypt, a camera the OS took away,
+          // or the grant withdrawn. Not applied mid-handshake, which owns the
+          // state until it settles. A camera the engine stopped is reported,
+          // so the roster stops claiming one nobody can see.
+          if (state.cameraBusy) return;
+          state = state.copyWith(cameraOn: on);
+          if (!on && _cameraClaimed) unawaited(_reportQuietly(cameraOn: false));
         }),
+      )
+      ..add(engine.screenShareStates.listen(_onEngineShare))
+      ..add(
+        engine.screenShares.listen(
+          (sharing) => state = state.copyWith(screenShares: sharing),
+        ),
+      )
+      ..add(
+        engine.untrustedScreenShares.listen(
+          (untrusted) =>
+              state = state.copyWith(untrustedScreenShares: untrusted),
+        ),
       );
 
     // Every epoch of the voice channel's group is a new media key: somebody
@@ -650,16 +917,51 @@ class VoiceCallController extends Notifier<VoiceCallState> {
         ),
       )
       ..add(
-        ref.listen<AsyncValue<VoiceRoster>>(
-          voiceRosterProvider(serverId),
-          (_, _) {
-            _applyVolumes();
-            // A member who joined after a hide wish was recorded is covered
-            // here: the roster naming them is the first chance to apply it.
-            _applyVideoVisibility();
-          },
-        ),
+        ref.listen<AsyncValue<VoiceRoster>>(voiceRosterProvider(serverId), (
+          _,
+          _,
+        ) {
+          _applyVolumes();
+          // A member who joined after a hide wish was recorded is covered
+          // here: the roster naming them is the first chance to apply it.
+          _applyVideoVisibility();
+        }),
       );
+  }
+
+  /// The engine's own word on the share, which includes it stopping or
+  /// trimming the share itself: the window closed, the grant was withdrawn,
+  /// it could not be encrypted, or the window's sound could not be captured.
+  /// The server is told, so the roster stops claiming what is not being sent.
+  /// Not applied mid-handshake, which settles the state itself.
+  void _onEngineShare(VoiceScreenShareState share) {
+    if (state.screenShareBusy) return;
+    state = state.copyWith(screenShare: share);
+
+    final claim = _shareClaim;
+    if (!claim.on) return;
+
+    ScreenShareClaim? corrected;
+    if (!share.on) {
+      corrected = noScreenShare;
+    } else if (claim.audio && !share.withAudio) {
+      corrected = (on: true, kind: claim.kind, audio: false);
+    }
+    if (corrected == null) return;
+
+    unawaited(_reportQuietly(share: corrected));
+  }
+
+  /// Corrects a claim after the engine changed something on its own. Never
+  /// throws: out of the call, or unreachable, there is nothing left to correct.
+  Future<void> _reportQuietly({bool? cameraOn, ScreenShareClaim? share}) async {
+    final session = _session;
+    if (session == null) return;
+    try {
+      await _sendSelfState(session, cameraOn: cameraOn, share: share);
+    } on ApiException {
+      // Nothing to do.
+    }
   }
 
   void _onServerEvent(ServerEvent event) {
@@ -685,9 +987,16 @@ class VoiceCallController extends Notifier<VoiceCallState> {
           // handshake is what settles them.
           cameraOn: state.cameraBusy ? null : you.cameraOn,
         );
-        // And the claim follows the server's word too, so the next mute does
-        // not reassert a camera the server has since turned off.
-        if (!state.cameraBusy) _cameraClaimed = you.cameraOn;
+        // The claims do not follow this event: it can arrive after a newer
+        // report has already gone out, and a claim moved back by a stale one
+        // would have the next mute end the camera or the share. Whatever the
+        // server takes away on its own — a permission, the right to speak —
+        // it takes from the media server's grant too, the engine stops what
+        // it must, and the claims follow the engine ([_onEngineShare] and
+        // the camera's listener).
+        state = state.copyWith(
+          screenShareSuppressed: you.screenShareSuppressed,
+        );
 
       case ServerEventTypes.voiceLeft:
         final left = VoiceLeft.fromProto(event.proto.voiceLeft);
@@ -821,6 +1130,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
   Future<void> _end({String? notice, bool reportLeave = true}) async {
     _generation++;
     _cameraClaimed = false;
+    _shareClaim = noScreenShare;
     final session = _session;
     final channelId = state.channelId;
 

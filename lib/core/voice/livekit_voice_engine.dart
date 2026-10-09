@@ -9,6 +9,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 import 'package:livekit_client/livekit_client.dart';
 import 'package:raindrop_camera_effects/raindrop_camera_effects.dart';
 
+import '../platform/platform_info.dart';
 import '../video/camera_effects_engine.dart';
 import 'voice_engine.dart';
 
@@ -56,6 +57,31 @@ class LiveKitVoiceEngine implements VoiceEngine {
   /// state: it is re-applied whenever they publish, so hiding somebody does not
   /// leak the moment they turn their camera off and on again.
   final _videoHidden = <String>{};
+
+  /// Participants whose screen share this device receives — the opposite
+  /// default to [_videoHidden]: a share is not received until it is watched,
+  /// and the wish outlives the share, like that one.
+  final _watching = <String>{};
+
+  /// How loud each participant's shared window plays here, apart from their
+  /// voice.
+  final Map<String, double> _screenVolumes = {};
+
+  final _screenShareStates =
+      StreamController<VoiceScreenShareState>.broadcast();
+  final _screenShares = StreamController<Set<String>>.broadcast();
+  final _untrustedScreenShares = StreamController<Set<String>>.broadcast();
+
+  /// What this client is sharing.
+  VoiceScreenShareState _share = const VoiceScreenShareState.off();
+
+  /// Bumped whenever a share starts or stops, so a start still waiting on the
+  /// capture cannot publish after it was stopped or replaced.
+  int _shareGeneration = 0;
+
+  /// Keeps the running share inside the 1080p box, and notices it ending.
+  _ScreenSizeGuard? _sizeGuard;
+  _ShareEndWatch? _endWatch;
 
   /// Set when the call is end-to-end encrypted.
   BaseKeyProvider? _keyProvider;
@@ -115,6 +141,20 @@ class LiveKitVoiceEngine implements VoiceEngine {
   Stream<VoiceEncryption> get encryptionChanges => _encryption.stream;
 
   @override
+  Stream<VoiceScreenShareState> get screenShareStates =>
+      _screenShareStates.stream;
+
+  @override
+  VoiceScreenShareState get currentScreenShare => _share;
+
+  @override
+  Stream<Set<String>> get screenShares => _screenShares.stream;
+
+  @override
+  Stream<Set<String>> get untrustedScreenShares =>
+      _untrustedScreenShares.stream;
+
+  @override
   Stream<String> get warnings => _warnings.stream;
 
   @override
@@ -155,9 +195,15 @@ class LiveKitVoiceEngine implements VoiceEngine {
 
     final room = Room(
       roomOptions: RoomOptions(
-        // Audio only: nothing to adapt or dynacast.
-        adaptiveStream: false,
-        dynacast: false,
+        // Video goes only where it is looked at, at the size it is looked at:
+        // a camera tile off screen, or a share drawn small, is not sent at full
+        // resolution — and with dynacast a layer nobody receives (a share
+        // nobody watches) is not even encoded. This is why [_reportFeeds]
+        // never reads `publication.enabled`: with adaptive stream that turns
+        // false whenever no tile is visible, and a feed dropped for it would
+        // never get a tile to become visible in.
+        adaptiveStream: true,
+        dynacast: true,
         defaultAudioCaptureOptions: _captureOptions(inputDeviceId),
         // Speech bitrate, and silence sent as nothing (DTX), which is most of
         // a group call.
@@ -243,7 +289,9 @@ class LiveKitVoiceEngine implements VoiceEngine {
     final participant = _room?.remoteParticipants[identity];
     if (participant == null) return;
 
+    // Their voice only: a shared window's sound has its own volume.
     for (final publication in participant.audioTrackPublications) {
+      if (_isScreen(publication)) continue;
       final track = publication.track;
       if (track == null) continue;
       await _setTrackVolume(
@@ -256,23 +304,16 @@ class LiveKitVoiceEngine implements VoiceEngine {
   @override
   Future<void> setDefaultVolume(double volume) async {
     _defaultVolume = volume.clamp(0.0, maximumVolume).toDouble();
-
-    for (final participant
-        in _room?.remoteParticipants.values ?? const <RemoteParticipant>[]) {
-      if (_volumes.containsKey(participant.identity)) continue;
-      for (final publication in participant.audioTrackPublications) {
-        final track = publication.track;
-        if (track == null) continue;
-        await _setTrackVolume(
-          track,
-          _gateAudio(participant.identity, publication.sid, _defaultVolume),
-        );
-      }
-    }
+    // Everybody without a volume of their own follows it — and every shared
+    // window without one, which is how deafening silences those too.
+    await _reapplyVolumes();
   }
 
   @override
-  Future<bool> setCameraEnabled(bool enabled, {VoiceCameraOptions? options}) async {
+  Future<bool> setCameraEnabled(
+    bool enabled, {
+    VoiceCameraOptions? options,
+  }) async {
     if (options != null) {
       _camera = options;
       _frontCamera = await _isFront(options.deviceId);
@@ -326,11 +367,70 @@ class LiveKitVoiceEngine implements VoiceEngine {
     final participant = _room?.remoteParticipants[identity];
     if (participant == null) return;
 
+    // Their camera only: hiding somebody's camera says nothing about whether
+    // their screen share is watched.
     for (final publication in participant.videoTrackPublications) {
+      if (publication.source != TrackSource.camera) continue;
       await _applyVisibility(publication, visible);
     }
 
     _reportFeeds();
+  }
+
+  @override
+  Future<bool> setScreenShareEnabled(
+    bool enabled, {
+    VoiceScreenShareOptions? options,
+  }) async {
+    if (!enabled || options == null) {
+      await _stopScreenShare();
+      return true;
+    }
+
+    // The grant has to be in place first, as with the camera: returning false
+    // rather than starting the capture is what keeps a screen from being
+    // captured for a share the media server would refuse.
+    if (!_rights.screen) return false;
+    if (options.withAudio && !_rights.screenAudio) return false;
+
+    await _startScreenShare(options);
+    return true;
+  }
+
+  @override
+  Future<void> setScreenShareWatched(String identity, bool watched) async {
+    // Recorded whether or not they are sharing yet, like a hidden camera.
+    if (watched) {
+      _watching.add(identity);
+    } else {
+      _watching.remove(identity);
+    }
+
+    final participant = _room?.remoteParticipants[identity];
+    if (participant != null) {
+      for (final publication in participant.trackPublications.values) {
+        if (_isScreen(publication)) {
+          await _applyVisibility(publication, watched);
+        }
+      }
+    }
+
+    _reportFeeds();
+  }
+
+  @override
+  Future<void> setScreenShareVolume(String identity, double volume) async {
+    _screenVolumes[identity] = volume.clamp(0.0, maximumVolume).toDouble();
+
+    final participant = _room?.remoteParticipants[identity];
+    if (participant == null) return;
+
+    for (final publication in participant.audioTrackPublications) {
+      if (!_isScreen(publication)) continue;
+      final track = publication.track;
+      if (track == null) continue;
+      await _setTrackVolume(track, _volumeFor(participant, publication));
+    }
   }
 
   @override
@@ -362,8 +462,11 @@ class LiveKitVoiceEngine implements VoiceEngine {
   @override
   Future<void> dispose() async {
     // Before the room goes: the effects hold a segmentation thread, and the
-    // room disconnecting does not release it.
+    // room disconnecting does not release it; the share's guards hold timers.
     await _effects.clear();
+    _shareGeneration++;
+    _sizeGuard?.stop();
+    _endWatch?.stop();
     await _listener?.dispose();
     _listener = null;
     await _room?.disconnect();
@@ -378,6 +481,9 @@ class LiveKitVoiceEngine implements VoiceEngine {
     await _cameraStates.close();
     await _videoFeeds.close();
     await _untrustedVideo.close();
+    await _screenShareStates.close();
+    await _screenShares.close();
+    await _untrustedScreenShares.close();
   }
 
   // ── Devices ────────────────────────────────────────────────────────────────
@@ -401,6 +507,13 @@ class LiveKitVoiceEngine implements VoiceEngine {
       ),
   ];
 
+  /// The displays and windows this machine can share, for the share picker.
+  static Future<VoiceScreenSources> screenSources() async {
+    final sources = _LiveKitScreenSources();
+    await sources._open();
+    return sources;
+  }
+
   /// A camera outside a call, for the camera-and-effects sheet.
   static Future<VoiceCameraPreview> preview(VoiceCameraOptions options) async {
     final preview = _LiveKitCameraPreview();
@@ -417,7 +530,9 @@ class LiveKitVoiceEngine implements VoiceEngine {
   /// as front too. Mirroring only ever affects what you see of yourself.
   static bool _looksFrontFacing(String label) {
     final name = label.toLowerCase();
-    if (name.contains('back') || name.contains('rear') || name.contains('environment')) {
+    if (name.contains('back') ||
+        name.contains('rear') ||
+        name.contains('environment')) {
       return false;
     }
     return true;
@@ -475,12 +590,23 @@ class LiveKitVoiceEngine implements VoiceEngine {
       )
       ..on<TrackPublishedEvent>((event) async {
         // Before anything is received: somebody who republishes their camera,
-        // or who joins after they were hidden, must not come back visible.
-        if (event.publication.kind != TrackType.VIDEO) return;
-        if (_videoHidden.contains(event.participant.identity)) {
-          await _applyVisibility(event.publication, false);
+        // or who joins after they were hidden, must not come back visible —
+        // and a screen share is not received at all until it is watched.
+        final publication = event.publication;
+        final identity = event.participant.identity;
+        if (_isScreen(publication)) {
+          if (!_watching.contains(identity)) {
+            await _applyVisibility(publication, false);
+          }
+          _reportFeeds();
+          return;
+        }
+        if (publication.kind != TrackType.VIDEO) return;
+        if (_videoHidden.contains(identity)) {
+          await _applyVisibility(publication, false);
         }
       })
+      ..on<TrackUnpublishedEvent>((_) => _reportFeeds())
       ..on<TrackSubscribedEvent>((event) async {
         final identity = event.participant.identity;
         final publication = event.publication;
@@ -503,6 +629,9 @@ class LiveKitVoiceEngine implements VoiceEngine {
           await _reapplyVolumes();
         }
 
+        final unwatched =
+            _isScreen(publication) && !_watching.contains(identity);
+
         switch (event.track) {
           case final RemoteAudioTrack track:
             // Untrusted audio arrives and is kept silent, rather than
@@ -510,18 +639,18 @@ class LiveKitVoiceEngine implements VoiceEngine {
             // subscription would lose the speaking indicator with it.
             await _setTrackVolume(
               track,
-              _gateAudio(
-                identity,
-                publication.sid,
-                _volumes[identity] ?? _defaultVolume,
-              ),
+              _volumeFor(event.participant, publication),
             );
+            if (unwatched) await _applyVisibility(publication, false);
+            if (_isScreen(publication)) _reportFeeds();
           case RemoteVideoTrack _:
             // Untrusted video is never drawn, so it should not cost bandwidth
             // either — unlike audio there is nothing to keep it around for.
             if (!trusted) {
               await publication.unsubscribe();
-            } else if (_videoHidden.contains(identity)) {
+            } else if (unwatched ||
+                (publication.source == TrackSource.camera &&
+                    _videoHidden.contains(identity))) {
               await _applyVisibility(publication, false);
             }
             _reportFeeds();
@@ -550,17 +679,31 @@ class LiveKitVoiceEngine implements VoiceEngine {
       ..on<LocalTrackPublishedEvent>((event) async {
         if (_keyProvider == null) return;
         final publication = event.publication;
-        if (publication.kind != TrackType.VIDEO) return;
+        final screen = _isScreen(publication);
+        if (publication.kind != TrackType.VIDEO && !screen) return;
 
         // Fail closed on the way out, which matters more than on the way in:
         // the receive side can only keep somebody else's mistake quiet, but
-        // this is the only thing standing between a camera and the media
-        // server seeing it. A publication the frame cryptor did not take —
-        // a blocked codec, or encryption that never came up — is withdrawn
-        // rather than left sending in the clear.
+        // this is the only thing standing between a camera or a screen and
+        // the media server seeing it. A publication the frame cryptor did not
+        // take — a blocked codec, or encryption that never came up — is
+        // withdrawn rather than left sending in the clear.
         final codec = publication.track?.codec ?? publication.mimeType;
-        if (!isBlockedVideoCodec(codec) &&
-            publication.encryptionType != EncryptionType.kNone) {
+        final blocked =
+            publication.kind == TrackType.VIDEO && isBlockedVideoCodec(codec);
+        if (!blocked && publication.encryptionType != EncryptionType.kNone) {
+          return;
+        }
+
+        if (screen) {
+          // Both halves go: a share's sound without its picture, or the other
+          // way round, is not what the sharer agreed to send.
+          await _stopScreenShare();
+          if (!_warnings.isClosed) {
+            _warnings.add(
+              'Your screen share could not be encrypted, so it was stopped.',
+            );
+          }
           return;
         }
 
@@ -577,6 +720,19 @@ class LiveKitVoiceEngine implements VoiceEngine {
       })
       ..on<LocalTrackUnpublishedEvent>((event) {
         _failing.remove(event.publication.sid);
+        // A share the media server withdrew — its grant taken away — rather
+        // than one this client stopped, which has already moved on.
+        if (_share.on) {
+          switch (event.publication.source) {
+            case TrackSource.screenShareVideo:
+              unawaited(_stopScreenShare());
+            case TrackSource.screenShareAudio when _share.withAudio:
+              _setShare(
+                VoiceScreenShareState.sharing(_share.source!, withAudio: false),
+              );
+            case _:
+          }
+        }
         _reportFeeds();
       })
       ..on<TrackUnsubscribedEvent>((event) {
@@ -605,41 +761,40 @@ class LiveKitVoiceEngine implements VoiceEngine {
         // And taken away: stop, rather than leave a track the media server has
         // stopped accepting.
         if (!_rights.camera && before.camera) await _stopCamera();
+
+        // The same for a share. Losing only its sound — muted for everyone —
+        // leaves the picture going: that is the server's rule, not a failure.
+        if (!_rights.screen && before.screen && _share.on) {
+          await _stopScreenShare();
+        } else if (!_rights.screenAudio &&
+            before.screenAudio &&
+            _share.withAudio) {
+          await _stopShareAudio();
+          if (!_warnings.isClosed) {
+            _warnings.add(
+              "You can't be heard in this call right now, so your window's "
+              'sound was stopped. The picture is still being shared.',
+            );
+          }
+        }
       });
   }
 
   // ── The camera ─────────────────────────────────────────────────────────────
 
-  /// LiveKit reads an **empty** `canPublishSources` as "every source", so an
-  /// empty list with `canPublish` true means both are allowed. Raindrop's own
-  /// tokens never send one empty, but a token LiveKit refreshed for a connected
-  /// participant is not ours to assume about.
-  static VoicePublishRights _rightsOf(ParticipantPermissions permissions) {
-    if (!permissions.canPublish) return VoicePublishRights.none;
+  /// What a permission update lets this participant send — the rule itself,
+  /// including LiveKit's "empty means everything", is [voicePublishRightsOf].
+  static VoicePublishRights _rightsOf(ParticipantPermissions permissions) =>
+      voicePublishRightsOf(
+        canPublish: permissions.canPublish,
+        sources: permissions.canPublishSources.map((source) => source.value),
+      );
 
-    if (permissions.canPublishSources.isEmpty) {
-      return const VoicePublishRights(microphone: true, camera: true);
-    }
-
-    return VoicePublishRights(
-      microphone: _allows(permissions, _sourceMicrophone),
-      camera: _allows(permissions, _sourceCamera),
-    );
-  }
-
-  /// LiveKit's own `TrackSource` numbers.
-  ///
-  /// Compared by number rather than by name because the enum
-  /// `ParticipantPermissions.canPublishSources` carries is the protobuf one,
-  /// which `livekit_client` does not export — the public `TrackSource` is its
-  /// own, differently-spelled type. These are LiveKit's wire protocol, the same
-  /// numbers vendored on the server side in
-  /// `RaindropServer.Voice.LiveKit/Protos/livekit_room_service.proto`.
-  static const _sourceCamera = 1;
-  static const _sourceMicrophone = 2;
-
-  static bool _allows(ParticipantPermissions permissions, int source) =>
-      permissions.canPublishSources.any((s) => s.value == source);
+  /// Whether a publication is half of a screen share — its picture or its
+  /// sound.
+  static bool _isScreen(TrackPublication publication) =>
+      publication.source == TrackSource.screenShareVideo ||
+      publication.source == TrackSource.screenShareAudio;
 
   Future<void> _applyCamera() async {
     final local = _room?.localParticipant;
@@ -681,6 +836,223 @@ class LiveKitVoiceEngine implements VoiceEngine {
 
     if (!_cameraStates.isClosed) _cameraStates.add(false);
     _reportFeeds();
+  }
+
+  // ── The screen share ───────────────────────────────────────────────────────
+
+  /// How a share is sent. Stated in full rather than inherited, for the same
+  /// reason as the room's camera options — the codec is a security setting
+  /// here — plus what makes a share a share: its own bitrate and frame rate,
+  /// and keeping the resolution when bandwidth runs short, because text that
+  /// goes soft is unreadable while text that updates a little less often is
+  /// not.
+  static const _screenPublish = VideoPublishOptions(
+    name: VideoPublishOptions.defaultScreenShareName,
+    videoCodec: _videoCodec,
+    simulcast: true,
+    backupVideoCodec: BackupVideoCodec(
+      enabled: true,
+      codec: _videoCodec,
+      simulcast: true,
+    ),
+    screenShareEncoding: VideoEncoding(
+      maxBitrate: screenShareMaxBitrate,
+      maxFramerate: screenShareFrameRate,
+    ),
+    degradationPreference: DegradationPreference.maintainResolution,
+  );
+
+  /// How a shared window's sound is sent: as music, not speech. The room's
+  /// microphone options are tuned for a voice — a low bitrate, and nothing
+  /// sent in silence — which would cut a film's quiet passages to nothing.
+  static const _screenAudioPublish = AudioPublishOptions(
+    name: 'screenshare_audio',
+    encoding: AudioEncoding.presetMusic,
+    dtx: false,
+  );
+
+  Future<void> _startScreenShare(VoiceScreenShareOptions options) async {
+    final local = _room?.localParticipant;
+    if (local == null) return;
+
+    // One share at a time: a new source replaces the old one.
+    await _stopScreenShare();
+    final generation = ++_shareGeneration;
+
+    final capture = ScreenShareCaptureOptions(
+      sourceId: options.source.id,
+      maxFrameRate: screenShareFrameRate.toDouble(),
+      params: VideoParametersPresets.screenShareH1080FPS15,
+    );
+
+    final List<LocalTrack> tracks;
+    try {
+      // Sound is asked for only for a window its sharer agreed to send it from
+      // — [VoiceScreenShareOptions] drops it for a screen before it gets here.
+      tracks = options.withAudio
+          ? await LocalVideoTrack.createScreenShareTracksWithAudio(capture)
+          : [await LocalVideoTrack.createScreenShareTrack(capture)];
+    } on Object catch (e) {
+      if (!_warnings.isClosed) {
+        _warnings.add('Your screen could not be captured ($e).');
+      }
+      _setShare(const VoiceScreenShareState.off());
+      return;
+    }
+
+    final video = tracks.whereType<LocalVideoTrack>().first;
+    final audio = tracks.whereType<LocalAudioTrack>().firstOrNull;
+
+    // What this start has published, so that if it is stopped or replaced
+    // while publishing is still in flight, exactly that is taken down again —
+    // by publication, never by source, which would take a newer share's down
+    // with it — and nothing is left capturing.
+    final published = <String>[];
+    Future<void> abandon() async {
+      for (final sid in published) {
+        try {
+          await local.removePublishedTrack(sid);
+        } on Object {
+          // Already gone.
+        }
+      }
+      await _release(tracks);
+    }
+
+    if (generation != _shareGeneration) {
+      await abandon();
+      return;
+    }
+
+    try {
+      published.add(
+        (await local.publishVideoTrack(
+          video,
+          publishOptions: _screenPublish,
+        )).sid,
+      );
+      if (generation != _shareGeneration) {
+        await abandon();
+        return;
+      }
+
+      // Before the first frames go far: the guard is what keeps a 4K screen
+      // from going out at 4K.
+      _sizeGuard = _ScreenSizeGuard(video)..start();
+
+      var withAudio = false;
+      if (audio != null) {
+        if (_rights.screenAudio) {
+          published.add(
+            (await local.publishAudioTrack(
+              audio,
+              publishOptions: _screenAudioPublish,
+            )).sid,
+          );
+          withAudio = true;
+        } else {
+          await _release([audio]);
+        }
+      }
+      if (generation != _shareGeneration) {
+        await abandon();
+        return;
+      }
+
+      if (options.withAudio && !withAudio && !_warnings.isClosed) {
+        _warnings.add(
+          "This window's sound couldn't be captured, so only the picture is "
+          'being shared.',
+        );
+      }
+
+      if (options.source.kind == VoiceScreenSourceKind.window) {
+        _endWatch = _ShareEndWatch(options.source.id, () {
+          if (generation != _shareGeneration) return;
+          unawaited(_stopScreenShare());
+          if (!_warnings.isClosed) {
+            _warnings.add('The window you were sharing closed.');
+          }
+        })..start();
+      }
+
+      _setShare(
+        VoiceScreenShareState.sharing(options.source, withAudio: withAudio),
+      );
+    } on Object catch (e) {
+      if (generation == _shareGeneration) {
+        await _stopScreenShare();
+        if (!_warnings.isClosed) {
+          _warnings.add('Your screen could not be shared ($e).');
+        }
+      }
+      // Whatever failed, the capture this start opened is closed: a window's
+      // sound left recording with nowhere to go is still a recording.
+      await abandon();
+    }
+
+    _reportFeeds();
+  }
+
+  /// Stops the share, picture and sound. Safe at any point: the state goes to
+  /// off *before* anything is unpublished, so the unpublish events this causes
+  /// are not mistaken for the media server withdrawing it.
+  Future<void> _stopScreenShare() async {
+    _shareGeneration++;
+    _sizeGuard?.stop();
+    _sizeGuard = null;
+    _endWatch?.stop();
+    _endWatch = null;
+
+    final wasOn = _share.on;
+    _setShare(const VoiceScreenShareState.off());
+
+    final local = _room?.localParticipant;
+    if (local != null) {
+      try {
+        // Removes the sound with the picture: that is LiveKit's own rule for
+        // a screen share, and the right one.
+        await local.setScreenShareEnabled(false);
+      } on Object {
+        // Never published, or already gone. Nothing to undo.
+      }
+    }
+
+    if (wasOn) _reportFeeds();
+  }
+
+  /// Stops only a share's sound, leaving its picture going.
+  Future<void> _stopShareAudio() async {
+    final source = _share.source;
+    if (source == null) return;
+    _setShare(VoiceScreenShareState.sharing(source, withAudio: false));
+
+    final local = _room?.localParticipant;
+    final publication = local?.getTrackPublicationBySource(
+      TrackSource.screenShareAudio,
+    );
+    if (local == null || publication == null) return;
+    try {
+      await local.removePublishedTrack(publication.sid);
+    } on Object {
+      // The media server already took it.
+    }
+  }
+
+  void _setShare(VoiceScreenShareState share) {
+    _share = share;
+    if (!_screenShareStates.isClosed) _screenShareStates.add(share);
+  }
+
+  static Future<void> _release(Iterable<LocalTrack> tracks) async {
+    for (final track in tracks) {
+      try {
+        await track.stop();
+        await track.dispose();
+      } on Object {
+        // Already released.
+      }
+    }
   }
 
   /// Installs, changes or removes the effects on the camera that is running.
@@ -752,32 +1124,44 @@ class LiveKitVoiceEngine implements VoiceEngine {
       for (final publication in local.videoTrackPublications) {
         final track = publication.track;
         if (track == null) continue;
+        final screen = _isScreen(publication);
         feeds.add(
           _LiveKitVideoFeed(
             identity: local.identity,
             track: track,
             isLocal: true,
-            mirror: _frontCamera,
+            kind: screen ? VoiceVideoKind.screen : VoiceVideoKind.camera,
+            // Only a camera is a mirror; a mirrored screen is unreadable.
+            mirror: !screen && _frontCamera,
           ),
         );
       }
     }
 
     for (final participant in room.remoteParticipants.values) {
-      if (_videoHidden.contains(participant.identity)) continue;
-      if (_unencrypted.contains(participant.identity)) continue;
+      final identity = participant.identity;
+      if (_unencrypted.contains(identity)) continue;
 
       for (final publication in participant.videoTrackPublications) {
         final track = publication.track;
         if (track == null) continue;
         if (_failing.contains(publication.sid)) continue;
-        if (!publication.subscribed || !publication.enabled) continue;
+        if (!publication.subscribed) continue;
+
+        // The wishes, not `publication.enabled`: see the room options.
+        final screen = _isScreen(publication);
+        if (screen
+            ? !_watching.contains(identity)
+            : _videoHidden.contains(identity)) {
+          continue;
+        }
 
         feeds.add(
           _LiveKitVideoFeed(
-            identity: participant.identity,
+            identity: identity,
             track: track,
             isLocal: false,
+            kind: screen ? VoiceVideoKind.screen : VoiceVideoKind.camera,
           ),
         );
       }
@@ -785,6 +1169,7 @@ class LiveKitVoiceEngine implements VoiceEngine {
 
     _videoFeeds.add(feeds);
     _reportUntrustedVideo();
+    _reportScreenShares();
   }
 
   void _reportUntrustedVideo() {
@@ -799,6 +1184,7 @@ class LiveKitVoiceEngine implements VoiceEngine {
     final untrusted = <String>{};
     for (final participant in room.remoteParticipants.values) {
       for (final publication in participant.videoTrackPublications) {
+        if (publication.source != TrackSource.camera) continue;
         if (_unencrypted.contains(participant.identity) ||
             _failing.contains(publication.sid)) {
           untrusted.add(participant.identity);
@@ -809,6 +1195,32 @@ class LiveKitVoiceEngine implements VoiceEngine {
     _untrustedVideo.add(untrusted);
   }
 
+  /// Who is sharing a screen, and whose share is not to be trusted. A share is
+  /// counted from the moment it is published, watched or not — that is what
+  /// lets somebody choose to watch it.
+  void _reportScreenShares() {
+    if (_screenShares.isClosed || _untrustedScreenShares.isClosed) return;
+
+    final sharing = <String>{};
+    final untrusted = <String>{};
+
+    for (final participant
+        in _room?.remoteParticipants.values ?? const <RemoteParticipant>[]) {
+      for (final publication in participant.videoTrackPublications) {
+        if (publication.source != TrackSource.screenShareVideo) continue;
+        if (_unencrypted.contains(participant.identity) ||
+            _failing.contains(publication.sid)) {
+          untrusted.add(participant.identity);
+        } else {
+          sharing.add(participant.identity);
+        }
+      }
+    }
+
+    _screenShares.add(sharing);
+    _untrustedScreenShares.add(untrusted);
+  }
+
   /// One publication's volume, or silence while it is not trusted.
   double _gateAudio(String identity, String sid, double volume) => gatedVolume(
     volume: volume,
@@ -816,17 +1228,26 @@ class LiveKitVoiceEngine implements VoiceEngine {
     undecryptable: _failing.contains(sid),
   );
 
+  /// What one audio publication should play at: their voice at their volume,
+  /// their shared window at its own — and either silent while untrusted.
+  double _volumeFor(
+    RemoteParticipant participant,
+    TrackPublication publication,
+  ) {
+    final identity = participant.identity;
+    final wanted = _isScreen(publication)
+        ? _screenVolumes[identity] ?? _defaultVolume
+        : _volumes[identity] ?? _defaultVolume;
+    return _gateAudio(identity, publication.sid, wanted);
+  }
+
   Future<void> _reapplyVolumes() async {
     for (final participant
         in _room?.remoteParticipants.values ?? const <RemoteParticipant>[]) {
-      final wanted = _volumes[participant.identity] ?? _defaultVolume;
       for (final publication in participant.audioTrackPublications) {
         final track = publication.track;
         if (track == null) continue;
-        await _setTrackVolume(
-          track,
-          _gateAudio(participant.identity, publication.sid, wanted),
-        );
+        await _setTrackVolume(track, _volumeFor(participant, publication));
       }
     }
   }
@@ -892,6 +1313,7 @@ class _LiveKitVideoFeed implements VoiceVideoFeed {
     required this.identity,
     required this.track,
     required this.isLocal,
+    this.kind = VoiceVideoKind.camera,
     this.mirror = false,
   });
 
@@ -899,6 +1321,9 @@ class _LiveKitVideoFeed implements VoiceVideoFeed {
 
   @override
   final String identity;
+
+  @override
+  final VoiceVideoKind kind;
 
   @override
   final bool isLocal;
@@ -916,7 +1341,9 @@ class _LiveKitVideoFeed implements VoiceVideoFeed {
         fit: fit == BoxFit.contain ? VideoViewFit.contain : VideoViewFit.cover,
         // Decided here rather than left to `auto`, because auto mirrors any
         // local track and the back camera on a phone must not be mirrored.
-        mirrorMode: mirror ? VideoViewMirrorMode.mirror : VideoViewMirrorMode.off,
+        mirrorMode: mirror
+            ? VideoViewMirrorMode.mirror
+            : VideoViewMirrorMode.off,
       );
 }
 
@@ -954,7 +1381,10 @@ class _TrackEffects {
   /// Applies [effect] to [track], and returns a warning to show the user when
   /// it could not be — never throws. A camera without its effect is still a
   /// camera, and the call carries on.
-  Future<String?> apply(LocalVideoTrack? track, VoiceCameraEffect effect) async {
+  Future<String?> apply(
+    LocalVideoTrack? track,
+    VoiceCameraEffect effect,
+  ) async {
     final wanted = effect.effective(effectsAvailable: cameraEffectsAvailable);
 
     if (track == null || wanted == VoiceCameraEffectKind.none) {
@@ -1104,5 +1534,272 @@ class _LiveKitCameraPreview implements VoiceCameraPreview {
     } on Object {
       // A camera already taken away by the OS. Nothing left to release.
     }
+  }
+}
+
+/// The displays and windows this machine can share, kept current for the
+/// share picker.
+///
+/// flutter_webrtc reports a source appearing, going or changing only when it
+/// is asked to look again, so this asks every few seconds while the picker is
+/// open, and stops when it closes.
+class _LiveKitScreenSources implements VoiceScreenSources {
+  final _sources = StreamController<List<VoiceScreenSource>>.broadcast();
+  final _subscriptions = <StreamSubscription<Object?>>[];
+  final _byId = <String, rtc.DesktopCapturerSource>{};
+  List<VoiceScreenSource> _current = const [];
+  Timer? _refresh;
+  bool _disposed = false;
+  bool _allowed = true;
+
+  static const _types = [rtc.SourceType.Screen, rtc.SourceType.Window];
+
+  @override
+  Stream<List<VoiceScreenSource>> get sources => _sources.stream;
+
+  @override
+  List<VoiceScreenSource> get current => _current;
+
+  @override
+  bool get captureAllowed => _allowed;
+
+  Future<void> _open() async {
+    // Asked here, as the picker opens, so the system's prompt comes up while
+    // the user is choosing what to share rather than in the middle of a call.
+    if (needsScreenCapturePermission) {
+      try {
+        _allowed = await rtc.Helper.requestCapturePermission();
+      } on Object {
+        _allowed = false;
+      }
+      if (!_allowed) {
+        _emit();
+        return;
+      }
+    }
+
+    final listed = await rtc.desktopCapturer.getSources(
+      types: _types,
+      thumbnailSize: rtc.ThumbnailSize(320, 180),
+    );
+    for (final source in listed) {
+      _byId[source.id] = source;
+    }
+
+    final capturer = rtc.desktopCapturer;
+    _subscriptions
+      ..add(
+        capturer.onAdded.stream.listen((source) {
+          _byId[source.id] = source;
+          _emit();
+        }),
+      )
+      ..add(
+        capturer.onRemoved.stream.listen((source) {
+          _byId.remove(source.id);
+          _emit();
+        }),
+      )
+      ..add(capturer.onNameChanged.stream.listen((_) => _emit()))
+      ..add(capturer.onThumbnailChanged.stream.listen((_) => _emit()));
+
+    _refresh = Timer.periodic(const Duration(seconds: 3), (_) async {
+      try {
+        await capturer.updateSources(types: _types);
+      } on Object {
+        // The next look will do.
+      }
+    });
+
+    _emit();
+  }
+
+  void _emit() {
+    if (_disposed) return;
+    _current = [
+      for (final source in _byId.values)
+        VoiceScreenSource(
+          id: source.id,
+          name: source.name,
+          kind: source.type == rtc.SourceType.Window
+              ? VoiceScreenSourceKind.window
+              : VoiceScreenSourceKind.screen,
+          thumbnail: source.thumbnail,
+        ),
+    ];
+    _sources.add(_current);
+  }
+
+  @override
+  Future<void> dispose() async {
+    _disposed = true;
+    _refresh?.cancel();
+    for (final subscription in _subscriptions) {
+      await subscription.cancel();
+    }
+    await _sources.close();
+  }
+}
+
+/// Keeps a running share inside the 1080p box.
+///
+/// The only thing that actually enforces the cap. livekit_client cannot: on
+/// desktop it works out a share's encodings from the size it *asked* the
+/// capturer for, not the size it got (`getSettings()` is read on web and
+/// mobile only — `participant/local.dart` in 2.13.0), and it never scales the
+/// top layer below the source anyway. The desktop capturers ignore size
+/// constraints too. Left alone, a 4K screen goes out at 4K.
+///
+/// So this reads the size actually being captured from the sender's own
+/// statistics and scales every layer down by [screenShareScale] — and again
+/// whenever that size changes, since windows are resized and displays change
+/// mode. For the first quarter of a second or so the source can go out
+/// unscaled; [screenShareMaxBitrate] bounds the bandwidth even then.
+class _ScreenSizeGuard {
+  _ScreenSizeGuard(this._track);
+
+  final LocalVideoTrack _track;
+  Timer? _timer;
+  bool _stopped = false;
+  bool _busy = false;
+
+  /// Each layer's own scale as LiveKit set it, by rid, read once — so what is
+  /// applied is always LiveKit's layer times the cap, never compounded.
+  Map<String?, double>? _layers;
+
+  /// The cap last applied; 0 until the first.
+  double _applied = 0;
+
+  /// Quickly at first, to catch the first frames; once the size is known,
+  /// only a change matters, and that can wait a little.
+  static const _searching = Duration(milliseconds: 250);
+  static const _watching = Duration(seconds: 2);
+
+  void start() {
+    _timer = Timer.periodic(_searching, (_) => unawaited(_tick()));
+  }
+
+  void stop() {
+    _stopped = true;
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  Future<void> _tick() async {
+    final sender = _track.sender;
+    if (_stopped || _busy || sender == null) return;
+
+    _busy = true;
+    try {
+      final size = _sourceSize(await sender.getStats());
+      if (size == null || _stopped) return;
+
+      if (_applied == 0) {
+        _timer?.cancel();
+        _timer = Timer.periodic(_watching, (_) => unawaited(_tick()));
+      }
+
+      final scale = screenShareScale(width: size.width, height: size.height);
+      if (_applied != 0 && (scale - _applied).abs() / _applied < 0.01) return;
+
+      final parameters = sender.parameters;
+      final encodings = parameters.encodings;
+      if (encodings == null || encodings.isEmpty) return;
+
+      final layers = _layers ??= {
+        for (final encoding in encodings)
+          encoding.rid: encoding.scaleResolutionDownBy ?? 1.0,
+      };
+      for (final encoding in encodings) {
+        encoding.scaleResolutionDownBy = (layers[encoding.rid] ?? 1.0) * scale;
+      }
+
+      if (await sender.setParameters(parameters)) _applied = scale;
+    } on Object {
+      // Statistics or parameters not ready yet: the next tick tries again.
+    } finally {
+      _busy = false;
+    }
+  }
+
+  /// The size being captured: the `media-source` statistic, which is the
+  /// capturer's own output. Failing that, the largest layer being encoded,
+  /// scaled back up by what has been applied to it.
+  ({int width, int height})? _sourceSize(List<rtc.StatsReport> reports) {
+    for (final report in reports) {
+      if (report.type != 'media-source') continue;
+      final width = _whole(report.values['width']);
+      final height = _whole(report.values['height']);
+      if (width != null && height != null) {
+        return (width: width, height: height);
+      }
+    }
+
+    ({int width, int height})? largest;
+    var scaledBy = 1.0;
+    for (final report in reports) {
+      if (report.type != 'outbound-rtp') continue;
+      final width = _whole(report.values['frameWidth']);
+      final height = _whole(report.values['frameHeight']);
+      if (width == null || height == null) continue;
+      if (largest != null && width * height <= largest.width * largest.height) {
+        continue;
+      }
+      largest = (width: width, height: height);
+      final rid = report.values['rid'];
+      scaledBy =
+          (_layers?[rid is String ? rid : null] ?? 1.0) *
+          (_applied == 0 ? 1.0 : _applied);
+    }
+
+    if (largest == null) return null;
+    return (
+      width: (largest.width * scaledBy).round(),
+      height: (largest.height * scaledBy).round(),
+    );
+  }
+
+  static int? _whole(Object? value) =>
+      value is num && value > 0 ? value.round() : null;
+}
+
+/// Notices that the window being shared has closed.
+///
+/// The desktop capturers do not say so — their stop and error callbacks only
+/// log — and watching for frames to stop would be wrong for a screen, which on
+/// macOS sends nothing at all while nothing on it changes. A window that has
+/// closed drops out of the window list, so that is what is watched.
+class _ShareEndWatch {
+  _ShareEndWatch(this._sourceId, this._onGone);
+
+  final String _sourceId;
+  final void Function() _onGone;
+  Timer? _timer;
+  StreamSubscription<rtc.DesktopCapturerSource>? _removed;
+  bool _done = false;
+
+  void start() {
+    _removed = rtc.desktopCapturer.onRemoved.stream.listen((source) {
+      if (source.id == _sourceId) _gone();
+    });
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) async {
+      try {
+        await rtc.desktopCapturer.updateSources(types: [rtc.SourceType.Window]);
+      } on Object {
+        // The next look will do.
+      }
+    });
+  }
+
+  void _gone() {
+    if (_done) return;
+    stop();
+    _onGone();
+  }
+
+  void stop() {
+    _done = true;
+    _timer?.cancel();
+    unawaited(_removed?.cancel());
   }
 }

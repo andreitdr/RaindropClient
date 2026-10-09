@@ -53,6 +53,13 @@ const e2eeVoiceCapability = 'e2ee.voice.v1';
 /// rather than offered and refused.
 const voiceVideoCapability = 'voice.video.v1';
 
+/// The server's `capabilities` entry for screen sharing in calls: a member
+/// with the `screen_share` permission may share a screen or a window — and a
+/// window's own sound — within the server's cap on how many shares one call
+/// carries at once. The same key again. A server without this shows no share
+/// button and no shares to watch.
+const voiceScreenCapability = 'voice.screen.v1';
+
 /// One device, by owner and id.
 class DeviceRef {
   const DeviceRef({required this.userId, required this.deviceId});

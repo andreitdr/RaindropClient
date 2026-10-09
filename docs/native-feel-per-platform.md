@@ -25,6 +25,13 @@ re-deriving the check:
   (`core/video/camera_effects_engine.dart`) adds whether the build carries a segmentation model, and
   that is what the camera sheet reads, so a build without one offers no effect rather than one that
   would blur the wrong shape. See [Voice](voice.md#camera-effects).
+- `canShareScreen` — the desktops: a phone can watch a share but not send one, since showing another
+  app backgrounds Raindrop. `needsScreenCapturePermission` — macOS, which asks for Screen Recording.
+- `windowAudioUnavailableReason(windowId)` — why a window's own sound cannot be shared, or null: only
+  on Windows 11, and not for a window whose process tree contains Raindrop. `isThisAppsWindow` and
+  `isWindowStillOpen` answer the share picker. The Windows half of these is
+  `core/platform/windows_processes.dart` (`dart:ffi`; it never branches on the platform itself, and
+  loads nothing until called). See [Voice](voice.md#screen-sharing).
 - `isRunningOnWeb`, `operatingSystemName`
 
 Keeping every check in one file means a new target only needs updating here.

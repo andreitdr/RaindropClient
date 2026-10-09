@@ -1,10 +1,11 @@
-/// The media half of a voice call — microphone and camera — behind one
-/// interface so the rest of the app never names the media library. The server
+/// The media half of a voice call — microphone, camera and screen share —
+/// behind one interface so the rest of the app never names the media library. The server
 /// says which transport to use when a call is joined
 /// (`VoiceJoinResult.transport`); [createVoiceEngine] turns that name into an
 /// engine, or null for a transport this build cannot speak.
 library;
 
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
@@ -178,25 +179,207 @@ class VoiceCameraOptions {
 
 /// What the server currently lets this participant send.
 ///
-/// Two independent answers, because a call token now names two sources. A
-/// single "may publish" bool cannot tell a server mute from a camera that is
-/// not allowed, and the two have entirely different consequences.
+/// Independent answers, one per source, because a call token names each
+/// source separately. A single "may publish" bool cannot tell a server mute
+/// from a camera that is not allowed, and the two have entirely different
+/// consequences.
 class VoicePublishRights {
-  const VoicePublishRights({required this.microphone, required this.camera});
+  const VoicePublishRights({
+    required this.microphone,
+    required this.camera,
+    this.screen = false,
+    this.screenAudio = false,
+  });
 
   static const none = VoicePublishRights(microphone: false, camera: false);
 
   final bool microphone;
   final bool camera;
 
+  /// The picture of a screen or window being shared.
+  final bool screen;
+
+  /// A shared window's own sound. The server only ever grants it with
+  /// [screen], for a window, and while this participant may speak.
+  final bool screenAudio;
+
   @override
   bool operator ==(Object other) =>
       other is VoicePublishRights &&
       other.microphone == microphone &&
-      other.camera == camera;
+      other.camera == camera &&
+      other.screen == screen &&
+      other.screenAudio == screenAudio;
 
   @override
-  int get hashCode => Object.hash(microphone, camera);
+  int get hashCode => Object.hash(microphone, camera, screen, screenAudio);
+}
+
+/// LiveKit's own numbers for the sources a participant may publish, as a
+/// permission update carries them — its wire protocol, the same numbers
+/// vendored on the server in `livekit_room_service.proto`. Compared by number
+/// because the enum the permission carries is the protobuf one, which
+/// `livekit_client` does not export.
+abstract final class MediaSourceNumbers {
+  static const camera = 1;
+  static const microphone = 2;
+  static const screenShare = 3;
+  static const screenShareAudio = 4;
+}
+
+/// What a media-server permission lets this participant send, from its
+/// `canPublish` and the source numbers in `canPublishSources`.
+///
+/// An **empty** source list with [canPublish] means every source: that is
+/// how LiveKit reads it. Raindrop's own tokens never send one empty, but a
+/// token LiveKit refreshed for a connected participant is not ours to assume
+/// about. Kept here, free of the media library, so the rule can be tested.
+VoicePublishRights voicePublishRightsOf({
+  required bool canPublish,
+  required Iterable<int> sources,
+}) {
+  if (!canPublish) return VoicePublishRights.none;
+
+  final allowed = sources.toSet();
+  if (allowed.isEmpty) {
+    return const VoicePublishRights(
+      microphone: true,
+      camera: true,
+      screen: true,
+      screenAudio: true,
+    );
+  }
+
+  return VoicePublishRights(
+    microphone: allowed.contains(MediaSourceNumbers.microphone),
+    camera: allowed.contains(MediaSourceNumbers.camera),
+    screen: allowed.contains(MediaSourceNumbers.screenShare),
+    screenAudio: allowed.contains(MediaSourceNumbers.screenShareAudio),
+  );
+}
+
+/// What a video feed shows.
+enum VoiceVideoKind { camera, screen }
+
+/// What a screen share shows: a whole display, or one window.
+enum VoiceScreenSourceKind { screen, window }
+
+/// Something that can be shared — a display or a window — as the share picker
+/// lists it.
+class VoiceScreenSource {
+  const VoiceScreenSource({
+    required this.id,
+    required this.name,
+    required this.kind,
+    this.thumbnail,
+  });
+
+  /// The platform's own id for it. For a window on Windows this is the HWND,
+  /// as a decimal string — which is what lets the picker ask whose window it
+  /// is before offering its sound.
+  final String id;
+
+  /// A display's name, or a window's title.
+  final String name;
+
+  final VoiceScreenSourceKind kind;
+
+  /// A small JPEG of what it currently shows, when the platform made one.
+  final Uint8List? thumbnail;
+
+  @override
+  bool operator ==(Object other) =>
+      other is VoiceScreenSource &&
+      other.id == id &&
+      other.kind == kind &&
+      other.name == name;
+
+  @override
+  int get hashCode => Object.hash(id, kind, name);
+}
+
+/// A live list of what can be shared, for the share picker. Displays and
+/// windows come and go and their thumbnails refresh in place, so the picker
+/// listens rather than reading once.
+abstract class VoiceScreenSources {
+  /// The whole list, replaced on every change.
+  Stream<List<VoiceScreenSource>> get sources;
+
+  /// What [sources] last delivered.
+  List<VoiceScreenSource> get current;
+
+  /// False when the system refused this app permission to record the screen
+  /// (macOS asks once; after that it is System Settings). Nothing is listed
+  /// then, and the picker says where to allow it.
+  bool get captureAllowed;
+
+  Future<void> dispose();
+}
+
+/// What to share, and whether to send its sound.
+class VoiceScreenShareOptions {
+  /// [withAudio] is dropped for a whole screen rather than trusted: a screen
+  /// is never shared with sound, because the host's sound is never sent. Only
+  /// a window can carry its own, and only after its sharer agreed to it.
+  VoiceScreenShareOptions({required this.source, bool withAudio = false})
+    : withAudio = withAudio && source.kind == VoiceScreenSourceKind.window;
+
+  final VoiceScreenSource source;
+  final bool withAudio;
+}
+
+/// What this client is actually sharing right now.
+class VoiceScreenShareState {
+  const VoiceScreenShareState.off() : source = null, withAudio = false;
+
+  const VoiceScreenShareState.sharing(
+    VoiceScreenSource this.source, {
+    required this.withAudio,
+  });
+
+  /// What is being shared, or null when nothing is.
+  final VoiceScreenSource? source;
+
+  /// Whether its sound is really going out — which can be less than was asked
+  /// for, when it could not be captured or the server withdrew it.
+  final bool withAudio;
+
+  bool get on => source != null;
+}
+
+/// The most a screen share is sent at: it is scaled to fit inside this box,
+/// turned to match a portrait source, and never scaled up.
+const int screenShareMaxWidth = 1920;
+const int screenShareMaxHeight = 1080;
+
+/// How often a screen share sends a picture. Enough to follow a pointer and a
+/// scrolling document; a share is mostly text, and text wants resolution far
+/// more than it wants frames.
+const int screenShareFrameRate = 15;
+
+/// The ceiling on a share's top layer, in bits per second. What it actually
+/// bounds is bandwidth; the resolution cap is what makes this many bits look
+/// good.
+const int screenShareMaxBitrate = 2500000;
+
+/// How much to scale a [width]×[height] picture down so it fits inside
+/// [screenShareMaxWidth]×[screenShareMaxHeight] — or the same box turned on
+/// its side, for a portrait source — keeping its shape. Never below 1:
+/// nothing is scaled up.
+///
+/// Fitting the box rather than only capping the height is what bounds the
+/// bandwidth: an ultrawide 3440×1440 capped at 1080 lines would still be 34%
+/// more pixels than 1080p, where fitting it gives 1920×804.
+double screenShareScale({required int width, required int height}) {
+  if (width <= 0 || height <= 0) return 1;
+
+  final long = math.max(width, height);
+  final short = math.min(width, height);
+
+  return math.max(
+    1,
+    math.max(long / screenShareMaxWidth, short / screenShareMaxHeight),
+  );
 }
 
 /// One live camera in a call, or in the pre-join preview.
@@ -205,8 +388,12 @@ class VoicePublishRights {
 /// inside `livekit_voice_engine.dart`: a feed *is* the renderer, so no widget
 /// outside `core/voice/` ever names a track type. [VoiceVideoView] draws one.
 abstract class VoiceVideoFeed {
-  /// Whose camera this is — their member UUID, as in the roster.
+  /// Whose camera or screen this is — their member UUID, as in the roster.
   String get identity;
+
+  /// A camera, or a shared screen or window. A screen is drawn whole
+  /// (`BoxFit.contain`) and never mirrored.
+  VoiceVideoKind get kind;
 
   /// This device's own camera.
   bool get isLocal;
@@ -253,7 +440,7 @@ abstract class VoiceCameraPreview {
   Future<void> dispose();
 }
 
-/// One call's audio. Created per call and disposed when it ends.
+/// One call's media. Created per call and disposed when it ends.
 ///
 /// Participants are named by their identity in the call, which is their
 /// member UUID on the server.
@@ -337,14 +524,16 @@ abstract class VoiceEngine {
   /// the engine turned it off itself, for a track it could not encrypt.
   Stream<bool> get cameraStates;
 
-  /// Every camera in the call, this client's own first. The whole list is
-  /// replaced on every change, like [activeSpeakers], so a listener never has
-  /// to merge.
+  /// Every camera in the call and every screen share this client watches —
+  /// its own share included — this client's own first. Tell them apart by
+  /// [VoiceVideoFeed.kind]. The whole list is replaced on every change, like
+  /// [activeSpeakers], so a listener never has to merge.
   Stream<List<VoiceVideoFeed>> get videoFeeds;
 
-  /// Participants whose camera arrived in a state this client will not render:
-  /// unencrypted, or not decrypting. Their tile says so instead of showing
-  /// video. Nothing untrusted is ever drawn.
+  /// Participants whose *camera* arrived in a state this client will not
+  /// render: unencrypted, or not decrypting. Their tile says so instead of
+  /// showing video. Nothing untrusted is ever drawn. Shares are
+  /// [untrustedScreenShares].
   Stream<Set<String>> get untrustedVideo;
 
   /// Stops receiving one participant's camera, or starts again.
@@ -353,6 +542,49 @@ abstract class VoiceEngine {
   /// It really stops the stream rather than hiding it, so hiding a camera
   /// saves the bandwidth as well as the screen space.
   Future<void> setVideoVisible(String identity, bool visible);
+
+  /// Starts sharing a screen or a window, or stops.
+  ///
+  /// Returns false, without throwing and without capturing anything, when the
+  /// server has not granted what [options] asks for — the picture, and the
+  /// sound too when it asks for sound. The caller asked the server first and
+  /// waits for the grant, like the camera's handshake. A new share replaces a
+  /// running one.
+  ///
+  /// The picture is scaled down to fit [screenShareMaxWidth] ×
+  /// [screenShareMaxHeight] before it is encoded, whatever the source's size.
+  Future<bool> setScreenShareEnabled(
+    bool enabled, {
+    VoiceScreenShareOptions? options,
+  });
+
+  /// What this client is sharing, as it changes — including when the engine
+  /// stopped it itself (the window closed, the grant was withdrawn, it could
+  /// not be encrypted) or carries on without sound it could not capture.
+  Stream<VoiceScreenShareState> get screenShareStates;
+
+  VoiceScreenShareState get currentScreenShare;
+
+  /// Starts or stops receiving one participant's screen share — its picture
+  /// and its sound together.
+  ///
+  /// **Nobody's share is received until it is watched**: the media server
+  /// forwards nothing from it to this device until then, which is the biggest
+  /// bandwidth saving in a call. The wish is kept, so a share that is stopped
+  /// and started again stays watched, or unwatched.
+  Future<void> setScreenShareWatched(String identity, bool watched);
+
+  /// How loud [identity]'s shared window plays here, separately from their
+  /// voice: 0 silent, 1 as sent, up to [maximumVolume].
+  Future<void> setScreenShareVolume(String identity, double volume);
+
+  /// Participants who are sharing a screen this client trusts — watched or
+  /// not. The whole set is replaced on every change.
+  Stream<Set<String>> get screenShares;
+
+  /// Participants whose share arrived unencrypted or is not decrypting. It is
+  /// never drawn or played.
+  Stream<Set<String>> get untrustedScreenShares;
 
   /// Something the engine refused for safety, in words for the user — media it
   /// could not encrypt, an effect it had to turn off. Never fatal: the call
@@ -414,6 +646,12 @@ Future<List<AudioDevice>> audioOutputDevices() => LiveKitVoiceEngine.outputs();
 
 /// The cameras this machine has.
 Future<List<VideoDevice>> videoInputDevices() => LiveKitVoiceEngine.cameras();
+
+/// The displays and windows this machine can share, live, for the share
+/// picker. Not a method on [VoiceEngine], for the same reason as
+/// [openCameraPreview]: choosing comes before the share, and must not need one.
+Future<VoiceScreenSources> openScreenSources() =>
+    LiveKitVoiceEngine.screenSources();
 
 /// Opens a camera outside a call, for the camera-and-effects sheet.
 ///
