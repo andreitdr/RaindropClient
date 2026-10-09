@@ -4,6 +4,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 import 'package:livekit_client/livekit_client.dart';
 
@@ -24,9 +25,32 @@ class LiveKitVoiceEngine implements VoiceEngine {
   final _connectionStates = StreamController<VoiceConnectionState>.broadcast();
   final _activeSpeakers = StreamController<Set<String>>.broadcast();
   final _disconnects = StreamController<VoiceDisconnectReason>.broadcast();
-  final _canSpeak = StreamController<bool>.broadcast();
+  final _publishRights = StreamController<VoicePublishRights>.broadcast();
   final _encryption = StreamController<VoiceEncryption>.broadcast();
   final _warnings = StreamController<String>.broadcast();
+  final _cameraStates = StreamController<bool>.broadcast();
+  final _videoFeeds = StreamController<List<VoiceVideoFeed>>.broadcast();
+  final _untrustedVideo = StreamController<Set<String>>.broadcast();
+
+  /// What the server currently lets this participant send. Kept rather than
+  /// derived on demand, because the camera handshake has to know whether a
+  /// grant is already in place before it decides to wait for one.
+  VoicePublishRights _rights = VoicePublishRights.none;
+
+  /// What the camera was last asked to be, and with what. Remembered so a
+  /// track republished after a reconnect comes back with the same choice.
+  bool _cameraWanted = false;
+  VoiceCameraOptions _camera = const VoiceCameraOptions();
+
+  /// Whether the chosen camera faces the user, which is the only thing that
+  /// decides whether their own picture is mirrored. Resolved from the device
+  /// list when the camera is chosen, since a capture track does not say.
+  bool _frontCamera = true;
+
+  /// Participants whose camera this device is not to receive. A wish, not a
+  /// state: it is re-applied whenever they publish, so hiding somebody does not
+  /// leak the moment they turn their camera off and on again.
+  final _videoHidden = <String>{};
 
   /// Set when the call is end-to-end encrypted.
   BaseKeyProvider? _keyProvider;
@@ -68,7 +92,19 @@ class LiveKitVoiceEngine implements VoiceEngine {
   Stream<VoiceDisconnectReason> get disconnects => _disconnects.stream;
 
   @override
-  Stream<bool> get canSpeakChanges => _canSpeak.stream;
+  Stream<VoicePublishRights> get publishRights => _publishRights.stream;
+
+  @override
+  VoicePublishRights get currentPublishRights => _rights;
+
+  @override
+  Stream<bool> get cameraStates => _cameraStates.stream;
+
+  @override
+  Stream<List<VoiceVideoFeed>> get videoFeeds => _videoFeeds.stream;
+
+  @override
+  Stream<Set<String>> get untrustedVideo => _untrustedVideo.stream;
 
   @override
   Stream<VoiceEncryption> get encryptionChanges => _encryption.stream;
@@ -153,6 +189,14 @@ class LiveKitVoiceEngine implements VoiceEngine {
     }
     _reportEncryption();
 
+    // The token's own grant, before any update arrives: a client that joined
+    // muted for everyone must know it cannot speak without waiting for an
+    // event that may never come, because nothing changed after it connected.
+    if (room.localParticipant case final local?) {
+      _rights = _rightsOf(local.permissions);
+      if (!_publishRights.isClosed) _publishRights.add(_rights);
+    }
+
     if (outputDeviceId != null) await _selectOutput(outputDeviceId);
     await _applyMic();
   }
@@ -223,6 +267,68 @@ class LiveKitVoiceEngine implements VoiceEngine {
   }
 
   @override
+  Future<bool> setCameraEnabled(bool enabled, {VoiceCameraOptions? options}) async {
+    if (options != null) {
+      _camera = options;
+      _frontCamera = await _isFront(options.deviceId);
+    }
+    _cameraWanted = enabled;
+
+    if (!enabled) {
+      await _stopCamera();
+      return true;
+    }
+
+    // The grant has to be in place first. Returning false rather than opening
+    // the camera is what keeps a light from coming on for a camera nobody will
+    // see; the caller asked the server for the grant and reports the wait.
+    if (!_rights.camera) return false;
+
+    await _applyCamera();
+    return true;
+  }
+
+  @override
+  Future<void> applyCameraOptions(VoiceCameraOptions options) async {
+    final previous = _camera;
+    _camera = options;
+    if (previous.deviceId != options.deviceId) {
+      _frontCamera = await _isFront(options.deviceId);
+    }
+
+    if (!_cameraWanted || !_rights.camera) return;
+
+    // Swapping the effect leaves the capture alone; changing the camera or the
+    // quality cannot, and other participants see that as a brief freeze.
+    if (previous.needsRestartFor(options)) {
+      await _applyCamera();
+    } else {
+      await _applyEffect();
+    }
+  }
+
+  @override
+  Future<void> setVideoVisible(String identity, bool visible) async {
+    // Recorded whether or not they are here yet: the wish outlives the
+    // publication, so somebody who republishes — or who joins after the wish
+    // was made — is hidden before their first frame arrives.
+    if (visible) {
+      _videoHidden.remove(identity);
+    } else {
+      _videoHidden.add(identity);
+    }
+
+    final participant = _room?.remoteParticipants[identity];
+    if (participant == null) return;
+
+    for (final publication in participant.videoTrackPublications) {
+      await _applyVisibility(publication, visible);
+    }
+
+    _reportFeeds();
+  }
+
+  @override
   Future<void> setInputDevice(String deviceId) async {
     final device = (await Hardware.instance.audioInputs())
         .where((d) => d.deviceId == deviceId)
@@ -258,9 +364,12 @@ class LiveKitVoiceEngine implements VoiceEngine {
     await _connectionStates.close();
     await _activeSpeakers.close();
     await _disconnects.close();
-    await _canSpeak.close();
+    await _publishRights.close();
     await _encryption.close();
     await _warnings.close();
+    await _cameraStates.close();
+    await _videoFeeds.close();
+    await _untrustedVideo.close();
   }
 
   // ── Devices ────────────────────────────────────────────────────────────────
@@ -274,6 +383,44 @@ class LiveKitVoiceEngine implements VoiceEngine {
     for (final d in await Hardware.instance.audioOutputs())
       AudioDevice(id: d.deviceId, label: d.label),
   ];
+
+  static Future<List<VideoDevice>> cameras() async => [
+    for (final d in await Hardware.instance.videoInputs())
+      VideoDevice(
+        id: d.deviceId,
+        label: d.label,
+        isFront: _looksFrontFacing(d.label),
+      ),
+  ];
+
+  /// A camera outside a call, for the camera-and-effects sheet.
+  static Future<VoiceCameraPreview> preview(VoiceCameraOptions options) async {
+    final preview = _LiveKitCameraPreview();
+    await preview.apply(options);
+    return preview;
+  }
+
+  /// Whether a camera faces the user, from its name.
+  ///
+  /// There is no flag for this: `getUserMedia` reports a label, and that is
+  /// all. On a phone the labels are reliable ("front"/"user"); on a laptop the
+  /// built-in camera is front-facing and almost everything is, so defaulting to
+  /// true mirrors the common case correctly and the odd external camera reads
+  /// as front too. Mirroring only ever affects what you see of yourself.
+  static bool _looksFrontFacing(String label) {
+    final name = label.toLowerCase();
+    if (name.contains('back') || name.contains('rear') || name.contains('environment')) {
+      return false;
+    }
+    return true;
+  }
+
+  static Future<bool> _isFront(String? deviceId) async {
+    if (deviceId == null) return true;
+
+    final device = (await cameras()).where((c) => c.id == deviceId).firstOrNull;
+    return device?.isFront ?? true;
+  }
 
   // ── Plumbing ───────────────────────────────────────────────────────────────
 
@@ -307,13 +454,25 @@ class LiveKitVoiceEngine implements VoiceEngine {
       ..on<ParticipantDisconnectedEvent>((event) {
         _unencrypted.remove(event.participant.identity);
         _failing.removeAll(event.participant.trackPublications.keys);
+        // `_videoHidden` deliberately survives them leaving: it is the user's
+        // standing wish about a person, not about a publication, and it is
+        // persisted across restarts anyway.
         _reportEncryption();
+        _reportFeeds();
       })
       ..on<ActiveSpeakersChangedEvent>(
         (event) => _activeSpeakers.add({
           for (final speaker in event.speakers) speaker.identity,
         }),
       )
+      ..on<TrackPublishedEvent>((event) async {
+        // Before anything is received: somebody who republishes their camera,
+        // or who joins after they were hidden, must not come back visible.
+        if (event.publication.kind != TrackType.VIDEO) return;
+        if (_videoHidden.contains(event.participant.identity)) {
+          await _applyVisibility(event.publication, false);
+        }
+      })
       ..on<TrackSubscribedEvent>((event) async {
         final identity = event.participant.identity;
         final publication = event.publication;
@@ -352,7 +511,12 @@ class LiveKitVoiceEngine implements VoiceEngine {
           case RemoteVideoTrack _:
             // Untrusted video is never drawn, so it should not cost bandwidth
             // either — unlike audio there is nothing to keep it around for.
-            if (!trusted) await publication.unsubscribe();
+            if (!trusted) {
+              await publication.unsubscribe();
+            } else if (_videoHidden.contains(identity)) {
+              await _applyVisibility(publication, false);
+            }
+            _reportFeeds();
           case _:
         }
       })
@@ -371,6 +535,9 @@ class LiveKitVoiceEngine implements VoiceEngine {
           case E2EEState.kNew || E2EEState.kKeyRatcheted:
         }
         _reportEncryption();
+        // A camera that stops decrypting drops out of the feed list on the
+        // spot, and its owner's tile says so instead of showing video.
+        _reportFeeds();
       })
       ..on<LocalTrackPublishedEvent>((event) async {
         if (_keyProvider == null) return;
@@ -390,28 +557,233 @@ class LiveKitVoiceEngine implements VoiceEngine {
         }
 
         await event.participant.removePublishedTrack(publication.sid);
+        _cameraWanted = false;
+        if (!_cameraStates.isClosed) _cameraStates.add(false);
         _reportEncryption();
+        _reportFeeds();
         if (!_warnings.isClosed) {
           _warnings.add(
             'Your camera could not be encrypted, so it was turned off.',
           );
         }
       })
-      ..on<LocalTrackUnpublishedEvent>(
-        (event) => _failing.remove(event.publication.sid),
-      )
-      ..on<TrackUnsubscribedEvent>(
-        (event) => _failing.remove(event.publication.sid),
-      )
+      ..on<LocalTrackUnpublishedEvent>((event) {
+        _failing.remove(event.publication.sid);
+        _reportFeeds();
+      })
+      ..on<TrackUnsubscribedEvent>((event) {
+        _failing.remove(event.publication.sid);
+        _reportFeeds();
+      })
       ..on<ParticipantPermissionsUpdatedEvent>((event) async {
         if (event.participant != room.localParticipant) return;
-        _canSpeak.add(event.permissions.canPublish);
+
+        final before = _rights;
+        _rights = _rightsOf(event.permissions);
+        if (_rights != before && !_publishRights.isClosed) {
+          _publishRights.add(_rights);
+        }
+
         // Given the microphone back after a mute for everyone: send again if
         // this participant had it on.
-        if (event.permissions.canPublish && !event.oldPermissions.canPublish) {
-          await _applyMic();
+        if (_rights.microphone && !before.microphone) await _applyMic();
+
+        // The camera grant arriving is the second half of the handshake the
+        // call controller started. It asked the server, the server told the
+        // media server, and this is it coming back — so publish now.
+        if (_rights.camera && !before.camera && _cameraWanted) {
+          await _applyCamera();
         }
+        // And taken away: stop, rather than leave a track the media server has
+        // stopped accepting.
+        if (!_rights.camera && before.camera) await _stopCamera();
       });
+  }
+
+  // ── The camera ─────────────────────────────────────────────────────────────
+
+  /// LiveKit reads an **empty** `canPublishSources` as "every source", so an
+  /// empty list with `canPublish` true means both are allowed. Raindrop's own
+  /// tokens never send one empty, but a token LiveKit refreshed for a connected
+  /// participant is not ours to assume about.
+  static VoicePublishRights _rightsOf(ParticipantPermissions permissions) {
+    if (!permissions.canPublish) return VoicePublishRights.none;
+
+    if (permissions.canPublishSources.isEmpty) {
+      return const VoicePublishRights(microphone: true, camera: true);
+    }
+
+    return VoicePublishRights(
+      microphone: _allows(permissions, _sourceMicrophone),
+      camera: _allows(permissions, _sourceCamera),
+    );
+  }
+
+  /// LiveKit's own `TrackSource` numbers.
+  ///
+  /// Compared by number rather than by name because the enum
+  /// `ParticipantPermissions.canPublishSources` carries is the protobuf one,
+  /// which `livekit_client` does not export — the public `TrackSource` is its
+  /// own, differently-spelled type. These are LiveKit's wire protocol, the same
+  /// numbers vendored on the server side in
+  /// `RaindropServer.Voice.LiveKit/Protos/livekit_room_service.proto`.
+  static const _sourceCamera = 1;
+  static const _sourceMicrophone = 2;
+
+  static bool _allows(ParticipantPermissions permissions, int source) =>
+      permissions.canPublishSources.any((s) => s.value == source);
+
+  Future<void> _applyCamera() async {
+    final local = _room?.localParticipant;
+    if (local == null) return;
+
+    try {
+      await local.setCameraEnabled(
+        true,
+        cameraCaptureOptions: _captureCamera(),
+      );
+      await _applyEffect();
+      if (!_cameraStates.isClosed) _cameraStates.add(true);
+    } on Object catch (e) {
+      // A camera another app holds, or one the user declined: the call goes on
+      // without it, and the caller takes the claim back off the server.
+      _cameraWanted = false;
+      if (!_cameraStates.isClosed) _cameraStates.add(false);
+      if (!_warnings.isClosed) {
+        _warnings.add('Your camera could not be opened ($e).');
+      }
+    }
+
+    _reportFeeds();
+  }
+
+  Future<void> _stopCamera() async {
+    final local = _room?.localParticipant;
+    if (local != null) {
+      try {
+        await local.setCameraEnabled(false);
+      } on Object {
+        // Already gone, or never published. Nothing to undo.
+      }
+    }
+
+    if (!_cameraStates.isClosed) _cameraStates.add(false);
+    _reportFeeds();
+  }
+
+  /// Installs or removes the effects on a camera that is already running.
+  ///
+  /// Nothing happens here yet: the effects need a hook into the capture
+  /// pipeline that the media library does not expose, so `canUseCameraEffects`
+  /// is false everywhere and the sheet says so. The chosen effect is still
+  /// carried and persisted, so when that hook lands this is the one method that
+  /// changes.
+  Future<void> _applyEffect() async {}
+
+  CameraCaptureOptions _captureCamera() => CameraCaptureOptions(
+    deviceId: _camera.deviceId,
+    params: switch (_camera.quality) {
+      VoiceVideoQuality.sd360 => VideoParametersPresets.h360_169,
+      VoiceVideoQuality.sd540 => VideoParametersPresets.h540_169,
+      VoiceVideoQuality.hd720 => VideoParametersPresets.h720_169,
+    },
+  );
+
+  /// Stops or starts receiving one publication.
+  ///
+  /// `disable` rather than `unsubscribe`: it tells the media server to stop
+  /// forwarding this track *to this subscriber*, so the bandwidth really goes
+  /// away, while the subscription and its frame cryptor stay set up — which
+  /// makes showing the camera again immediate rather than a renegotiation.
+  /// `unsubscribe` is kept for a track that must never come back, which is the
+  /// untrusted case.
+  static Future<void> _applyVisibility(
+    RemoteTrackPublication publication,
+    bool visible,
+  ) async {
+    if (visible) {
+      await publication.enable();
+    } else {
+      await publication.disable();
+    }
+  }
+
+  /// Rebuilds the whole feed list, this device's own camera first.
+  ///
+  /// The whole list rather than a diff, like [activeSpeakers], so nothing
+  /// downstream has to merge — and so a feed that stopped being trusted
+  /// disappears by simply not being included.
+  void _reportFeeds() {
+    if (_videoFeeds.isClosed) return;
+
+    final room = _room;
+    final local = room?.localParticipant;
+    if (room == null) {
+      _videoFeeds.add(const []);
+      return;
+    }
+
+    final feeds = <VoiceVideoFeed>[];
+
+    if (local != null) {
+      for (final publication in local.videoTrackPublications) {
+        final track = publication.track;
+        if (track == null) continue;
+        feeds.add(
+          _LiveKitVideoFeed(
+            identity: local.identity,
+            track: track,
+            isLocal: true,
+            mirror: _frontCamera,
+          ),
+        );
+      }
+    }
+
+    for (final participant in room.remoteParticipants.values) {
+      if (_videoHidden.contains(participant.identity)) continue;
+      if (_unencrypted.contains(participant.identity)) continue;
+
+      for (final publication in participant.videoTrackPublications) {
+        final track = publication.track;
+        if (track == null) continue;
+        if (_failing.contains(publication.sid)) continue;
+        if (!publication.subscribed || !publication.enabled) continue;
+
+        feeds.add(
+          _LiveKitVideoFeed(
+            identity: participant.identity,
+            track: track,
+            isLocal: false,
+          ),
+        );
+      }
+    }
+
+    _videoFeeds.add(feeds);
+    _reportUntrustedVideo();
+  }
+
+  void _reportUntrustedVideo() {
+    if (_untrustedVideo.isClosed) return;
+
+    final room = _room;
+    if (room == null) {
+      _untrustedVideo.add(const {});
+      return;
+    }
+
+    final untrusted = <String>{};
+    for (final participant in room.remoteParticipants.values) {
+      for (final publication in participant.videoTrackPublications) {
+        if (_unencrypted.contains(participant.identity) ||
+            _failing.contains(publication.sid)) {
+          untrusted.add(participant.identity);
+        }
+      }
+    }
+
+    _untrustedVideo.add(untrusted);
   }
 
   /// One publication's volume, or silence while it is not trusted.
@@ -451,7 +823,7 @@ class LiveKitVoiceEngine implements VoiceEngine {
     final local = _room?.localParticipant;
     if (local == null) return;
 
-    if (_micWanted && !local.permissions.canPublish) return;
+    if (_micWanted && !_rights.microphone) return;
     await local.setMicrophoneEnabled(_micWanted);
   }
 
@@ -484,4 +856,101 @@ class LiveKitVoiceEngine implements VoiceEngine {
         DisconnectReason.stateMismatch => VoiceDisconnectReason.networkFailure,
         _ => VoiceDisconnectReason.unknown,
       };
+}
+
+/// A [VoiceVideoFeed] over one LiveKit track.
+///
+/// The feed *is* the renderer factory, which is what keeps `livekit_client` and
+/// `flutter_webrtc` inside this file: a tile in `features/voice/` is handed one
+/// of these and asks it to build a surface, so no widget outside `core/voice/`
+/// ever names a track type.
+class _LiveKitVideoFeed implements VoiceVideoFeed {
+  const _LiveKitVideoFeed({
+    required this.identity,
+    required this.track,
+    required this.isLocal,
+    this.mirror = false,
+  });
+
+  final VideoTrack track;
+
+  @override
+  final String identity;
+
+  @override
+  final bool isLocal;
+
+  @override
+  final bool mirror;
+
+  @override
+  bool get live => !track.muted;
+
+  @override
+  Widget buildSurface(BuildContext context, {BoxFit fit = BoxFit.cover}) =>
+      VideoTrackRenderer(
+        track,
+        fit: fit == BoxFit.contain ? VideoViewFit.contain : VideoViewFit.cover,
+        // Decided here rather than left to `auto`, because auto mirrors any
+        // local track and the back camera on a phone must not be mirrored.
+        mirrorMode: mirror ? VideoViewMirrorMode.mirror : VideoViewMirrorMode.off,
+      );
+}
+
+/// A camera running outside a call, for the camera-and-effects sheet.
+///
+/// It publishes nothing and touches no room: the sheet is reachable from
+/// settings with no call in progress, and opening a preview must not need one.
+class _LiveKitCameraPreview implements VoiceCameraPreview {
+  LocalVideoTrack? _track;
+  VoiceCameraOptions _options = const VoiceCameraOptions();
+  bool _front = true;
+
+  @override
+  VoiceVideoFeed get feed => _LiveKitVideoFeed(
+    identity: 'preview',
+    track: _track!,
+    isLocal: true,
+    mirror: _front,
+  );
+
+  @override
+  Future<void> apply(VoiceCameraOptions options) async {
+    final previous = _options;
+    _options = options;
+    _front = await LiveKitVoiceEngine._isFront(options.deviceId);
+
+    // The effect is not a property of the capture, so only a different camera
+    // or quality reopens it. There is nothing to apply for the effect itself
+    // yet — see LiveKitVoiceEngine._applyEffect.
+    if (_track != null && !previous.needsRestartFor(options)) return;
+
+    await _stop();
+    _track = await LocalVideoTrack.createCameraTrack(
+      CameraCaptureOptions(
+        deviceId: options.deviceId,
+        params: switch (options.quality) {
+          VoiceVideoQuality.sd360 => VideoParametersPresets.h360_169,
+          VoiceVideoQuality.sd540 => VideoParametersPresets.h540_169,
+          VoiceVideoQuality.hd720 => VideoParametersPresets.h720_169,
+        },
+      ),
+    );
+  }
+
+  @override
+  Future<void> dispose() => _stop();
+
+  Future<void> _stop() async {
+    final track = _track;
+    _track = null;
+    if (track == null) return;
+
+    try {
+      await track.stop();
+      await track.dispose();
+    } on Object {
+      // A camera already taken away by the OS. Nothing left to release.
+    }
+  }
 }

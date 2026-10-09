@@ -46,6 +46,21 @@ bool get isMobilePlatform =>
 /// voice library cannot choose a device there.
 bool get canChooseAudioDevices => isDesktopPlatform;
 
+/// Whether the app can pick which camera a call uses. True everywhere, unlike
+/// [canChooseAudioDevices]: on a phone the front and back cameras are two
+/// devices and choosing between them is the whole point, where audio routing is
+/// the OS's business.
+bool get canChooseCamera => true;
+
+/// Whether background blur and background replacement can run here.
+///
+/// The camera itself works on every platform; the effects need a hook into the
+/// capture pipeline that the media library does not expose, so they arrive one
+/// platform at a time. False everywhere until that lands — the camera-and-effects
+/// sheet reads this and says so rather than offering an effect that would do
+/// nothing.
+bool get canUseCameraEffects => false;
+
 /// Whether the camera can scan a QR code here — the device-link code another
 /// device shows. `mobile_scanner` covers iOS, Android and macOS; elsewhere
 /// the code is typed or pasted instead.

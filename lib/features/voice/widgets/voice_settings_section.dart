@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/platform/platform_info.dart';
 import '../../../core/voice/voice_engine.dart';
+import 'camera_effects_sheet.dart';
+import 'device_tile.dart';
 import '../../../core/widgets/adaptive.dart';
 import '../controllers/voice_settings_controller.dart';
 import '../models/voice_settings.dart';
@@ -28,6 +30,9 @@ final _audioDevicesProvider =
 /// There is no microphone volume: the voice library offers no input gain on
 /// desktop, so automatic gain control is the way to even a quiet microphone
 /// out.
+///
+/// The camera's row opens the same sheet the camera button does, so a choice
+/// can be made and seen before there is any call to use it in.
 class VoiceSettingsSection extends ConsumerWidget {
   const VoiceSettingsSection({super.key});
 
@@ -45,20 +50,38 @@ class VoiceSettingsSection extends ConsumerWidget {
       margin: EdgeInsets.zero,
       child: Column(
         children: [
+          // Shown on every platform, unlike the audio devices: a phone's
+          // front and back cameras are two devices, and the effect is a
+          // choice everywhere even where it cannot yet be applied.
+          ListTile(
+            leading: const Icon(Icons.videocam_outlined),
+            title: const Text('Camera & effects'),
+            subtitle: Text(_cameraSummary(settings)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              final chosen = await showCameraEffectsSheet(
+                context,
+                initial: settings.camera,
+                confirmLabel: 'Done',
+              );
+              if (chosen != null) update((s) => s.withCamera(chosen));
+            },
+          ),
+          const Divider(height: 1),
           if (canChooseAudioDevices) ...[
-            _DeviceTile(
+            DeviceTile(
               title: 'Microphone',
               icon: Icons.mic_none,
-              devices: devices?.inputs,
+              devices: devices?.inputs.map(_choice).toList(),
               selectedId: settings.inputDeviceId,
               onChanged: (id) =>
                   update((s) => s.copyWith(inputDeviceId: () => id)),
             ),
             const Divider(height: 1),
-            _DeviceTile(
+            DeviceTile(
               title: 'Speakers',
               icon: Icons.volume_up_outlined,
-              devices: devices?.outputs,
+              devices: devices?.outputs.map(_choice).toList(),
               selectedId: settings.outputDeviceId,
               onChanged: (id) =>
                   update((s) => s.copyWith(outputDeviceId: () => id)),
@@ -115,65 +138,17 @@ class VoiceSettingsSection extends ConsumerWidget {
   }
 }
 
-class _DeviceTile extends StatelessWidget {
-  const _DeviceTile({
-    required this.title,
-    required this.icon,
-    required this.devices,
-    required this.selectedId,
-    required this.onChanged,
-  });
-
-  final String title;
-  final IconData icon;
-
-  /// Null while the list is still being read.
-  final List<AudioDevice>? devices;
-  final String? selectedId;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final list = devices ?? const <AudioDevice>[];
-    // A device that was chosen and has since been unplugged still shows as
-    // chosen, rather than silently reading as the default.
-    final known = selectedId == null || list.any((d) => d.id == selectedId);
-
-    return ListTile(
-      leading: Icon(icon),
-      title: Text(title),
-      trailing: devices == null
-          ? const AdaptiveActivityIndicator(size: 16)
-          : DropdownButton<String?>(
-              value: selectedId,
-              underline: const SizedBox.shrink(),
-              items: [
-                const DropdownMenuItem(
-                  value: null,
-                  child: Text('System default'),
-                ),
-                for (final device in list)
-                  DropdownMenuItem(
-                    value: device.id,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 220),
-                      child: Text(
-                        device.label.isEmpty ? 'Unnamed device' : device.label,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                if (!known)
-                  DropdownMenuItem(
-                    value: selectedId,
-                    child: const Text('Disconnected device'),
-                  ),
-              ],
-              onChanged: onChanged,
-            ),
-    );
-  }
+/// The remembered camera choice in words, for the settings row's subtitle.
+String _cameraSummary(VoiceSettings settings) {
+  final quality = settings.videoQuality.label;
+  if (!canUseCameraEffects) return '$quality · effects not available here';
+  return '$quality · ${settings.cameraEffect.label.toLowerCase()}';
 }
+
+/// The engine's device types are two different classes with the same shape;
+/// [DeviceTile] takes one so it can serve cameras too.
+DeviceChoice _choice(AudioDevice device) =>
+    DeviceChoice(id: device.id, label: device.label);
 
 class _SwitchTile extends StatelessWidget {
   const _SwitchTile({

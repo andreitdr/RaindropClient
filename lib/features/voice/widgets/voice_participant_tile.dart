@@ -4,13 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/voice_api.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../servers/controllers/user_lookup.dart';
-import '../controllers/member_audio_controller.dart';
+import '../controllers/member_media_controller.dart';
 import '../controllers/voice_call_controller.dart';
 import 'voice_member_menu.dart';
 
 /// A member's name, resolved from their UUID — never from the call, whose
 /// copy of the name goes stale when somebody is renamed mid-call.
-String _nameOf(WidgetRef ref, String serverId, String userId) =>
+String voiceMemberName(WidgetRef ref, String serverId, String userId) =>
     ref
         .watch(userLookupProvider((serverId: serverId, userId: userId)))
         .valueOrNull
@@ -41,7 +41,7 @@ class VoiceParticipantTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final name = _nameOf(ref, serverId, participant.userId);
+    final name = voiceMemberName(ref, serverId, participant.userId);
     final speaking = _isSpeaking(ref, serverId, participant.userId);
 
     return _MemberMenuTarget(
@@ -115,7 +115,7 @@ class VoiceParticipantRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final name = _nameOf(ref, serverId, participant.userId);
+    final name = voiceMemberName(ref, serverId, participant.userId);
     final speaking = _isSpeaking(ref, serverId, participant.userId);
 
     return _MemberMenuTarget(
@@ -212,6 +212,16 @@ class VoiceStatusIcons extends ConsumerWidget {
     this.size = 16,
   });
 
+  /// The same icons over a camera, where the picture behind them is whatever
+  /// the camera is pointed at, so they are always drawn light.
+  const VoiceStatusIcons.overVideo({
+    super.key,
+    required this.serverId,
+    required this.participant,
+    required this.isCurrentUser,
+    this.size = 14,
+  }) : color = Colors.white;
+
   final String serverId;
   final VoiceParticipant participant;
   final bool isCurrentUser;
@@ -222,12 +232,12 @@ class VoiceStatusIcons extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final error = Theme.of(context).colorScheme.error;
     ref.watch(memberAudioProvider);
-    final locallyMuted =
-        !isCurrentUser &&
-        ref
-            .read(memberAudioProvider.notifier)
-            .of(serverId, participant.userId)
-            .muted;
+    final media = ref
+        .read(memberAudioProvider.notifier)
+        .of(serverId, participant.userId);
+    final locallyMuted = !isCurrentUser && media.muted;
+    final cameraHidden =
+        !isCurrentUser && participant.cameraOn && media.videoHidden;
 
     Widget icon(IconData data, String tooltip, Color tint) => Tooltip(
       message: tooltip,
@@ -248,6 +258,8 @@ class VoiceStatusIcons extends ConsumerWidget {
           icon(Icons.mic_off, 'Muted', color),
         if (participant.selfDeaf) icon(Icons.headset_off, 'Deafened', color),
         if (locallyMuted) icon(Icons.volume_off, 'Muted by you', color),
+        if (cameraHidden)
+          icon(Icons.videocam_off, 'Camera hidden by you', color),
       ],
     );
   }

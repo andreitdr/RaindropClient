@@ -43,6 +43,16 @@ const e2eeDeliveryCapability = 'e2ee.delivery.v1';
 /// cannot encrypt.
 const e2eeVoiceCapability = 'e2ee.voice.v1';
 
+/// The server's `capabilities` entry for camera video in calls: a member with
+/// the `video` permission may turn their camera on, within the server's cap on
+/// how many cameras one call carries at once.
+///
+/// Encryption is the same key and the same guarantee as
+/// [e2eeVoiceCapability] — one key per call, covering voice and camera alike.
+/// A server without this carries voice only, and the camera button is hidden
+/// rather than offered and refused.
+const voiceVideoCapability = 'voice.video.v1';
+
 /// One device, by owner and id.
 class DeviceRef {
   const DeviceRef({required this.userId, required this.deviceId});

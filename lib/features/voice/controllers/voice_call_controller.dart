@@ -1,7 +1,9 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/platform/platform_info.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/e2ee_api.dart';
@@ -11,9 +13,9 @@ import '../../../core/voice/voice_engine.dart';
 import '../../security/controllers/channel_groups.dart';
 import '../../servers/controllers/server_events.dart';
 import '../../servers/controllers/session_controller.dart';
-import '../models/member_audio.dart';
+import '../models/member_media.dart';
 import '../models/voice_settings.dart';
-import 'member_audio_controller.dart';
+import 'member_media_controller.dart';
 import 'voice_roster_controller.dart';
 import 'voice_settings_controller.dart';
 
@@ -32,6 +34,12 @@ class VoiceCallState {
     this.notice,
     this.warning,
     this.encryption = VoiceEncryption.none,
+    this.cameraOn = false,
+    this.cameraSuppressed = false,
+    this.cameraBusy = false,
+    this.videoAvailable = false,
+    this.videoFeeds = const [],
+    this.untrustedVideo = const {},
   });
 
   final String? serverId;
@@ -67,6 +75,36 @@ class VoiceCallState {
   /// call UI.
   final VoiceEncryption encryption;
 
+  /// This client is sending its camera.
+  final bool cameraOn;
+
+  /// The camera cannot be turned on: no `video` permission, or every camera
+  /// place in the call is taken.
+  final bool cameraSuppressed;
+
+  /// A camera is being turned on or off right now — the handshake with the
+  /// server and the media server is in flight. The button shows a spinner and
+  /// refuses a second tap, which would otherwise race the first.
+  final bool cameraBusy;
+
+  /// This server carries camera video at all (`voice.video.v1`). False hides
+  /// the camera button rather than offering one that always fails.
+  final bool videoAvailable;
+
+  /// Every camera in the call, this client's own first. The whole list is
+  /// replaced on every change.
+  final List<VoiceVideoFeed> videoFeeds;
+
+  /// Participants whose camera arrived unencrypted or stopped decrypting.
+  /// Their tile says so; nothing untrusted is ever drawn.
+  final Set<String> untrustedVideo;
+
+  /// The feed for one member, or null when they are not sending a camera this
+  /// client is receiving — because they have it off, it is hidden here, or it
+  /// is not trusted.
+  VoiceVideoFeed? feedFor(String userId) =>
+      videoFeeds.where((feed) => feed.identity == userId).firstOrNull;
+
   /// [warning] takes a nullary function rather than a plain value so a
   /// warning can be *cleared*, which a `??` fallback could never express.
   VoiceCallState copyWith({
@@ -76,6 +114,12 @@ class VoiceCallState {
     bool? suppressed,
     String? Function()? warning,
     VoiceEncryption? encryption,
+    bool? cameraOn,
+    bool? cameraSuppressed,
+    bool? cameraBusy,
+    bool? videoAvailable,
+    List<VoiceVideoFeed>? videoFeeds,
+    Set<String>? untrustedVideo,
   }) => VoiceCallState(
     serverId: serverId,
     channelId: channelId,
@@ -86,6 +130,12 @@ class VoiceCallState {
     notice: notice,
     warning: warning == null ? this.warning : warning(),
     encryption: encryption ?? this.encryption,
+    cameraOn: cameraOn ?? this.cameraOn,
+    cameraSuppressed: cameraSuppressed ?? this.cameraSuppressed,
+    cameraBusy: cameraBusy ?? this.cameraBusy,
+    videoAvailable: videoAvailable ?? this.videoAvailable,
+    videoFeeds: videoFeeds ?? this.videoFeeds,
+    untrustedVideo: untrustedVideo ?? this.untrustedVideo,
   );
 }
 
@@ -116,6 +166,11 @@ class VoiceEncryptionUnavailableException implements Exception {
 /// — during a call, so a key that leaks exposes at most this much audio.
 const _rekeyInterval = Duration(minutes: 10);
 
+/// How long to wait for the media server to accept a camera after the server
+/// has been told it is on. Long enough for a relayed round trip on a slow
+/// connection, short enough that a user does not sit watching a dead button.
+const _cameraGrantTimeout = Duration(seconds: 5);
+
 final voiceCallProvider = NotifierProvider<VoiceCallController, VoiceCallState>(
   VoiceCallController.new,
 );
@@ -142,7 +197,23 @@ class VoiceCallController extends Notifier<VoiceCallState> {
   @override
   VoiceCallState build() {
     ref.listen(voiceSettingsProvider, _onSettingsChanged);
-    ref.listen(memberAudioProvider, (_, _) => _applyVolumes());
+    ref.listen(memberAudioProvider, (_, _) {
+      _applyVolumes();
+      _applyVideoVisibility();
+    });
+
+    // Backgrounding a phone stops the camera at the OS level anyway, and
+    // everybody else is left looking at a frozen frame. Turning it off
+    // properly reports it, so their tile reverts instead. Desktop is left
+    // alone: a hidden window is still a live camera there, and stopping it
+    // silently would surprise.
+    if (isMobilePlatform) {
+      final lifecycle = AppLifecycleListener(
+        onHide: () => unawaited(setCameraEnabled(false)),
+      );
+      ref.onDispose(lifecycle.dispose);
+    }
+
     ref.onDispose(_teardown);
     return const VoiceCallState();
   }
@@ -171,8 +242,10 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     // cannot encrypt does not join at all.
     VoiceMediaKey? mediaKey;
     ChannelGroups? groups;
+    var videoAvailable = false;
     try {
       final info = await session.usersApi.serverInfo();
+      videoAvailable = info.capabilities.contains(voiceVideoCapability);
       if (info.capabilities.contains(e2eeVoiceCapability)) {
         groups = await ref.read(channelGroupsProvider(serverId).future);
         if (groups == null) {
@@ -224,12 +297,15 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     state = state.copyWith(
       serverMuted: joined.you.serverMute,
       suppressed: joined.you.suppressed,
+      cameraSuppressed: joined.you.cameraSuppressed,
+      videoAvailable: videoAvailable,
     );
     _follow(serverId, session, engine);
 
     // Set before connecting, so the first audio to arrive already plays at
-    // the right volume.
+    // the right volume, and a camera hidden earlier is never received at all.
     _applyVolumes();
+    _applyVideoVisibility();
 
     try {
       await engine.connect(
@@ -304,6 +380,148 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     await _end();
   }
 
+  /// Turns the camera on with the options the sheet returned, or off.
+  ///
+  /// **The grant has to come before the track.** A call token is minted naming
+  /// the microphone only, whatever the member's permissions say, and the server
+  /// adds the camera to it only once this client says its camera is on. So:
+  /// tell the server, wait for the media server to hand the grant over (it
+  /// arrives as a permissions update), then publish. If the grant does not
+  /// come, take the claim back rather than leaving a camera the server thinks
+  /// is on and nobody can see.
+  ///
+  /// Turning it off is the reverse order — stop publishing *first*, then tell
+  /// the server — so the grant is never withdrawn from under a live track.
+  ///
+  /// Refusals (`missing_permission`, `camera_limit_reached`) surface as the
+  /// server's own words through [VoiceCallState.warning], not as a thrown
+  /// exception: the caller is a button, and the call goes on either way.
+  Future<void> setCameraEnabled(bool on, {VoiceCameraOptions? options}) async {
+    final engine = _engine;
+    final session = _session;
+    final channelId = state.channelId;
+    if (engine == null || session == null || channelId == null) return;
+    if (state.cameraBusy || on == state.cameraOn) return;
+
+    final generation = _generation;
+    final settings = ref.read(voiceSettingsProvider);
+    state = state.copyWith(cameraBusy: true, warning: () => null);
+
+    try {
+      if (!on) {
+        await engine.setCameraEnabled(false);
+        await _tellServerCamera(session, on: false);
+        if (generation == _generation) {
+          state = state.copyWith(cameraOn: false, cameraBusy: false);
+        }
+        return;
+      }
+
+      // The server decides first: it is where the permission and the cap live.
+      await _tellServerCamera(session, on: true);
+      if (generation != _generation) return;
+
+      final granted = await _awaitCameraGrant(engine);
+      if (generation != _generation) return;
+
+      if (!granted || !await engine.setCameraEnabled(true, options: options ?? settings.camera)) {
+        // The server believes the camera is on and nothing is being sent.
+        // Take the claim back, so the roster does not show a camera nobody has.
+        await _tellServerCamera(session, on: false);
+        if (generation == _generation) {
+          state = state.copyWith(
+            cameraOn: false,
+            cameraBusy: false,
+            warning: () =>
+                'Your camera could not be started. Please try again.',
+          );
+        }
+        return;
+      }
+
+      if (generation == _generation) {
+        state = state.copyWith(cameraOn: true, cameraBusy: false);
+      }
+    } on ApiException catch (e) {
+      if (generation == _generation) {
+        state = state.copyWith(cameraBusy: false, warning: () => e.message);
+      }
+    } on Object {
+      if (generation == _generation) {
+        state = state.copyWith(
+          cameraBusy: false,
+          warning: () => 'Your camera could not be turned on.',
+        );
+      }
+    }
+  }
+
+  /// Changes the camera or the effect while it is already on.
+  Future<void> applyCameraOptions(VoiceCameraOptions options) async {
+    if (!state.cameraOn) return;
+    await _engine?.applyCameraOptions(options);
+  }
+
+  /// Reports this client's camera to the server, carrying the mute and deafen
+  /// it already has — `SetVoiceSelfState` replaces the whole self-state, so
+  /// sending only the camera would quietly unmute.
+  Future<void> _tellServerCamera(ServerSession session, {required bool on}) {
+    final settings = ref.read(voiceSettingsProvider);
+    return session.voiceApi.setSelfState(
+      session.token,
+      selfMute: !settings.micOn,
+      selfDeaf: settings.selfDeaf,
+      cameraOn: on,
+    );
+  }
+
+  /// Waits for the media server to accept this client's camera.
+  ///
+  /// The round trip is server to media server and back as a permissions
+  /// update, through a relay, so it is not instant. A grant already in place
+  /// returns at once. The reconciler re-pushes a missed grant within its own
+  /// interval, so a timeout here is worth one retry rather than a failure.
+  Future<bool> _awaitCameraGrant(VoiceEngine engine) async {
+    if (engine.currentPublishRights.camera) return true;
+
+    try {
+      await engine.publishRights
+          .firstWhere((rights) => rights.camera)
+          .timeout(_cameraGrantTimeout);
+      return true;
+    } on Object {
+      return engine.currentPublishRights.camera;
+    }
+  }
+
+  /// Tells the engine which cameras this device is not to receive.
+  ///
+  /// Called whenever the per-member settings change, and once right after
+  /// [_follow], so a camera that was already hidden is never received even
+  /// once.
+  void _applyVideoVisibility() {
+    final engine = _engine;
+    final serverId = state.serverId;
+    final channelId = state.channelId;
+    if (engine == null || serverId == null || channelId == null) return;
+
+    final roster = ref.read(voiceRosterProvider(serverId)).valueOrNull;
+    if (roster == null) return;
+
+    final members = ref.read(memberAudioProvider.notifier);
+    final me = _session?.currentUser.userId;
+
+    for (final participant in roster.inChannel(channelId)) {
+      if (participant.userId == me) continue;
+      unawaited(
+        engine.setVideoVisible(
+          participant.userId,
+          !members.of(serverId, participant.userId).videoHidden,
+        ),
+      );
+    }
+  }
+
   void dismissNotice() {
     if (!state.inCall && state.notice != null) state = const VoiceCallState();
   }
@@ -343,6 +561,25 @@ class VoiceCallController extends Notifier<VoiceCallState> {
       ..add(
         engine.warnings.listen((warning) {
           if (state.inCall) state = state.copyWith(warning: () => warning);
+        }),
+      )
+      ..add(
+        engine.videoFeeds.listen(
+          (feeds) => state = state.copyWith(videoFeeds: feeds),
+        ),
+      )
+      ..add(
+        engine.untrustedVideo.listen(
+          (untrusted) => state = state.copyWith(untrustedVideo: untrusted),
+        ),
+      )
+      ..add(
+        engine.cameraStates.listen((on) {
+          // The engine's own word, which includes it turning the camera off
+          // itself — a track it could not encrypt, or a camera the OS took
+          // away. Not applied mid-handshake, which owns the state until it
+          // settles.
+          if (!state.cameraBusy) state = state.copyWith(cameraOn: on);
         }),
       );
 
@@ -392,7 +629,12 @@ class VoiceCallController extends Notifier<VoiceCallState> {
       ..add(
         ref.listen<AsyncValue<VoiceRoster>>(
           voiceRosterProvider(serverId),
-          (_, _) => _applyVolumes(),
+          (_, _) {
+            _applyVolumes();
+            // A member who joined after a hide wish was recorded is covered
+            // here: the roster naming them is the first chance to apply it.
+            _applyVideoVisibility();
+          },
         ),
       );
   }
@@ -411,6 +653,14 @@ class VoiceCallController extends Notifier<VoiceCallState> {
         state = state.copyWith(
           serverMuted: you.serverMute,
           suppressed: you.suppressed,
+          cameraSuppressed: you.cameraSuppressed,
+          // The server's view of the camera, which is what everybody else
+          // sees — so another device of this account turning it on, or the
+          // permission going away mid-call, is reflected here. Not applied
+          // while the handshake is in flight: the server's record and this
+          // client's track are briefly out of step on purpose, and the
+          // handshake is what settles them.
+          cameraOn: state.cameraBusy ? null : you.cameraOn,
         );
 
       case ServerEventTypes.voiceLeft:
@@ -522,7 +772,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
       engine.setDefaultVolume(
         effectiveVolume(
           outputVolume: settings.outputVolume,
-          member: const MemberAudio(),
+          member: const MemberMedia(),
           deafened: settings.selfDeaf,
         ),
       ),

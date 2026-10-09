@@ -4,10 +4,11 @@ import 'package:raindrop_client/core/network/voice_api.dart';
 import 'package:raindrop_client/core/storage/app_prefs.dart';
 import 'package:raindrop_client/core/theme/theme_controller.dart';
 import 'package:raindrop_client/features/channels/models/channel.dart';
-import 'package:raindrop_client/features/voice/controllers/member_audio_controller.dart';
+import 'package:raindrop_client/features/voice/controllers/member_media_controller.dart';
 import 'package:raindrop_client/features/voice/controllers/voice_roster_controller.dart';
 import 'package:raindrop_client/features/voice/controllers/voice_settings_controller.dart';
-import 'package:raindrop_client/features/voice/models/member_audio.dart';
+import 'package:raindrop_client/core/voice/voice_engine.dart';
+import 'package:raindrop_client/features/voice/models/member_media.dart';
 import 'package:raindrop_client/features/voice/models/voice_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -45,7 +46,7 @@ void main() {
       expect(
         effectiveVolume(
           outputVolume: 0.5,
-          member: const MemberAudio(volume: 1.5),
+          member: const MemberMedia(volume: 1.5),
           deafened: false,
         ),
         0.75,
@@ -56,7 +57,7 @@ void main() {
       expect(
         effectiveVolume(
           outputVolume: 1,
-          member: const MemberAudio(),
+          member: const MemberMedia(),
           deafened: true,
         ),
         0,
@@ -64,7 +65,7 @@ void main() {
       expect(
         effectiveVolume(
           outputVolume: 1,
-          member: const MemberAudio(muted: true),
+          member: const MemberMedia(muted: true),
           deafened: false,
         ),
         0,
@@ -75,7 +76,7 @@ void main() {
       expect(
         effectiveVolume(
           outputVolume: 2,
-          member: const MemberAudio(volume: 2),
+          member: const MemberMedia(volume: 2),
           deafened: false,
         ),
         2,
@@ -249,19 +250,194 @@ void main() {
     });
   });
 
-  group('member audio', () {
+  group('member media', () {
     test('is kept per server and member, and forgets defaults', () async {
       final container = await containerWithPrefs();
-      final audio = container.read(memberAudioProvider.notifier)
+      final media = container.read(memberAudioProvider.notifier)
         ..setVolume('s1', 'bob', 1.5)
         ..setMuted('s2', 'bob', true);
 
-      expect(audio.of('s1', 'bob').volume, 1.5);
-      expect(audio.of('s1', 'bob').muted, isFalse);
-      expect(audio.of('s2', 'bob').muted, isTrue);
+      expect(media.of('s1', 'bob').volume, 1.5);
+      expect(media.of('s1', 'bob').muted, isFalse);
+      expect(media.of('s2', 'bob').muted, isTrue);
 
-      audio.setVolume('s1', 'bob', 1.0);
+      media.setVolume('s1', 'bob', 1.0);
       expect(container.read(memberAudioProvider).keys, ['s2/bob']);
+    });
+
+    test('a hidden camera is remembered, and forgotten when shown again', () async {
+      final container = await containerWithPrefs();
+      final media = container.read(memberAudioProvider.notifier)
+        ..setVideoHidden('s1', 'bob', true);
+
+      expect(media.of('s1', 'bob').videoHidden, isTrue);
+      expect(media.of('s1', 'carol').videoHidden, isFalse);
+
+      // Hiding a camera is the only non-default thing about bob, so showing it
+      // again must drop the row rather than leave a default one behind.
+      media.setVideoHidden('s1', 'bob', false);
+      expect(container.read(memberAudioProvider), isEmpty);
+    });
+
+    test('a hidden camera survives a restart', () async {
+      final container = await containerWithPrefs();
+      container.read(memberAudioProvider.notifier)
+        ..setVideoHidden('s1', 'bob', true)
+        ..setVolume('s1', 'bob', 0.5);
+
+      final stored = container.read(appPrefsProvider).memberAudioJson;
+      final second = ProviderContainer(
+        overrides: [
+          appPrefsProvider.overrideWithValue(
+            container.read(appPrefsProvider),
+          ),
+        ],
+      );
+      addTearDown(second.dispose);
+
+      expect(stored.containsKey('s1/bob'), isTrue);
+      expect(second.read(memberAudioProvider.notifier).of('s1', 'bob').videoHidden, isTrue);
+      expect(second.read(memberAudioProvider.notifier).of('s1', 'bob').volume, 0.5);
+    });
+
+    test('a settings blob from before hidden cameras reads as not hidden', () {
+      // An older build wrote volume and muted only; it must not read as a
+      // member whose camera is hidden.
+      final media = MemberMedia.fromJson({'volume': 1.5, 'muted': true});
+
+      expect(media.volume, 1.5);
+      expect(media.muted, isTrue);
+      expect(media.videoHidden, isFalse);
+    });
+
+    test('MemberMedia round-trips through JSON', () {
+      const media = MemberMedia(volume: 0.25, muted: true, videoHidden: true);
+      final back = MemberMedia.fromJson(media.toJson());
+
+      expect(back.volume, media.volume);
+      expect(back.muted, media.muted);
+      expect(back.videoHidden, media.videoHidden);
+    });
+
+    test('isDefault accounts for every field', () {
+      expect(const MemberMedia().isDefault, isTrue);
+      expect(const MemberMedia(volume: 0.5).isDefault, isFalse);
+      expect(const MemberMedia(muted: true).isDefault, isFalse);
+      expect(const MemberMedia(videoHidden: true).isDefault, isFalse);
+    });
+  });
+
+  group('camera settings', () {
+    test('round-trip through JSON, camera choice included', () {
+      const settings = VoiceSettings(
+        videoDeviceId: 'cam-1',
+        videoQuality: VoiceVideoQuality.hd720,
+        cameraEffect: VoiceCameraEffect(
+          kind: VoiceCameraEffectKind.replace,
+          strength: 0.4,
+          backgroundPath: '/tmp/beach.png',
+        ),
+      );
+
+      final back = VoiceSettings.fromJson(settings.toJson());
+
+      expect(back.videoDeviceId, 'cam-1');
+      expect(back.videoQuality, VoiceVideoQuality.hd720);
+      expect(back.cameraEffect.kind, VoiceCameraEffectKind.replace);
+      expect(back.cameraEffect.strength, 0.4);
+      expect(back.cameraEffect.backgroundPath, '/tmp/beach.png');
+      expect(back.camera, settings.camera);
+    });
+
+    test('an unknown quality name falls back rather than throwing', () {
+      // By name, never by index: a quality written by a newer build must not
+      // silently become a different one here.
+      final back = VoiceSettings.fromJson({'videoQuality': 'uhd4320'});
+
+      expect(back.videoQuality, const VoiceSettings().videoQuality);
+    });
+
+    test('a malformed camera effect falls back field by field', () {
+      final back = VoiceSettings.fromJson({
+        'cameraEffect': {'kind': 'hologram', 'strength': 'quite a lot'},
+      });
+
+      expect(back.cameraEffect.kind, VoiceCameraEffectKind.none);
+      expect(back.cameraEffect.strength, const VoiceCameraEffect().strength);
+      expect(back.cameraEffect.backgroundPath, isNull);
+    });
+
+    test('a replaced background with no picture applies nothing', () {
+      // Showing somebody their real room when they asked for a background is
+      // worse than not applying the effect.
+      const chosen = VoiceCameraEffect(kind: VoiceCameraEffectKind.replace);
+
+      expect(
+        chosen.effective(effectsAvailable: true),
+        VoiceCameraEffectKind.none,
+      );
+      expect(
+        const VoiceCameraEffect(
+          kind: VoiceCameraEffectKind.replace,
+          backgroundPath: '/tmp/beach.png',
+        ).effective(effectsAvailable: true),
+        VoiceCameraEffectKind.replace,
+      );
+    });
+
+    test('no effect is applied where effects cannot run', () {
+      const chosen = VoiceCameraEffect(kind: VoiceCameraEffectKind.blur);
+
+      expect(
+        chosen.effective(effectsAvailable: false),
+        VoiceCameraEffectKind.none,
+      );
+      expect(
+        chosen.effective(effectsAvailable: true),
+        VoiceCameraEffectKind.blur,
+      );
+    });
+
+    test('only a different camera or quality needs the track restarted', () {
+      const camera = VoiceCameraOptions(deviceId: 'cam-1');
+
+      // Swapping the effect is a processor on the frames, not a property of the
+      // capture, so other participants should see no freeze.
+      expect(
+        camera.needsRestartFor(
+          camera.copyWith(
+            effect: const VoiceCameraEffect(kind: VoiceCameraEffectKind.blur),
+          ),
+        ),
+        isFalse,
+      );
+      expect(
+        camera.needsRestartFor(camera.copyWith(deviceId: () => 'cam-2')),
+        isTrue,
+      );
+      expect(
+        camera.needsRestartFor(
+          camera.copyWith(quality: VoiceVideoQuality.hd720),
+        ),
+        isTrue,
+      );
+    });
+  });
+
+  group('publish rights', () {
+    test('the two sources are independent, and compare by value', () {
+      // A single "may publish" bool cannot tell a server mute from a camera
+      // that is not allowed, which is why this type exists at all.
+      const muted = VoicePublishRights(microphone: false, camera: true);
+      const silent = VoicePublishRights(microphone: true, camera: false);
+
+      expect(muted, isNot(silent));
+      expect(
+        muted,
+        const VoicePublishRights(microphone: false, camera: true),
+      );
+      expect(VoicePublishRights.none.microphone, isFalse);
+      expect(VoicePublishRights.none.camera, isFalse);
     });
   });
 }

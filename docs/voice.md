@@ -87,27 +87,6 @@ The audio itself is DTLS-SRTP to the LiveKit server, over UDP 7882 or the TCP 78
   - a clock-lock: somebody is not decrypting and is silenced
   - an open lock: the server does not offer encrypted calls, so its media server can hear
 
-### Camera video on the wire
-
-The server carries camera video when it advertises `voice.video.v1`
-([server docs](../../RaindropServer/docs/voice.md#camera-video)). What the protocol adds:
-
-- `VoiceParticipant.cameraOn` / `.cameraSuppressed` — on every `voice.state` event and in every
-  roster, merged on `(channelId, userId)` like the rest of the state. `cameraSuppressed` means they
-  lack `video` or every camera place in the call is taken.
-- `VoiceStatus.maximumCameraPublishers` — how many cameras one call carries at once; 0 when this
-  server carries none.
-- `VoiceApi.setSelfState(cameraOn:)` — **the camera is the one piece of self-state that can be
-  refused.** Mute and deafen are only everybody's icons; turning the camera on is what earns the
-  media server's permission to send one, so it answers `missing_permission` without `video` and
-  `camera_limit_reached` when the call is full of cameras. A refusal leaves a mute in the same
-  request standing, so the two have to be reported separately.
-
-The camera grant follows the camera being on, not the permission: a join token names the microphone
-only, and the server adds the camera after `setSelfState` succeeds. So a client **waits for the
-permission update before publishing**, and stops publishing *before* turning the camera off on the
-server — never the other way round, or the grant would be withdrawn from under a live track.
-
 ### Codecs and the frame cryptor
 
 The call states its video codec (`RoomOptions.defaultVideoPublishOptions`) instead of inheriting the
@@ -146,11 +125,105 @@ member derives the same one, rotation, and removal. It cannot play audio. To che
    and turn a camera on: the publication must be withdrawn and the warning banner must appear, with
    nothing sent. Worth doing once, deliberately, since nothing else exercises that path.
 
+## Camera
+
+Available when the server advertises `voice.video.v1`; the camera button is hidden
+rather than offered and refused when it does not. Encryption is the same key and
+the same guarantee as the voice — see above.
+
+### Showing your camera
+
+Turning the camera on opens the **camera-and-effects sheet** first
+(`camera_effects_sheet.dart`, also reachable from Settings → Voice & video →
+Camera & effects): a live preview, the camera picker, the quality, and the
+background effect. Nothing is published while it is open — the preview is a
+camera of its own, so the sheet works with no call in progress at all, and the
+preview *is* the confirmation: every change is applied to it immediately.
+
+Joining a call is still one tap. The sheet opens on the camera, not on the join,
+so nobody listening to a call is made to walk past a device check first.
+The choice is remembered in `voiceSettingsProvider`, so after the first time
+turning the camera on is one tap and the sheet.
+
+**The handshake, which is the one piece of real sequencing.** A call token names
+the microphone only, whatever the member's permissions say; the server adds the
+camera once this client says its camera is on. So `VoiceCallController.setCameraEnabled`:
+
+1. tells the server (`setSelfState(cameraOn: true)`), which is where the `video`
+   permission and the per-call camera cap are checked;
+2. waits up to five seconds for the media server to hand the grant over, which
+   arrives as `VoiceEngine.publishRights` — a grant already in place returns at
+   once;
+3. publishes.
+
+If the grant does not come, it **takes the claim back**, rather than leaving a
+camera the server thinks is on and nobody can see. Turning the camera off is the
+reverse order — stop publishing, *then* tell the server — so the grant is never
+withdrawn from under a live track.
+
+`VoiceCallState.cameraBusy` covers that round trip: the button shows a spinner
+and refuses a second tap, and the state it owns is not overwritten by the
+`voice.state` event or the engine's own `cameraStates` while it is in flight.
+
+**Mid-call changes.** Swapping the effect is free — it is a processor on the
+frames, not a property of the capture. Changing the camera or the quality
+restarts the track, which other participants see as a brief freeze;
+`VoiceCameraOptions.needsRestartFor` is what tells the two apart.
+
+**Backgrounding** turns the camera off on iOS and Android, where the OS stops it
+anyway and everybody else would be left looking at a frozen frame. Desktop is
+left alone: a hidden window is still a live camera there, and stopping it
+silently would surprise.
+
+### Hiding somebody's camera
+
+The member menu's **Hide camera** ("Only for you — they are not told") is local
+and real: the engine calls `disable()` on that publication, which tells the
+media server to stop forwarding the track *to this subscriber*. So it saves the
+bandwidth as well as the screen space, while the subscription and its frame
+cryptor stay set up — which is what makes showing it again immediate rather than
+a renegotiation. `unsubscribe()` is kept for the untrusted case, where a track
+must never come back.
+
+The sharer is unaffected and never told; everybody else still sees them.
+
+It is a **standing wish about a person**, not about a publication: the engine
+remembers it and re-applies it on `TrackPublishedEvent`, so somebody who turns
+their camera off and on again, or who rejoins, does not come back visible. It is
+persisted beside per-member volume (`memberAudioProvider`, `MemberMedia`), so it
+survives a restart.
+
+A hidden camera shows `VoiceVideoPlaceholder` with a **Show** button, and
+`VoiceStatusIcons` carries a `videocam_off` marker. An *untrusted* camera gets
+the same box with a different reason and no way to show it — nothing untrusted is
+ever drawn.
+
+### Camera video on the wire
+
+The server carries camera video when it advertises `voice.video.v1`
+([server docs](../../RaindropServer/docs/voice.md#camera-video)). What the protocol adds:
+
+- `VoiceParticipant.cameraOn` / `.cameraSuppressed` — on every `voice.state` event and in every
+  roster, merged on `(channelId, userId)` like the rest of the state. `cameraSuppressed` means they
+  lack `video` or every camera place in the call is taken.
+- `VoiceStatus.maximumCameraPublishers` — how many cameras one call carries at once; 0 when this
+  server carries none.
+- `VoiceApi.setSelfState(cameraOn:)` — **the camera is the one piece of self-state that can be
+  refused.** Mute and deafen are only everybody's icons; turning the camera on is what earns the
+  media server's permission to send one, so it answers `missing_permission` without `video` and
+  `camera_limit_reached` when the call is full of cameras. A refusal leaves a mute in the same
+  request standing, so the two have to be reported separately.
+
+The camera grant follows the camera being on, not the permission: a join token names the microphone
+only, and the server adds the camera after `setSelfState` succeeds. So a client **waits for the
+permission update before publishing**, and stops publishing *before* turning the camera off on the
+server — never the other way round, or the grant would be withdrawn from under a live track.
+
 ## State
 
 | Provider | What | Lifetime |
 |---|---|---|
-| `voiceCallProvider` (`features/voice/controllers/voice_call_controller.dart`) | The **one** call this client is in, across all servers: server and channel, `joining`/`connected`/`reconnecting`, who is speaking, whether you are muted for everyone or suppressed, a one-shot `notice` for why a call ended, and a dismissible `warning` for something the engine refused mid-call | global, kept alive |
+| `voiceCallProvider` (`features/voice/controllers/voice_call_controller.dart`) | The **one** call this client is in, across all servers: server and channel, `joining`/`connected`/`reconnecting`, who is speaking, whether you are muted for everyone or suppressed, the camera (`cameraOn`, `cameraSuppressed`, `cameraBusy`, `videoFeeds`, `untrustedVideo`), a one-shot `notice` for why a call ended, and a dismissible `warning` for something the engine refused mid-call | global, kept alive |
 | `voiceRosterProvider(serverId)` (`voice_roster_controller.dart`) | Who is in every call on a server, plus `available`, `maximumParticipants` and `maximumCameraPublishers`; drives the sidebar and the voice view | per server |
 | `voiceSettingsProvider` (`voice_settings_controller.dart`) | Your mute/deafen, output volume, devices, and echo cancellation / noise suppression / auto gain | global, persisted |
 | `memberAudioProvider` (`member_audio_controller.dart`) | Per-member volume and local mute, keyed `serverId/userId` | global, persisted |
@@ -219,9 +292,17 @@ units mistake, and why the cap is 2.
   - a capacity count;
   - a **Join voice** button, or "Switch to this call" if you are in another one. The button is disabled,
     with the reason, without `connect`, when voice is unavailable, or when the call is full;
-  - once you are in the call: mute, deafen and **Disconnect**; a banner when a moderator muted you or
-    you can only listen; and a dismissible banner when the engine refused something (the state
-    banners have no dismiss, because the state would still be true afterwards).
+  - once you are in the call: mute, deafen, **camera** and **Disconnect**; a banner when a moderator
+    muted you or you can only listen; and a dismissible banner when the engine refused something (the
+    state banners have no dismiss, because the state would still be true afterwards).
+  - a participant with their camera on gets a 16:9 `VoiceVideoTile` instead of the avatar tile, or a
+    `VoiceVideoPlaceholder` when it is hidden here or not trusted. The camera count sits beside the
+    member count in the top bar, since the camera limit is a separate and much smaller one.
+
+  The camera button is in the layout's button registry (`MainButtons.camera`) *and* hard-wired into
+  the in-call controls. **`LayoutConfig.normalize` keeps unknown button ids but never adds new ones**,
+  so an existing user's saved `layout.json` will not gain it — the in-call controls are where it is
+  always reachable. See [Layout](layout.md).
 
   **Selecting a channel never joins it**: joining is the button.
 - **Narrow layout**: the sidebar lives in a drawer, so a call in progress gets a thin
@@ -273,7 +354,12 @@ in release builds only — the same trap the Android manifest fell into.
 - Background audio on phones (iOS background mode, Android microphone foreground service).
 - Push-to-talk.
 - Rejoining automatically after a network drop (the call ends with a notice; you join again).
-- Camera and screen sharing.
+- Screen sharing.
+- **Camera effects.** Background blur and background replacement are chosen, persisted and shown in
+  the sheet, but not yet applied: they need a hook into the capture pipeline that the media library
+  does not expose, so `canUseCameraEffects` is false everywhere and the sheet says so. The work
+  itself is built and tested in
+  [RaindropCrypto's camera-effects core](../../RaindropCrypto/docs/video-effects.md).
 - Microphone volume (no API for it; see above).
 
 ## Related

@@ -15,6 +15,7 @@ class VoiceRoster {
     required this.transport,
     required this.maximumParticipants,
     required this.byChannel,
+    this.maximumCameraPublishers = 0,
   });
 
   static const empty = VoiceRoster(
@@ -27,6 +28,10 @@ class VoiceRoster {
   final bool available;
   final String transport;
   final int maximumParticipants;
+
+  /// How many members of one call may send their camera at once. 0 when this
+  /// server carries no camera video at all.
+  final int maximumCameraPublishers;
 
   /// Each call's participants, in the order they joined.
   final Map<String, List<VoiceParticipant>> byChannel;
@@ -43,6 +48,7 @@ class VoiceRoster {
       available: status.available,
       transport: status.transport,
       maximumParticipants: status.maximumParticipants,
+      maximumCameraPublishers: status.maximumCameraPublishers,
       byChannel: byChannel,
     );
   }
@@ -87,6 +93,7 @@ class VoiceRoster {
         available: available,
         transport: transport,
         maximumParticipants: maximumParticipants,
+        maximumCameraPublishers: maximumCameraPublishers,
         byChannel: byChannel,
       );
 }

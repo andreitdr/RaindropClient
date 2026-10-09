@@ -22,6 +22,7 @@ const mainDefaultLayout = LayoutConfig(
     MainSlots.userPanel: [
       MainButtons.mute,
       MainButtons.deafen,
+      MainButtons.camera,
       MainButtons.settings,
     ],
     MainSlots.topBar: [MainButtons.members],
@@ -106,6 +107,12 @@ final mainLayoutButtons = <String, LayoutButtonSpec>{
     label: 'Deafen',
     icon: Icons.headset,
     build: (context, style) => VoiceDeafenButton(style: style),
+  ),
+  MainButtons.camera: LayoutButtonSpec(
+    id: MainButtons.camera,
+    label: 'Camera',
+    icon: Icons.videocam,
+    build: (context, style) => VoiceCameraButton(style: style),
   ),
   MainButtons.members: LayoutButtonSpec(
     id: MainButtons.members,

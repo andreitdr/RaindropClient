@@ -93,7 +93,7 @@ class SettingsScreen extends ConsumerWidget {
           _SectionLabel('Layout'),
           const _LayoutSection(),
           const SizedBox(height: 16),
-          _SectionLabel('Voice & audio'),
+          _SectionLabel('Voice & video'),
           const VoiceSettingsSection(),
           const SizedBox(height: 16),
           if (activeServer != null) ...[

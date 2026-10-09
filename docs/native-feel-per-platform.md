@@ -16,6 +16,13 @@ re-deriving the check:
 - `isMobilePlatform` — iOS or Android.
 - `canChooseAudioDevices` — desktop only: whether the app may pick the microphone and speakers for a
   call (phones route audio themselves). See [Voice](voice.md).
+- `canChooseCamera` — **true everywhere**, unlike the audio devices: a phone's front and back cameras
+  are two devices and choosing between them is the whole point, where audio routing is the OS's
+  business.
+- `canUseCameraEffects` — whether background blur and background replacement can run here. The camera
+  itself works on every platform; the effects need a capture-pipeline hook the media library does not
+  expose, so this is false everywhere for now and the camera sheet says so rather than offering an
+  effect that would do nothing. See [Voice](voice.md#camera).
 - `isRunningOnWeb`, `operatingSystemName`
 
 Keeping every check in one file means a new target only needs updating here.

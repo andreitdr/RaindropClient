@@ -91,8 +91,12 @@ core/
                 EventStream (the bidirectional push stream, heartbeating), and one wrapper per service
                 with its models: UsersApi, ChannelsApi, TextMessagesApi, MembersApi, RolesApi,
                 VoiceApi, E2eeApi, AttachmentsApi
-  voice/      — VoiceEngine (a call's audio, transport-agnostic) + LiveKitVoiceEngine, the only code
-                that imports livekit_client / flutter_webrtc
+  voice/      — VoiceEngine (a call's microphone and camera, transport-agnostic) +
+                LiveKitVoiceEngine, the only code that imports livekit_client / flutter_webrtc, and
+                VoiceVideoView (draws a feed, which builds its own surface — so no widget outside
+                core/voice/ ever names a track type)
+  video/      — VoiceCameraEffect: what the user chose to do to their camera's background. The choice
+                only; the work is native, in ../RaindropCrypto's raindrop_video crate
   crypto/     — CryptoEngine (end-to-end encryption, MLS) + MlsCryptoEngine over the generated Rust
                 bridge in crypto/bridge/ (never import it elsewhere), AttachmentCipher (files, per-file
                 keys) + RustAttachmentCipher, and CryptoStores (one SQLCipher store per server, its
@@ -112,13 +116,13 @@ features/
   chat/       — ChatController (send, follow the event stream, page back), AttachmentTransfers
                 (upload/open encrypted files) + the chat pane, its composer and attachment previews
   members/    — the roster with each member's presence + the right-hand member pane
-  voice/      — the call, who is in each call, voice settings + per-member audio, the voice view,
-                member menu and call controls
+  voice/      — the call, who is in each call, voice settings + per-member media, the voice view and
+                its video tiles, the camera-and-effects sheet, member menu and call controls
   security/   — end-to-end encryption: DeviceSetupController (create/link/restore, register, bind
                 the session), ChannelGroups (each channel's MLS group: join, catch up, Welcomes, key
                 packages, roster reconcile, encrypt/decrypt), the setup pane that takes the chat pane
                 when this device has no keys, the recovery-words dialog, Settings → Encryption
-  settings/   — appearance (theme), the layout editor, voice & audio, encryption, and
+  settings/   — appearance (theme), the layout editor, voice & video, encryption, and
                 connected-server management
   home/       — HomeShell/MainView, which assemble the above into the responsive shell, and
                 layout/ — the main view's pane/slot/button ids, defaults, rules and button registry
@@ -343,9 +347,9 @@ CLAUDE.md.
 
 ### Voice
 
-Full detail: [`docs/voice.md`](docs/voice.md). The server decides who may join, speak and moderate; the
-audio goes over the transport it names on join (`livekit`), behind `core/voice/VoiceEngine`, so the rest
-of the app never imports the media library.
+Full detail: [`docs/voice.md`](docs/voice.md). The server decides who may join, speak, show their
+camera and moderate; the media goes over the transport it names on join (`livekit`), behind
+`core/voice/VoiceEngine`, so the rest of the app never imports the media library.
 
 - **One call at a time, across servers**: `voiceCallProvider` (global, kept alive). It follows the
   session with `ref.listen`, not `watch` — renaming a server rebuilds its session, and a watch would end
@@ -358,10 +362,23 @@ of the app never imports the media library.
   `ServerSessionController` (and on `adopt`). LiveKit's own pinning option cannot trust a self-signed
   certificate — it checks chain and hostname first.
 - **Mute/deafen are persisted settings** (`voiceSettingsProvider`), not call state: deafen mutes,
-  undeafen restores the mic as it was, unmute while deafened undeafens. **Per-member volume and local
-  mute** (`memberAudioProvider`, keyed `serverId/userId`) are local only. Each remote member plays at
-  `effectiveVolume` = own × output volume, capped at 2.0 (libwebrtc source gain: 1 = as sent), 0 while
-  deafened or locally muted.
+  undeafen restores the mic as it was, unmute while deafened undeafens. **Per-member volume, local
+  mute and a hidden camera** (`memberAudioProvider` → `MemberMedia`, keyed `serverId/userId`) are
+  local only. Each remote member plays at `effectiveVolume` = own × output volume, capped at 2.0
+  (libwebrtc source gain: 1 = as sent), 0 while deafened or locally muted.
+- **The camera is call state, not a setting.** You cannot pre-arm a camera, so what is remembered is
+  only *which* camera and *which* effect. Turning it on opens the camera-and-effects sheet first
+  (a live preview; nothing is published while it is open), and then runs a handshake: tell the server,
+  **wait for the media server's grant**, then publish — because a call token names the microphone only
+  until the server adds the camera. A grant that never comes takes the claim back, so the roster never
+  shows a camera nobody can see. Turning it off reverses the order, so the grant is never withdrawn
+  from under a live track.
+- **Hiding somebody's camera really stops the stream** (`publication.disable()`, not a hidden widget),
+  saving the bandwidth as well as the screen space, and it is re-applied on every republish so it does
+  not leak when they turn their camera off and on. `unsubscribe()` is kept for the untrusted case.
+- **Camera effects are chosen but not yet applied**: they need a capture-pipeline hook the media
+  library does not expose, so `canUseCameraEffects` is false everywhere and the sheet says so. The
+  effects themselves are built in `../RaindropCrypto`'s `raindrop_video`.
 - **Calls are end-to-end encrypted** on a server with `e2ee.voice.v1`: the media key comes from the
   voice channel's MLS group (`ChannelGroups.mediaKey`, before joining — no key, no join), LiveKit's
   frame cryptor uses it (`VoiceEngine.connect(mediaKey:)`, `setMediaKey` on every epoch change), the
@@ -377,8 +394,9 @@ of the app never imports the media library.
 
 - **Background voice on phones** (iOS background audio, Android microphone foreground service), and
   rejoining automatically after a dropped connection.
-- Push-to-talk, camera and screen sharing, microphone gain; changing your username or password from
-  the app; any role-editing or report-moderation UI; notifications.
+- Push-to-talk, **camera effects** (chosen and offered, not yet applied), screen sharing, microphone
+  gain; changing your username or password from the app; any role-editing or report-moderation UI;
+  notifications.
 
 The full, maintained inventory is [`docs/roadmap.md`](docs/roadmap.md) — update it in the same change
 that closes one of these.
