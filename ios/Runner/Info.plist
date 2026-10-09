@@ -4,10 +4,6 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
-	<key>NSCameraUsageDescription</key>
-	<string>Raindrop uses the camera to scan the code another of your devices shows, to link it securely.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Raindrop uses the microphone so you can talk in voice channels.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -30,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Raindrop uses the camera to scan the code another of your devices shows, to link it securely.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Raindrop uses the microphone so you can talk in voice channels.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
