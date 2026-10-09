@@ -16,7 +16,11 @@ import 'package:protobuf/protobuf.dart' as $pb;
 import 'package:protobuf/well_known_types/google/protobuf/timestamp.pb.dart'
     as $1;
 
+import 'voice.pbenum.dart';
+
 export 'package:protobuf/protobuf.dart' show GeneratedMessageGenericExtensions;
+
+export 'voice.pbenum.dart';
 
 /// One member in one call, the whole state: merge on (channel_id, user_id).
 class VoiceParticipant extends $pb.GeneratedMessage {
@@ -31,6 +35,10 @@ class VoiceParticipant extends $pb.GeneratedMessage {
     $1.Timestamp? joinedAt,
     $core.bool? cameraOn,
     $core.bool? cameraSuppressed,
+    $core.bool? screenShareOn,
+    ScreenShareKind? screenShareKind,
+    $core.bool? screenShareAudio,
+    $core.bool? screenShareSuppressed,
   }) {
     final result = VoiceParticipant._();
     if (channelId != null) result.channelId = channelId;
@@ -43,6 +51,11 @@ class VoiceParticipant extends $pb.GeneratedMessage {
     if (joinedAt != null) result.joinedAt = joinedAt;
     if (cameraOn != null) result.cameraOn = cameraOn;
     if (cameraSuppressed != null) result.cameraSuppressed = cameraSuppressed;
+    if (screenShareOn != null) result.screenShareOn = screenShareOn;
+    if (screenShareKind != null) result.screenShareKind = screenShareKind;
+    if (screenShareAudio != null) result.screenShareAudio = screenShareAudio;
+    if (screenShareSuppressed != null)
+      result.screenShareSuppressed = screenShareSuppressed;
     return result;
   }
 
@@ -70,6 +83,11 @@ class VoiceParticipant extends $pb.GeneratedMessage {
         subBuilder: $1.Timestamp.$_createMessage)
     ..aOB(9, _omitFieldNames ? '' : 'cameraOn')
     ..aOB(10, _omitFieldNames ? '' : 'cameraSuppressed')
+    ..aOB(11, _omitFieldNames ? '' : 'screenShareOn')
+    ..aE<ScreenShareKind>(12, _omitFieldNames ? '' : 'screenShareKind',
+        enumValues: ScreenShareKind.values)
+    ..aOB(13, _omitFieldNames ? '' : 'screenShareAudio')
+    ..aOB(14, _omitFieldNames ? '' : 'screenShareSuppressed')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -192,6 +210,48 @@ class VoiceParticipant extends $pb.GeneratedMessage {
   $core.bool hasCameraSuppressed() => $_has(9);
   @$pb.TagNumber(10)
   void clearCameraSuppressed() => $_clearField(10);
+
+  /// They are sharing a screen or a window with the call.
+  @$pb.TagNumber(11)
+  $core.bool get screenShareOn => $_getBF(10);
+  @$pb.TagNumber(11)
+  set screenShareOn($core.bool value) => $_setBool(10, value);
+  @$pb.TagNumber(11)
+  $core.bool hasScreenShareOn() => $_has(10);
+  @$pb.TagNumber(11)
+  void clearScreenShareOn() => $_clearField(11);
+
+  /// What they are sharing. UNSPECIFIED while screen_share_on is false.
+  @$pb.TagNumber(12)
+  ScreenShareKind get screenShareKind => $_getN(11);
+  @$pb.TagNumber(12)
+  set screenShareKind(ScreenShareKind value) => $_setField(12, value);
+  @$pb.TagNumber(12)
+  $core.bool hasScreenShareKind() => $_has(11);
+  @$pb.TagNumber(12)
+  void clearScreenShareKind() => $_clearField(12);
+
+  /// They are sending the shared window's own sound with it. Only ever with a window, and only while
+  /// they may speak: a member muted for everyone sends no sound into the call, whatever its source.
+  @$pb.TagNumber(13)
+  $core.bool get screenShareAudio => $_getBF(12);
+  @$pb.TagNumber(13)
+  set screenShareAudio($core.bool value) => $_setBool(12, value);
+  @$pb.TagNumber(13)
+  $core.bool hasScreenShareAudio() => $_has(12);
+  @$pb.TagNumber(13)
+  void clearScreenShareAudio() => $_clearField(13);
+
+  /// They may not start a screen share: they lack screen_share, or every sharing place in this call is
+  /// taken.
+  @$pb.TagNumber(14)
+  $core.bool get screenShareSuppressed => $_getBF(13);
+  @$pb.TagNumber(14)
+  set screenShareSuppressed($core.bool value) => $_setBool(13, value);
+  @$pb.TagNumber(14)
+  $core.bool hasScreenShareSuppressed() => $_has(13);
+  @$pb.TagNumber(14)
+  void clearScreenShareSuppressed() => $_clearField(14);
 }
 
 /// Asks for voice status.
@@ -246,6 +306,7 @@ class GetVoiceStatusResponse extends $pb.GeneratedMessage {
     $core.int? maximumParticipants,
     $core.Iterable<VoiceParticipant>? participants,
     $core.int? maximumCameraPublishers,
+    $core.int? maximumScreenShares,
   }) {
     final result = GetVoiceStatusResponse._();
     if (available != null) result.available = available;
@@ -255,6 +316,8 @@ class GetVoiceStatusResponse extends $pb.GeneratedMessage {
     if (participants != null) result.participants.addAll(participants);
     if (maximumCameraPublishers != null)
       result.maximumCameraPublishers = maximumCameraPublishers;
+    if (maximumScreenShares != null)
+      result.maximumScreenShares = maximumScreenShares;
     return result;
   }
 
@@ -277,6 +340,7 @@ class GetVoiceStatusResponse extends $pb.GeneratedMessage {
     ..pPM<VoiceParticipant>(4, _omitFieldNames ? '' : 'participants',
         subBuilder: VoiceParticipant.$_createMessage)
     ..aI(5, _omitFieldNames ? '' : 'maximumCameraPublishers')
+    ..aI(6, _omitFieldNames ? '' : 'maximumScreenShares')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -346,6 +410,17 @@ class GetVoiceStatusResponse extends $pb.GeneratedMessage {
   $core.bool hasMaximumCameraPublishers() => $_has(4);
   @$pb.TagNumber(5)
   void clearMaximumCameraPublishers() => $_clearField(5);
+
+  /// How many members of one call may share their screen at once. 0 when this server carries no screen
+  /// sharing, which is also when it does not advertise voice.screen.v1.
+  @$pb.TagNumber(6)
+  $core.int get maximumScreenShares => $_getIZ(5);
+  @$pb.TagNumber(6)
+  set maximumScreenShares($core.int value) => $_setSignedInt32(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasMaximumScreenShares() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearMaximumScreenShares() => $_clearField(6);
 }
 
 /// Joins a call.
@@ -694,17 +769,24 @@ class LeaveVoiceResponse extends $pb.GeneratedMessage {
   void clearLeft() => $_clearField(1);
 }
 
-/// Sets your own mute, deafen and camera.
+/// Sets your own mute, deafen, camera and screen share. This is the whole state, not a change: every
+/// field is read, so a client must send the share it already has or it ends it.
 class SetVoiceSelfStateRequest extends $pb.GeneratedMessage {
   factory SetVoiceSelfStateRequest({
     $core.bool? selfMute,
     $core.bool? selfDeaf,
     $core.bool? cameraOn,
+    $core.bool? screenShareOn,
+    ScreenShareKind? screenShareKind,
+    $core.bool? screenShareAudio,
   }) {
     final result = SetVoiceSelfStateRequest._();
     if (selfMute != null) result.selfMute = selfMute;
     if (selfDeaf != null) result.selfDeaf = selfDeaf;
     if (cameraOn != null) result.cameraOn = cameraOn;
+    if (screenShareOn != null) result.screenShareOn = screenShareOn;
+    if (screenShareKind != null) result.screenShareKind = screenShareKind;
+    if (screenShareAudio != null) result.screenShareAudio = screenShareAudio;
     return result;
   }
 
@@ -724,6 +806,10 @@ class SetVoiceSelfStateRequest extends $pb.GeneratedMessage {
     ..aOB(1, _omitFieldNames ? '' : 'selfMute')
     ..aOB(2, _omitFieldNames ? '' : 'selfDeaf')
     ..aOB(3, _omitFieldNames ? '' : 'cameraOn')
+    ..aOB(4, _omitFieldNames ? '' : 'screenShareOn')
+    ..aE<ScreenShareKind>(5, _omitFieldNames ? '' : 'screenShareKind',
+        enumValues: ScreenShareKind.values)
+    ..aOB(6, _omitFieldNames ? '' : 'screenShareAudio')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -779,6 +865,37 @@ class SetVoiceSelfStateRequest extends $pb.GeneratedMessage {
   $core.bool hasCameraOn() => $_has(2);
   @$pb.TagNumber(3)
   void clearCameraOn() => $_clearField(3);
+
+  /// Start or stop sharing. A client too old to send this reads as not sharing, which is what it was.
+  @$pb.TagNumber(4)
+  $core.bool get screenShareOn => $_getBF(3);
+  @$pb.TagNumber(4)
+  set screenShareOn($core.bool value) => $_setBool(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasScreenShareOn() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearScreenShareOn() => $_clearField(4);
+
+  /// Required while screen_share_on; refused with invalid_payload when UNSPECIFIED.
+  @$pb.TagNumber(5)
+  ScreenShareKind get screenShareKind => $_getN(4);
+  @$pb.TagNumber(5)
+  set screenShareKind(ScreenShareKind value) => $_setField(5, value);
+  @$pb.TagNumber(5)
+  $core.bool hasScreenShareKind() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearScreenShareKind() => $_clearField(5);
+
+  /// Send the shared window's own sound too. Only with SCREEN_SHARE_KIND_WINDOW, and refused with
+  /// invalid_payload on a screen: the host's sound is never sent. Granted only while you may speak.
+  @$pb.TagNumber(6)
+  $core.bool get screenShareAudio => $_getBF(5);
+  @$pb.TagNumber(6)
+  set screenShareAudio($core.bool value) => $_setBool(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasScreenShareAudio() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearScreenShareAudio() => $_clearField(6);
 }
 
 /// Your state in the call now.

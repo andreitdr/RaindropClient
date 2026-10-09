@@ -1,9 +1,9 @@
 /// The app's view of `raindrop.v1.VoiceService` (RaindropProto's
 /// `voice.proto`): call control only.
 ///
-/// The server decides who may join, speak, show their camera and moderate;
-/// the media itself
-/// travels over a media transport it names in [VoiceJoinResult.transport] —
+/// The server decides who may join, speak, show their camera, share their
+/// screen and moderate; the media itself travels over a media transport it
+/// names in [VoiceJoinResult.transport] —
 /// see `core/voice/` for the engine that speaks it. That engine's signalling
 /// is the one connection to the server that is not gRPC: LiveKit's own
 /// WebSocket, relayed at [VoiceJoinResult.path].
@@ -26,6 +26,15 @@ abstract final class VoiceLeaveReasons {
   static const serverEnded = 'server_ended';
 }
 
+/// What a screen share shows, as the wire names it. A closed set.
+abstract final class VoiceShareKinds {
+  /// A whole display. Never carries sound.
+  static const screen = 'screen';
+
+  /// One window, optionally with that window's own sound.
+  static const window = 'window';
+}
+
 /// One member in one call — the whole state, merged on
 /// ([channelId], [userId]).
 class VoiceParticipant {
@@ -40,6 +49,10 @@ class VoiceParticipant {
     required this.joinedAtUtc,
     this.cameraOn = false,
     this.cameraSuppressed = false,
+    this.screenShareOn = false,
+    this.screenShareKind,
+    this.screenShareAudio = false,
+    this.screenShareSuppressed = false,
   });
 
   final String channelId;
@@ -69,6 +82,20 @@ class VoiceParticipant {
   /// cannot turn their camera on. The counterpart of [suppressed].
   final bool cameraSuppressed;
 
+  /// They are sharing a screen or a window.
+  final bool screenShareOn;
+
+  /// What they are sharing, a [VoiceShareKinds] name; null while they are not.
+  final String? screenShareKind;
+
+  /// They are sending the shared window's own sound too. Never for a screen,
+  /// and never while they may not speak.
+  final bool screenShareAudio;
+
+  /// They lack `screen_share`, or this server carries no screen sharing, so
+  /// they cannot start one.
+  final bool screenShareSuppressed;
+
   /// Whether they could be heard at all right now.
   bool get canBeHeard => !selfMute && !selfDeaf && !serverMute && !suppressed;
 
@@ -83,6 +110,10 @@ class VoiceParticipant {
     joinedAtUtc: Wire.time(m.joinedAt),
     cameraOn: m.cameraOn,
     cameraSuppressed: m.cameraSuppressed,
+    screenShareOn: m.screenShareOn,
+    screenShareKind: m.screenShareOn ? Wire.screenShareKind(m.screenShareKind) : null,
+    screenShareAudio: m.screenShareOn && m.screenShareAudio,
+    screenShareSuppressed: m.screenShareSuppressed,
   );
 }
 
@@ -114,6 +145,7 @@ class VoiceStatus {
     required this.maximumParticipants,
     required this.participants,
     this.maximumCameraPublishers = 0,
+    this.maximumScreenShares = 0,
   });
 
   final bool available;
@@ -126,6 +158,11 @@ class VoiceStatus {
   /// `voice.video.v1`.
   final int maximumCameraPublishers;
 
+  /// How many members of one call may share their screen at once. 0 when this
+  /// server carries no screen sharing, which is also when it does not
+  /// advertise `voice.screen.v1`.
+  final int maximumScreenShares;
+
   factory VoiceStatus.fromProto(pb.GetVoiceStatusResponse m) => VoiceStatus(
     available: m.available,
     transport: m.transport.isEmpty ? 'none' : m.transport,
@@ -134,6 +171,7 @@ class VoiceStatus {
       for (final p in m.participants) VoiceParticipant.fromProto(p),
     ],
     maximumCameraPublishers: m.maximumCameraPublishers,
+    maximumScreenShares: m.maximumScreenShares,
   );
 }
 
@@ -235,19 +273,28 @@ class VoiceApi {
         token: token,
       )).left;
 
-  /// Tells everybody you muted or deafened yourself, and turns your camera on
-  /// or off.
+  /// Tells everybody you muted or deafened yourself, turns your camera on or
+  /// off, and starts, changes or stops your screen share.
+  ///
+  /// **This is the whole state, not a change**: every field is read, so a call
+  /// that leaves out a camera or a share that is running turns it off. Pass
+  /// what is true now, not only what changed.
   ///
   /// Mute and deafen are only everybody's icons and are always accepted. The
-  /// camera is what earns the media server's permission to send one, so it can
-  /// be refused — `missing_permission` without `video`, `camera_limit_reached`
-  /// when every camera place in the call is taken — and a refusal leaves a
-  /// mute in the same request standing.
+  /// camera and a share each earn the media server's permission to send one,
+  /// so they can be refused — `missing_permission` without `video` or
+  /// `screen_share` (or asking for a window's sound while unable to speak),
+  /// `camera_limit_reached` / `screen_share_limit_reached` when every place is
+  /// taken — and a refusal leaves a mute in the same request standing. A share
+  /// with no kind, or a screen with sound, is `invalid_payload`.
   Future<VoiceParticipant> setSelfState(
     String token, {
     required bool selfMute,
     required bool selfDeaf,
-    bool cameraOn = false,
+    required bool cameraOn,
+    required bool screenShareOn,
+    String? screenShareKind,
+    bool screenShareAudio = false,
   }) async => VoiceParticipant.fromProto(
     (await _channel.call(
       (o) => _voice.setVoiceSelfState(
@@ -255,6 +302,11 @@ class VoiceApi {
           selfMute: selfMute,
           selfDeaf: selfDeaf,
           cameraOn: cameraOn,
+          screenShareOn: screenShareOn,
+          screenShareKind: Wire.screenShareKindOf(
+            screenShareOn ? screenShareKind : null,
+          ),
+          screenShareAudio: screenShareOn && screenShareAudio,
         ),
         options: o,
       ),

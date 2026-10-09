@@ -194,6 +194,15 @@ class VoiceCallController extends Notifier<VoiceCallState> {
   /// that arrives late cannot resurrect it.
   int _generation = 0;
 
+  /// What this client last told the server about its camera.
+  ///
+  /// Kept apart from [VoiceCallState.cameraOn], which only turns true once the
+  /// camera is actually sending: the server hears "on" at the start of the
+  /// handshake, before that. `SetVoiceSelfState` is the whole state, so a mute
+  /// toggled in between has to repeat this claim, not [VoiceCallState.cameraOn],
+  /// or it would take the camera back off the server mid-handshake.
+  bool _cameraClaimed = false;
+
   @override
   VoiceCallState build() {
     ref.listen(voiceSettingsProvider, _onSettingsChanged);
@@ -227,6 +236,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     await leave();
 
     final generation = ++_generation;
+    _cameraClaimed = false;
     final session = await ref.read(serverSessionProvider(serverId).future);
     if (session == null) throw StateError('Not signed in to this server.');
     if (generation != _generation) return;
@@ -410,7 +420,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     try {
       if (!on) {
         await engine.setCameraEnabled(false);
-        await _tellServerCamera(session, on: false);
+        await _sendSelfState(session, cameraOn: false);
         if (generation == _generation) {
           state = state.copyWith(cameraOn: false, cameraBusy: false);
         }
@@ -418,7 +428,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
       }
 
       // The server decides first: it is where the permission and the cap live.
-      await _tellServerCamera(session, on: true);
+      await _sendSelfState(session, cameraOn: true);
       if (generation != _generation) return;
 
       final granted = await _awaitCameraGrant(engine);
@@ -427,7 +437,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
       if (!granted || !await engine.setCameraEnabled(true, options: options ?? settings.camera)) {
         // The server believes the camera is on and nothing is being sent.
         // Take the claim back, so the roster does not show a camera nobody has.
-        await _tellServerCamera(session, on: false);
+        await _sendSelfState(session, cameraOn: false);
         if (generation == _generation) {
           state = state.copyWith(
             cameraOn: false,
@@ -462,16 +472,29 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     await _engine?.applyCameraOptions(options);
   }
 
-  /// Reports this client's camera to the server, carrying the mute and deafen
-  /// it already has — `SetVoiceSelfState` replaces the whole self-state, so
-  /// sending only the camera would quietly unmute.
-  Future<void> _tellServerCamera(ServerSession session, {required bool on}) {
-    final settings = ref.read(voiceSettingsProvider);
+  /// Sends this client's whole self-state: mute, deafen and the camera as last
+  /// claimed, with [cameraOn] changing that claim when given.
+  ///
+  /// `SetVoiceSelfState` replaces all of it rather than applying a change, so
+  /// every report goes through here — a camera report that left out the mute
+  /// would quietly unmute, and a mute that left out the camera would turn the
+  /// camera off at the server and take its grant away from under the track.
+  Future<VoiceParticipant> _sendSelfState(
+    ServerSession session, {
+    VoiceSettings? settings,
+    bool? cameraOn,
+  }) {
+    final VoiceSettings current = settings ?? ref.read(voiceSettingsProvider);
+    if (cameraOn != null) _cameraClaimed = cameraOn;
+
     return session.voiceApi.setSelfState(
       session.token,
-      selfMute: !settings.micOn,
-      selfDeaf: settings.selfDeaf,
-      cameraOn: on,
+      selfMute: !current.micOn,
+      selfDeaf: current.selfDeaf,
+      cameraOn: _cameraClaimed,
+      // This client does not share its screen yet; the share arrives with its
+      // own claim beside the camera's.
+      screenShareOn: false,
     );
   }
 
@@ -662,6 +685,9 @@ class VoiceCallController extends Notifier<VoiceCallState> {
           // handshake is what settles them.
           cameraOn: state.cameraBusy ? null : you.cameraOn,
         );
+        // And the claim follows the server's word too, so the next mute does
+        // not reassert a camera the server has since turned off.
+        if (!state.cameraBusy) _cameraClaimed = you.cameraOn;
 
       case ServerEventTypes.voiceLeft:
         final left = VoiceLeft.fromProto(event.proto.voiceLeft);
@@ -745,11 +771,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
   /// its name. The audio itself already stopped locally.
   Future<void> _report(ServerSession session, VoiceSettings settings) async {
     try {
-      await session.voiceApi.setSelfState(
-        session.token,
-        selfMute: !settings.micOn,
-        selfDeaf: settings.selfDeaf,
-      );
+      await _sendSelfState(session, settings: settings);
     } on ApiException {
       // Not in the call any more (the event saying so is on its way), or the
       // server is unreachable; either way nothing to do here.
@@ -798,6 +820,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
 
   Future<void> _end({String? notice, bool reportLeave = true}) async {
     _generation++;
+    _cameraClaimed = false;
     final session = _session;
     final channelId = state.channelId;
 
