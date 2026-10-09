@@ -293,11 +293,21 @@ The server carries camera video when it advertises `voice.video.v1`
   lack `video` or every camera place in the call is taken.
 - `VoiceStatus.maximumCameraPublishers` — how many cameras one call carries at once; 0 when this
   server carries none.
-- `VoiceApi.setSelfState(cameraOn:)` — **the camera is the one piece of self-state that can be
-  refused.** Mute and deafen are only everybody's icons; turning the camera on is what earns the
-  media server's permission to send one, so it answers `missing_permission` without `video` and
-  `camera_limit_reached` when the call is full of cameras. A refusal leaves a mute in the same
-  request standing, so the two have to be reported separately.
+- `VoiceParticipant.screenShareOn` / `.screenShareKind` (`VoiceShareKinds.screen` or `.window`) /
+  `.screenShareAudio` / `.screenShareSuppressed` and `VoiceStatus.maximumScreenShares` — the same for
+  screen sharing (`voice.screen.v1`). This build reads them off the wire; it does not share yet.
+- `VoiceApi.setSelfState(cameraOn:, screenShareOn:, …)` — **the whole self-state, not a change.**
+  The server reads every field, so a mute that left out the camera would turn the camera off at the
+  server and withdraw its grant from under the live track. `cameraOn` and `screenShareOn` are
+  therefore required parameters, and every report goes through
+  `VoiceCallController._sendSelfState`, which repeats the camera as last *claimed* to the server
+  (`_cameraClaimed`) — not `VoiceCallState.cameraOn`, which only turns true once the track is
+  sending, after the server has already been told.
+- **The camera is a piece of self-state that can be refused.** Mute and deafen are only everybody's
+  icons; turning the camera on is what earns the media server's permission to send one, so it
+  answers `missing_permission` without `video` and `camera_limit_reached` when the call is full of
+  cameras. A refusal leaves a mute in the same request standing, so the two have to be reported
+  separately.
 
 The camera grant follows the camera being on, not the permission: a join token names the microphone
 only, and the server adds the camera after `setSelfState` succeeds. So a client **waits for the

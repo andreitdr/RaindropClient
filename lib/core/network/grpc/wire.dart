@@ -71,6 +71,20 @@ abstract final class Wire {
     _ => pb.AttachmentKind.ATTACHMENT_KIND_FILE,
   };
 
+  /// `screen` or `window` — or null for none, which is what a participant who
+  /// is not sharing carries, and what a value newer than this build reads as.
+  static String? screenShareKind(pb.ScreenShareKind kind) => switch (kind) {
+    pb.ScreenShareKind.SCREEN_SHARE_KIND_SCREEN => 'screen',
+    pb.ScreenShareKind.SCREEN_SHARE_KIND_WINDOW => 'window',
+    _ => null,
+  };
+
+  static pb.ScreenShareKind screenShareKindOf(String? kind) => switch (kind) {
+    'screen' => pb.ScreenShareKind.SCREEN_SHARE_KIND_SCREEN,
+    'window' => pb.ScreenShareKind.SCREEN_SHARE_KIND_WINDOW,
+    _ => pb.ScreenShareKind.SCREEN_SHARE_KIND_UNSPECIFIED,
+  };
+
   /// `uploading`, `uploaded` or `attached`.
   static String uploadState(pb.UploadState state) => switch (state) {
     pb.UploadState.UPLOAD_STATE_UPLOADING => 'uploading',
