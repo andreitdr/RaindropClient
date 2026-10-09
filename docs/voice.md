@@ -228,7 +228,11 @@ Apple can rewrite the buffer it was given.
 processor. `cameraEffectsAvailable` (`camera_effects_engine.dart`) is the whole
 answer, and it includes whether the build carries a segmentation model — a build
 without one offers no effect at all, because blurring the wrong shape is worse
-than a plain camera.
+than a plain camera. One **is** committed (MediaPipe Selfie Segmentation,
+Apache-2.0, in `raindrop_video/models/`), so effects are on by default wherever
+the platform can take a processor; a checkout of RaindropCrypto without that
+file still builds, and the sheet then says so rather than offering an effect
+that would blur an oval.
 
 Two things the sheet does that are easy to miss:
 
