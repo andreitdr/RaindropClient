@@ -16,6 +16,7 @@ class VoiceRoster {
     required this.maximumParticipants,
     required this.byChannel,
     this.maximumCameraPublishers = 0,
+    this.maximumScreenShares = 0,
   });
 
   static const empty = VoiceRoster(
@@ -33,6 +34,10 @@ class VoiceRoster {
   /// server carries no camera video at all.
   final int maximumCameraPublishers;
 
+  /// How many members of one call may share their screen at once. 0 when this
+  /// server carries no screen sharing.
+  final int maximumScreenShares;
+
   /// Each call's participants, in the order they joined.
   final Map<String, List<VoiceParticipant>> byChannel;
 
@@ -49,6 +54,7 @@ class VoiceRoster {
       transport: status.transport,
       maximumParticipants: status.maximumParticipants,
       maximumCameraPublishers: status.maximumCameraPublishers,
+      maximumScreenShares: status.maximumScreenShares,
       byChannel: byChannel,
     );
   }
@@ -94,6 +100,7 @@ class VoiceRoster {
         transport: transport,
         maximumParticipants: maximumParticipants,
         maximumCameraPublishers: maximumCameraPublishers,
+        maximumScreenShares: maximumScreenShares,
         byChannel: byChannel,
       );
 }

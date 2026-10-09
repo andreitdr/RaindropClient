@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/voice_api.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/voice/voice_engine.dart';
 import '../../../core/widgets/adaptive.dart';
 import '../../channels/models/channel.dart';
 import '../../servers/controllers/session_controller.dart';
@@ -12,12 +13,18 @@ import '../controllers/voice_roster_controller.dart';
 import '../controllers/member_media_controller.dart';
 import 'voice_controls.dart';
 import 'voice_participant_tile.dart';
+import 'voice_screen_share_tile.dart';
 import 'voice_video_tile.dart';
 
 /// What the main pane shows for a voice channel: who is in its call, and the
-/// way in — or, once in it, the controls to mute, deafen and hang up.
+/// way in — or, once in it, the controls to mute, deafen and hang up, and the
+/// screens being shared in it.
 /// Selecting a voice channel only opens this; joining is the button, a
 /// deliberate second step.
+///
+/// **A share takes the stage only once it is watched.** Until then it is a
+/// card among the participants with a Watch button, and nothing of it is
+/// received; watched, it is drawn large above them.
 class VoiceChannelView extends ConsumerWidget {
   const VoiceChannelView({
     super.key,
@@ -34,7 +41,6 @@ class VoiceChannelView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final roster =
         ref.watch(voiceRosterProvider(serverId)).valueOrNull ??
         VoiceRoster.empty;
@@ -59,37 +65,13 @@ class VoiceChannelView extends ConsumerWidget {
             capacity: roster.maximumParticipants,
             cameras: participants.where((p) => p.cameraOn).length,
             cameraCapacity: roster.maximumCameraPublishers,
+            shares: participants.where((p) => p.screenShareOn).length,
+            shareCapacity: roster.maximumScreenShares,
           ),
           const Divider(height: 1),
-          Expanded(
-            child: participants.isEmpty
-                ? Center(
-                    child: Text(
-                      'Nobody is here yet.',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  )
-                : SingleChildScrollView(
-                    padding: const EdgeInsets.all(24),
-                    child: Center(
-                      child: Wrap(
-                        spacing: 16,
-                        runSpacing: 16,
-                        alignment: WrapAlignment.center,
-                        children: [
-                          for (final participant in participants)
-                            _ParticipantSlot(
-                              serverId: serverId,
-                              participant: participant,
-                              isCurrentUser: participant.userId == me,
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-          ),
+          if (here && call.screenShare.on && me != null)
+            VoiceOwnShareBar(userId: me),
+          Expanded(child: _body(context, ref, participants, call, here, me)),
           if (here && (call.serverMuted || call.suppressed))
             _Banner(
               call.serverMuted
@@ -125,6 +107,180 @@ class VoiceChannelView extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// One member's share as this client sees it: drawn, when watched and arriving;
+/// otherwise the card standing in for it.
+typedef _WatchedShare = ({VoiceParticipant participant, VoiceVideoFeed feed});
+
+extension on VoiceChannelView {
+  Widget _body(
+    BuildContext context,
+    WidgetRef ref,
+    List<VoiceParticipant> participants,
+    VoiceCallState call,
+    bool here,
+    String? me,
+  ) {
+    final theme = Theme.of(context);
+    if (participants.isEmpty) {
+      return Center(
+        child: Text(
+          'Nobody is here yet.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+
+    // Shares can only be watched from inside the call; from outside, the
+    // roster's icon says somebody is sharing and that is all.
+    final sharers = here
+        ? [
+            for (final p in participants)
+              if (p.screenShareOn && p.userId != me) p,
+          ]
+        : const <VoiceParticipant>[];
+
+    final watched = <_WatchedShare>[];
+    final cards = <Widget>[];
+    final controller = ref.read(voiceCallProvider.notifier);
+
+    for (final sharer in sharers) {
+      final id = sharer.userId;
+      final name = voiceMemberName(ref, serverId, id);
+      final isWatching = call.watching.contains(id);
+      final untrusted = call.untrustedScreenShares.contains(id);
+      final feed = call.screenFeedFor(id);
+
+      if (isWatching && !untrusted && feed != null) {
+        watched.add((participant: sharer, feed: feed));
+        continue;
+      }
+
+      cards.add(
+        VoiceScreenShareCard(
+          participant: sharer,
+          displayName: name,
+          state: untrusted
+              ? VoiceScreenShareCardState.untrusted
+              : isWatching || !call.screenShares.contains(id)
+              ? VoiceScreenShareCardState.starting
+              : VoiceScreenShareCardState.available,
+          onWatch: () => controller.setScreenShareWatched(id, true),
+          onStopWatching: isWatching
+              ? () => controller.setScreenShareWatched(id, false)
+              : null,
+        ),
+      );
+    }
+
+    final tiles = [
+      ...cards,
+      for (final participant in participants)
+        _ParticipantSlot(
+          serverId: serverId,
+          participant: participant,
+          isCurrentUser: participant.userId == me,
+        ),
+    ];
+
+    if (watched.isEmpty) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Center(
+          child: Wrap(
+            spacing: 16,
+            runSpacing: 16,
+            alignment: WrapAlignment.center,
+            children: tiles,
+          ),
+        ),
+      );
+    }
+
+    return _ShareStage(serverId: serverId, watched: watched, below: tiles);
+  }
+}
+
+/// A watched share drawn large, with every other watched share, every share
+/// card and every participant in a strip beneath it. Which share is large is
+/// this view's own choice — tapping another in the strip brings it forward —
+/// and when the one in front stops, the next takes its place.
+class _ShareStage extends ConsumerStatefulWidget {
+  const _ShareStage({
+    required this.serverId,
+    required this.watched,
+    required this.below,
+  });
+
+  final String serverId;
+  final List<_WatchedShare> watched;
+  final List<Widget> below;
+
+  @override
+  ConsumerState<_ShareStage> createState() => _ShareStageState();
+}
+
+class _ShareStageState extends ConsumerState<_ShareStage> {
+  String? _focused;
+
+  @override
+  Widget build(BuildContext context) {
+    final front =
+        widget.watched
+            .where((share) => share.participant.userId == _focused)
+            .firstOrNull ??
+        widget.watched.first;
+
+    return Column(
+      children: [
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: VoiceScreenShareTile(
+              feed: front.feed,
+              serverId: widget.serverId,
+              participant: front.participant,
+              displayName: voiceMemberName(
+                ref,
+                widget.serverId,
+                front.participant.userId,
+              ),
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 176,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: Row(
+              spacing: 12,
+              children: [
+                for (final share in widget.watched)
+                  if (share != front)
+                    VoiceScreenShareTile(
+                      feed: share.feed,
+                      serverId: widget.serverId,
+                      participant: share.participant,
+                      displayName: voiceMemberName(
+                        ref,
+                        widget.serverId,
+                        share.participant.userId,
+                      ),
+                      onFocus: () =>
+                          setState(() => _focused = share.participant.userId),
+                    ),
+                ...widget.below,
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -165,7 +321,8 @@ class _ParticipantSlot extends ConsumerWidget {
     }
 
     ref.watch(memberAudioProvider);
-    final hidden = !isCurrentUser &&
+    final hidden =
+        !isCurrentUser &&
         ref
             .read(memberAudioProvider.notifier)
             .of(serverId, participant.userId)
@@ -212,6 +369,8 @@ class _TopBar extends StatelessWidget {
     required this.capacity,
     required this.cameras,
     required this.cameraCapacity,
+    required this.shares,
+    required this.shareCapacity,
   });
 
   final Channel channel;
@@ -223,6 +382,11 @@ class _TopBar extends StatelessWidget {
 
   /// 0 when this server carries no camera video, which hides the counter.
   final int cameraCapacity;
+
+  final int shares;
+
+  /// 0 when this server carries no screen sharing, which hides the counter.
+  final int shareCapacity;
 
   @override
   Widget build(BuildContext context) {
@@ -265,6 +429,25 @@ class _TopBar extends StatelessWidget {
               const SizedBox(width: 4),
               Text(
                 '$cameras / $cameraCapacity',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            // And the sharing limit, smaller still.
+            if (shareCapacity > 0) ...[
+              const SizedBox(width: 10),
+              Tooltip(
+                message: 'Screens being shared, of the most this call carries',
+                child: Icon(
+                  Icons.screen_share_outlined,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '$shares / $shareCapacity',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -336,9 +519,10 @@ class _InCallControls extends ConsumerWidget {
         const VoiceSelfControls(iconSize: 26),
         // Here as well as in the layout's toolbars: `LayoutConfig.normalize`
         // keeps unknown button ids but never adds new ones, so an existing
-        // user's saved layout will not gain the camera button. This is where
-        // it is always reachable.
+        // user's saved layout will not gain the camera or share buttons. This
+        // is where they are always reachable.
         const VoiceCameraButton(iconSize: 26),
+        const VoiceScreenShareButton(iconSize: 26),
         const SizedBox(width: 16),
         FilledButton.icon(
           style: FilledButton.styleFrom(

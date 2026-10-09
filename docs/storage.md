@@ -14,7 +14,7 @@ is the one rule to keep straight when adding any new piece of persisted state.
 | `settings.last_server_id` | Which server was last active (`lastServerId`), restored on cold start |
 | `servers.list` | The connected-servers list, as a raw JSON array (`serverProfilesJson`) |
 | `voice.settings` | Voice preferences as a raw JSON map (`voiceSettingsJson`): output volume, devices, audio processing, and whether this client is muted/deafened — see [Voice](voice.md) |
-| `voice.member_audio` | Per-member volume, local mute and hidden camera, as a raw JSON map keyed `serverId/userId` (`memberAudioJson`); members left at the default are not stored. The key kept its name when per-member *audio* became per-member *media* — renaming it would silently throw away every volume anybody had set |
+| `voice.member_audio` | Per-member volume, local mute, hidden camera and share volume (`screenVolume`; absent in what older builds wrote, which reads as 1.0), as a raw JSON map keyed `serverId/userId` (`memberAudioJson`); members left at the default are not stored. The key kept its name when per-member *audio* became per-member *media* — renaming it would silently throw away every volume anybody had set |
 
 Deliberately format-agnostic: `customThemesJson` and `serverProfilesJson` return raw
 `List<Map<String, dynamic>>` rather than `AppThemeDefinition`/`ServerProfile`, so this storage layer

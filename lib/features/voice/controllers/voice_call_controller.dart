@@ -1112,12 +1112,23 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     final roster = ref.read(voiceRosterProvider(serverId)).valueOrNull;
     for (final participant in roster?.inChannel(channelId) ?? const []) {
       if (participant.userId == me) continue;
+      final member = audio.of(serverId, participant.userId);
       unawaited(
         engine.setParticipantVolume(
           participant.userId,
           effectiveVolume(
             outputVolume: settings.outputVolume,
-            member: audio.of(serverId, participant.userId),
+            member: member,
+            deafened: settings.selfDeaf,
+          ),
+        ),
+      );
+      unawaited(
+        engine.setScreenShareVolume(
+          participant.userId,
+          effectiveScreenVolume(
+            outputVolume: settings.outputVolume,
+            member: member,
             deafened: settings.selfDeaf,
           ),
         ),

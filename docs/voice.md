@@ -418,7 +418,7 @@ goes silent with deafen — until one is set. Hiding somebody's camera only ever
 | `voiceCallProvider` (`features/voice/controllers/voice_call_controller.dart`) | The **one** call this client is in, across all servers: server and channel, `joining`/`connected`/`reconnecting`, who is speaking, whether you are muted for everyone or suppressed, the camera (`cameraOn`, `cameraSuppressed`, `cameraBusy`, `videoFeeds`, `untrustedVideo`), a one-shot `notice` for why a call ended, and a dismissible `warning` for something the engine refused mid-call | global, kept alive |
 | `voiceRosterProvider(serverId)` (`voice_roster_controller.dart`) | Who is in every call on a server, plus `available`, `maximumParticipants` and `maximumCameraPublishers`; drives the sidebar and the voice view | per server |
 | `voiceSettingsProvider` (`voice_settings_controller.dart`) | Your mute/deafen, output volume, devices, and echo cancellation / noise suppression / auto gain | global, persisted |
-| `memberAudioProvider` (`member_audio_controller.dart`) | Per-member volume and local mute, keyed `serverId/userId` | global, persisted |
+| `memberAudioProvider` (`member_media_controller.dart`) | Per-member volume, local mute, hidden camera and **share volume** (`MemberMedia.screenVolume`), keyed `serverId/userId` | global, persisted |
 
 **The roster** follows the event stream through `LiveSync`, like every other list. It applies:
 
@@ -484,24 +484,52 @@ units mistake, and why the cap is 2.
   - a capacity count;
   - a **Join voice** button, or "Switch to this call" if you are in another one. The button is disabled,
     with the reason, without `connect`, when voice is unavailable, or when the call is full;
-  - once you are in the call: mute, deafen, **camera** and **Disconnect**; a banner when a moderator
-    muted you or you can only listen; and a dismissible banner when the engine refused something (the
-    state banners have no dismiss, because the state would still be true afterwards).
+  - once you are in the call: mute, deafen, **camera**, **share screen** (desktop only) and
+    **Disconnect**; a banner when a moderator muted you or you can only listen; and a dismissible
+    banner when the engine refused something (the state banners have no dismiss, because the state
+    would still be true afterwards).
   - a participant with their camera on gets a 16:9 `VoiceVideoTile` instead of the avatar tile, or a
-    `VoiceVideoPlaceholder` when it is hidden here or not trusted. The camera count sits beside the
-    member count in the top bar, since the camera limit is a separate and much smaller one.
+    `VoiceVideoPlaceholder` when it is hidden here or not trusted. The camera and share counts sit
+    beside the member count in the top bar, since those limits are separate and much smaller.
+  - **screen shares** (`voice_screen_share_tile.dart`), only once you are in the call. A share you are
+    not watching is a `VoiceScreenShareCard` among the participants — "*name* is sharing a window,
+    with its sound" — with **Watch**; it says "Starting…" until the engine reports the publication,
+    and "not encrypted, so it is not shown" for an untrusted one. A watched share takes the **stage**:
+    drawn large and whole (`BoxFit.contain`, never mirrored) above a horizontal strip of every other
+    watched share, the cards and the participants; tapping another share in the strip brings it
+    forward. Its bar has the sharer's name and what they share, a **volume** slider when it carries
+    sound (its own, apart from their voice), **Full view** (a full-window route, Esc to close, which
+    says so when the share ends) and **Stop watching**.
+  - **while you share**, `VoiceOwnShareBar` above the participants: "You're sharing “Notes”, with its
+    sound", a small preview of exactly what everybody sees (foldable, and not drawn at all when folded
+    — a local preview of a large screen costs a texture upload every frame), and **Stop sharing**.
 
   The camera button is in the layout's button registry (`MainButtons.camera`) *and* hard-wired into
   the in-call controls. **`LayoutConfig.normalize` keeps unknown button ids but never adds new ones**,
   so an existing user's saved `layout.json` will not gain it — the in-call controls are where it is
-  always reachable. See [Layout](layout.md).
+  always reachable. See [Layout](layout.md). The share button (`MainButtons.screenShare`,
+  `VoiceScreenShareButton`) is in the registry, so it can be placed in a toolbar from the layout
+  editor, but **not in the default layout**: the user panel under your name already holds four
+  buttons in a 240-wide sidebar. It is always in the in-call controls, and draws nothing where
+  sharing is impossible (phones), whichever toolbar it is put in.
+
+- **The share picker** (`screen_share_picker.dart`, `showScreenSharePicker`) opens from the share
+  button. **Screens** and **Windows**, each a grid of live thumbnails from `openScreenSources()`
+  (Raindrop's own windows left out on Windows); double-click shares at once. Under Windows sits the
+  checkbox **"Also share this window's sound"** — *the sharer's agreement*: unticked every time the
+  picker opens and whenever another window is chosen, and disabled with the reason from
+  `windowAudioUnavailableReason` (not available on macOS or Linux yet, needs Windows 11, or the
+  window's process tree contains Raindrop). Under Screens: "A whole screen is shared without sound."
+  On Share, a chosen window is checked again (`isWindowStillOpen`). On macOS a refused Screen
+  Recording permission shows where to allow it instead of an empty grid.
 
   **Selecting a channel never joins it**: joining is the button.
 - **Narrow layout**: the sidebar lives in a drawer, so a call in progress gets a thin
   `VoiceConnectionBar(compact: true)` above the pane, with mute, deafen and hang-up in it.
 - **Member menu** (`voice_member_menu.dart`) opens on right-click on desktop and long press on touch
   (a bottom sheet), on a participant tile or sidebar row. It is not offered on your own entry. It has:
-  - **Volume** (0–200%, 5% steps);
+  - **Volume** (0–200%, 5% steps) — of their voice; a shared window's sound has its own slider on the
+    share;
   - **Mute** ("only for you");
   - **Mute / Unmute for everyone**, shown only with server-wide `mute_members` (from
     `serverPermissionsProvider`).
@@ -551,8 +579,6 @@ in release builds only — the same trap the Android manifest fell into.
 - Background audio on phones (iOS background mode, Android microphone foreground service).
 - Push-to-talk.
 - Rejoining automatically after a network drop (the call ends with a notice; you join again).
-- **The share picker, the share button and watching shares.** The engine and the call controller
-  can share and receive a share; the screens that drive them are the next stage.
 - **Sharing from a phone** — needs background calls first; phones can watch.
 - **A window's sound on macOS and Linux** ([why](#screen-sharing)).
 - **Camera effects on Windows and Linux.** They run on macOS, iOS and Android; see

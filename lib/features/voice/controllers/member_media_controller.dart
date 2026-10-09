@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../models/member_media.dart';
 
-/// Per-member volume, local mute and hidden camera, for every member on every
+/// Per-member volume, local mute, hidden camera and share volume, for every
+/// member on every
 /// server this client has adjusted, keyed by [memberMediaKey]. Only members who
 /// differ from the default are stored, so the map does not grow a row per
 /// member anybody has ever been in a call with.
@@ -37,6 +38,12 @@ class MemberMediaController extends Notifier<Map<String, MemberMedia>> {
     serverId,
     userId,
     of(serverId, userId).copyWith(videoHidden: hidden),
+  );
+
+  void setScreenVolume(String serverId, String userId, double volume) => _set(
+    serverId,
+    userId,
+    of(serverId, userId).copyWith(screenVolume: volume),
   );
 
   void _set(String serverId, String userId, MemberMedia media) {

@@ -129,7 +129,8 @@ features/
                 (upload/open encrypted files) + the chat pane, its composer and attachment previews
   members/    — the roster with each member's presence + the right-hand member pane
   voice/      — the call, who is in each call, voice settings + per-member media, the voice view and
-                its video tiles, the camera-and-effects sheet, member menu and call controls
+                its video tiles, the camera-and-effects sheet, the share picker and share tiles,
+                member menu and call controls
   security/   — end-to-end encryption: DeviceSetupController (create/link/restore, register, bind
                 the session), ChannelGroups (each channel's MLS group: join, catch up, Welcomes, key
                 packages, roster reconcile, encrypt/decrypt), the setup pane that takes the chat pane
@@ -391,8 +392,10 @@ camera and moderate; the media goes over the transport it names on join (`liveki
   the sender's stats and scales every layer by `screenShareScale`. A screen never carries sound; a
   window's sound only on Windows 11, through flutter_webrtc's process-tree loopback, refused for any
   window whose tree contains Raindrop (`windowAudioUnavailableReason`). **Nobody's share is received
-  until it is watched** (`disable()` on publish). Adaptive stream and dynacast are on, which is why
-  the feed list never reads `publication.enabled`. See `docs/voice.md#screen-sharing`.
+  until it is watched** (`disable()` on publish): a card with **Watch**, then the large stage. The
+  picker's "Also share this window's sound" checkbox is the sharer's consent — unticked every time.
+  Adaptive stream and dynacast are on, which is why the feed list never reads `publication.enabled`.
+  See `docs/voice.md#screen-sharing`.
 - **Hiding somebody's camera really stops the stream** (`publication.disable()`, not a hidden widget),
   saving the bandwidth as well as the screen space, and it is re-applied on every republish so it does
   not leak when they turn their camera off and on. `unsubscribe()` is kept for the untrusted case.
@@ -420,9 +423,8 @@ camera and moderate; the media goes over the transport it names on join (`liveki
 
 - **Background voice on phones** (iOS background audio, Android microphone foreground service), and
   rejoining automatically after a dropped connection.
-- Push-to-talk, **camera effects on Windows and Linux** (they run on macOS, iOS and Android), the
-  screen-share picker and watching UI, sharing from a phone, a window's sound on macOS and Linux,
-  microphone gain; changing your username or password from the app; any role-editing or report-moderation UI;
+- Push-to-talk, **camera effects on Windows and Linux** (they run on macOS, iOS and Android), sharing
+  a screen from a phone, a window's sound on macOS and Linux, microphone gain; changing your username or password from the app; any role-editing or report-moderation UI;
   notifications.
 
 The full, maintained inventory is [`docs/roadmap.md`](docs/roadmap.md) — update it in the same change
