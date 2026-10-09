@@ -91,6 +91,11 @@ class VoiceChannelView extends ConsumerWidget {
                   ? 'A moderator muted you for everyone. You can still listen.'
                   : 'You can listen here, but not speak.',
             ),
+          if (here && call.warning != null)
+            _Banner(
+              call.warning!,
+              onDismiss: ref.read(voiceCallProvider.notifier).dismissWarning,
+            ),
           SafeArea(
             top: false,
             child: Padding(
@@ -173,9 +178,15 @@ class _TopBar extends StatelessWidget {
 }
 
 class _Banner extends StatelessWidget {
-  const _Banner(this.text);
+  const _Banner(this.text, {this.onDismiss});
 
   final String text;
+
+  /// When given, the banner can be closed. The banners that describe a lasting
+  /// state — muted for everyone, cannot speak — have no dismiss, because the
+  /// state would still be true afterwards; the ones that report something that
+  /// already happened do.
+  final VoidCallback? onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -183,8 +194,23 @@ class _Banner extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: scheme.errorContainer,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Text(text, style: TextStyle(color: scheme.onErrorContainer)),
+      padding: EdgeInsets.fromLTRB(16, 8, onDismiss == null ? 16 : 4, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(text, style: TextStyle(color: scheme.onErrorContainer)),
+          ),
+          if (onDismiss != null)
+            IconButton(
+              onPressed: onDismiss,
+              visualDensity: VisualDensity.compact,
+              iconSize: 18,
+              color: scheme.onErrorContainer,
+              tooltip: 'Dismiss',
+              icon: const Icon(Icons.close),
+            ),
+        ],
+      ),
     );
   }
 }
