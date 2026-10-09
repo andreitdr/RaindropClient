@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/platform/platform_info.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/video/camera_effects_engine.dart';
 import '../../../core/voice/voice_engine.dart';
 import '../../../core/voice/voice_video_view.dart';
 import '../../../core/widgets/adaptive.dart';
@@ -74,6 +75,17 @@ class _CameraEffectsSheetState extends ConsumerState<_CameraEffectsSheet> {
   List<VideoDevice>? _cameras;
   String? _error;
 
+  /// Whether the effect has yet to produce its first mask. See [_warmUp].
+  bool _warming = false;
+
+  /// True once the effects have given something up to keep up with the frame
+  /// rate. Said once, in words, rather than left for the user to notice.
+  bool _degraded = false;
+
+  /// Which warm-up is the current one, so a camera switched twice in quick
+  /// succession does not leave an older poll to finish and clear the flag.
+  int _generation = 0;
+
   @override
   void initState() {
     super.initState();
@@ -100,6 +112,7 @@ class _CameraEffectsSheetState extends ConsumerState<_CameraEffectsSheet> {
         return;
       }
       setState(() => _preview = preview);
+      await _warmUp();
     } on Object catch (e) {
       if (mounted) setState(() => _error = '$e');
     }
@@ -113,15 +126,52 @@ class _CameraEffectsSheetState extends ConsumerState<_CameraEffectsSheet> {
     try {
       await _preview?.apply(next);
       if (mounted) setState(() {});
+      await _warmUp();
     } on Object catch (e) {
       if (mounted) setState(() => _error = '$e');
     }
   }
 
+  /// Keeps the preview behind its indicator until the effect has produced its
+  /// first mask.
+  ///
+  /// Segmentation runs well below the frame rate and starts cold, so the first
+  /// frames go through untouched. Showing them reads as the effect having
+  /// failed rather than as not having started, which is a worse first
+  /// impression than a moment's wait. Two seconds is the ceiling: past that the
+  /// camera is better than a spinner, and [_degraded] will say why.
+  Future<void> _warmUp() async {
+    final generation = ++_generation;
+    const step = Duration(milliseconds: 100);
+
+    final wanted = _options.effect.effective(
+      effectsAvailable: cameraEffectsAvailable,
+    );
+    if (wanted == VoiceCameraEffectKind.none) {
+      if (mounted) setState(() => _warming = false);
+      return;
+    }
+
+    if (mounted) setState(() => _warming = true);
+
+    for (var waited = Duration.zero; waited < const Duration(seconds: 2); waited += step) {
+      final load = await _preview?.load();
+      if (!mounted || generation != _generation) return;
+      if (load == null || load.warm) {
+        setState(() => _degraded = load?.degraded ?? false);
+        break;
+      }
+      await Future<void>.delayed(step);
+      if (!mounted || generation != _generation) return;
+    }
+
+    setState(() => _warming = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final effectsAvailable = canUseCameraEffects;
+    final effectsAvailable = cameraEffectsAvailable;
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -132,7 +182,7 @@ class _CameraEffectsSheetState extends ConsumerState<_CameraEffectsSheet> {
           children: [
             Text('Camera', style: theme.textTheme.titleMedium),
             const SizedBox(height: 12),
-            _Preview(preview: _preview, error: _error),
+            _Preview(preview: _preview, error: _error, warming: _warming),
             const SizedBox(height: 8),
             if (canChooseCamera)
               DeviceTile(
@@ -174,6 +224,12 @@ class _CameraEffectsSheetState extends ConsumerState<_CameraEffectsSheet> {
               onChanged: (effect) =>
                   _change(_options.copyWith(effect: effect)),
             ),
+            if (_preview?.warning case final reason?) _Note(reason),
+            if (_degraded)
+              const _Note(
+                'This device is struggling with the effect, so some of it has '
+                'been turned down to keep your camera smooth.',
+              ),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -203,11 +259,55 @@ void unawaitedDispose(VoiceCameraPreview? preview) {
   if (preview != null) preview.dispose().ignore();
 }
 
+/// A short explanation under the effect rows: why an effect is not running, or
+/// what had to be given up to keep it running.
+class _Note extends StatelessWidget {
+  const _Note(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.info_outline,
+            size: 16,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Preview extends StatelessWidget {
-  const _Preview({required this.preview, required this.error});
+  const _Preview({
+    required this.preview,
+    required this.error,
+    required this.warming,
+  });
 
   final VoiceCameraPreview? preview;
   final String? error;
+
+  /// The camera is running but the effect has not produced a mask yet, so what
+  /// it would show is the unprocessed camera.
+  final bool warming;
 
   @override
   Widget build(BuildContext context) {
@@ -249,9 +349,8 @@ class _Preview extends StatelessWidget {
                 ),
               ),
             ),
-            (null, final VoiceCameraPreview live) => VoiceVideoView(
-              feed: live.feed,
-            ),
+            (null, final VoiceCameraPreview live) when !warming =>
+              VoiceVideoView(feed: live.feed),
             _ => const Center(child: AdaptiveActivityIndicator()),
           },
         ),

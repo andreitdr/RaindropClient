@@ -52,14 +52,18 @@ bool get canChooseAudioDevices => isDesktopPlatform;
 /// the OS's business.
 bool get canChooseCamera => true;
 
-/// Whether background blur and background replacement can run here.
+/// Whether this platform has somewhere to put a frame processor.
 ///
-/// The camera itself works on every platform; the effects need a hook into the
-/// capture pipeline that the media library does not expose, so they arrive one
-/// platform at a time. False everywhere until that lands — the camera-and-effects
-/// sheet reads this and says so rather than offering an effect that would do
-/// nothing.
-bool get canUseCameraEffects => false;
+/// The camera itself works everywhere; the effects need a hook into the capture
+/// pipeline, and the media library only has one on these three — on Windows and
+/// Linux there is no chain between the capturer and the source to insert
+/// anything into. Whether effects can *actually* run also depends on the build
+/// carrying a segmentation model, which is `cameraEffectsAvailable` in
+/// `core/video/camera_effects_engine.dart`; that is what the UI reads.
+bool get canUseCameraEffects =>
+    currentPlatform == RaindropPlatform.macos ||
+    currentPlatform == RaindropPlatform.ios ||
+    currentPlatform == RaindropPlatform.android;
 
 /// Whether the camera can scan a QR code here — the device-link code another
 /// device shows. `mobile_scanner` covers iOS, Android and macOS; elsewhere

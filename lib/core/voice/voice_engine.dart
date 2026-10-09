@@ -10,6 +10,7 @@ import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 
 import '../video/camera_effects.dart';
+import '../video/camera_effects_engine.dart';
 import 'livekit_voice_engine.dart';
 
 export '../video/camera_effects.dart';
@@ -236,6 +237,18 @@ abstract class VoiceCameraPreview {
   /// Applies a changed choice. Reopens the camera only when
   /// [VoiceCameraOptions.needsRestartFor] says it must.
   Future<void> apply(VoiceCameraOptions options);
+
+  /// Why the chosen effect is not running, or null when it is. Set by the last
+  /// [apply]: an effect that cannot be applied is not an error to throw, it is
+  /// something the sheet says while still showing the camera.
+  String? get warning;
+
+  /// What the effects are costing, or null when none are running.
+  ///
+  /// The sheet polls this before it shows the preview: until the first mask has
+  /// been produced the frames pass through untouched, and an unblurred preview
+  /// reads as the effect having failed rather than as not having started.
+  Future<CameraEffectsLoad?> load();
 
   Future<void> dispose();
 }

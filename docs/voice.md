@@ -175,6 +175,76 @@ anyway and everybody else would be left looking at a frozen frame. Desktop is
 left alone: a hidden window is still a live camera there, and stopping it
 silently would surprise.
 
+### Camera effects
+
+Background blur and background replacement, applied to the camera's frames
+**in place** before they reach the encoder. Offered in the sheet before the
+camera goes on, and switchable while it is on — swapping the effect changes a
+processor on the frames, not a property of the capture, so nothing restarts and
+nobody sees a freeze.
+
+The work is Rust, in
+[RaindropCrypto's camera-effects core](../../RaindropCrypto/docs/video-effects.md).
+**No frame comes through Dart** — the media library exposes no way to touch one.
+What Dart does is open an effects handle, ask for the address of the C function
+that processes a frame, and hand both to the platform's capture pipeline:
+
+```
+camera_effects_sheet / voice settings
+        │  VoiceCameraEffect (kind, strength, background path)
+        ▼
+core/video/camera_effects_engine.dart ── CameraEffects.start()
+        │                                 (the only file outside core/crypto/
+        │                                  that imports the generated bridge)
+        │  handle + process address, both plain integers
+        ▼
+core/voice/livekit_voice_engine.dart ── _TrackEffects
+        │  RaindropCameraEffects.attach(trackId:, processAddress:, context:)
+        ▼
+native/raindrop_camera_effects  ──►  flutter_webrtc's own processor chain
+        │                            (addProcessing: / addProcessor)
+        ▼
+    per frame, on the capture thread, into Rust
+```
+
+**Nothing is forked and nothing is patched.** `flutter_webrtc`'s per-frame hook
+is already public on both Apple (`LocalVideoTrack addProcessing:`,
+`ExternalVideoProcessingDelegate`) and Android
+(`LocalVideoTrack.addProcessor`, `ExternalVideoFrameProcessing`) — it is only
+its *Dart* layer that never uses it. So `native/raindrop_camera_effects` is a
+small plugin of our own that reaches those APIs and nothing else; it looks the
+track up in `flutter_webrtc`'s own public registry by the id Dart already holds
+as `MediaStreamTrack.id`. On Apple it resolves to SPM, which is how
+`livekit_client` already depends on `flutter_webrtc`'s `WebRTC` product.
+
+Android is the one platform that cannot be handed a function address — a Java
+method cannot call a function pointer — so the per-frame call goes through JNI
+into the same Rust library, by name. That is also why Android has to convert the
+frame (`toI420()` is a GPU readback there) and hand on a new `VideoFrame`, where
+Apple can rewrite the buffer it was given.
+
+**Two things the UI asks rather than assumes.** `canUseCameraEffects`
+(`platform_info.dart`) is the platform half: is there anywhere to put a
+processor. `cameraEffectsAvailable` (`camera_effects_engine.dart`) is the whole
+answer, and it includes whether the build carries a segmentation model — a build
+without one offers no effect at all, because blurring the wrong shape is worse
+than a plain camera.
+
+Two things the sheet does that are easy to miss:
+
+- **It waits for the first mask.** Segmentation runs well below the frame rate
+  and starts cold, so the first frames go through untouched. Showing them reads
+  as the effect having failed rather than as not having started, so the preview
+  stays behind its indicator until `CameraEffectsLoad.warm`, for up to two
+  seconds.
+- **It says when something was given up.** The degradation ladder lives in Rust,
+  not in the UI; the sheet reads `degraded` and says so once.
+
+An effect that cannot be applied is never fatal. `_TrackEffects.apply` returns a
+warning instead of throwing, the camera carries on without it, and the engine
+puts the warning on `warnings` — a camera without its blur is a cosmetic
+failure, and a dropped camera is not.
+
 ### Hiding somebody's camera
 
 The member menu's **Hide camera** ("Only for you — they are not told") is local
@@ -336,7 +406,12 @@ Speaking and "connected" colours reuse `AppSurfaces.onlineIndicator`, so no them
 | Windows, Linux | nothing |
 
 flutter_webrtc and livekit_client ship Swift Package Manager manifests, so the Apple builds stay on
-SPM with no Podfile.
+SPM with no Podfile. `native/raindrop_camera_effects` is an SPM package too, and depends on
+flutter_webrtc's own `flutter-webrtc` and `WebRTC` products — the same cross-plugin dependency
+`livekit_client` already declares, which is what lets our Objective-C include flutter_webrtc's public
+headers without vendoring or forking anything. On Android it is a plain `com.android.library` with
+`compileOnly project(':flutter_webrtc')` and `compileOnly` on the WebRTC AAR: both are already in the
+app, and shipping a second copy of the AAR would be tens of megabytes of duplicate classes.
 
 `com.apple.security.network.server` is the one that is easy to get wrong, because nothing about it
 says "voice". Under the App Sandbox it is what permits `bind()`, and WebRTC binds UDP and TCP
@@ -355,11 +430,9 @@ in release builds only — the same trap the Android manifest fell into.
 - Push-to-talk.
 - Rejoining automatically after a network drop (the call ends with a notice; you join again).
 - Screen sharing.
-- **Camera effects.** Background blur and background replacement are chosen, persisted and shown in
-  the sheet, but not yet applied: they need a hook into the capture pipeline that the media library
-  does not expose, so `canUseCameraEffects` is false everywhere and the sheet says so. The work
-  itself is built and tested in
-  [RaindropCrypto's camera-effects core](../../RaindropCrypto/docs/video-effects.md).
+- **Camera effects on Windows and Linux.** They run on macOS, iOS and Android; see
+  [Camera effects](#camera-effects). Those two have no chain between the capturer and the video
+  source to put a processor into, so `canUseCameraEffects` is false there and the sheet says so.
 - Microphone volume (no API for it; see above).
 
 ## Related

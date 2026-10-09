@@ -1,0 +1,54 @@
+// Compiles against flutter_webrtc's Android library without shipping any of it:
+// the processor hook and the local-track registry are its public API, and the
+// app already carries both it and the WebRTC AAR. See ../README.md.
+
+group 'com.raindrop.camera_effects'
+version '1.0'
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.1.0'
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'com.raindrop.camera_effects'
+    compileSdk 36
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    defaultConfig {
+        // The same floor flutter_webrtc sets; there is nothing to attach to
+        // below it.
+        minSdk 21
+    }
+}
+
+dependencies {
+    // compileOnly throughout: every one of these is already in the app, put
+    // there by flutter_webrtc and by Flutter itself. Shipping a second copy of
+    // the WebRTC AAR would be ~30 MB of duplicate classes.
+    compileOnly project(':flutter_webrtc')
+    // flutter_webrtc depends on this with `implementation`, so org.webrtc is not
+    // on our classpath through the project above and has to be named here. The
+    // version only has to contain VideoFrame and I420Buffer — it is not the copy
+    // that ships, so drifting from flutter_webrtc's pin is harmless.
+    compileOnly 'io.github.webrtc-sdk:android:150.7871.01'
+}

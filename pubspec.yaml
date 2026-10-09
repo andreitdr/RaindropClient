@@ -37,12 +37,19 @@ dependencies:
   qr_flutter: ^4.1.0
   raindrop_crypto_ffi:
     path: native/raindrop_crypto_builder
+  # Puts the camera effects into flutter_webrtc's capture pipeline, through its
+  # own public API — nothing is forked. See the package's README.
+  raindrop_camera_effects:
+    path: native/raindrop_camera_effects
   shared_preferences: ^2.5.5
   uuid: ^4.6.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # Native memory for the camera-effects test, which calls the Rust per-frame
+  # function the way a capture pipeline does. Tests only.
+  ffi: ^2.1.0
   flutter_lints: ^6.0.0
 
 flutter:

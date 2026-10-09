@@ -7,7 +7,9 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 import 'package:livekit_client/livekit_client.dart';
+import 'package:raindrop_camera_effects/raindrop_camera_effects.dart';
 
+import '../video/camera_effects_engine.dart';
 import 'voice_engine.dart';
 
 class LiveKitVoiceEngine implements VoiceEngine {
@@ -36,6 +38,9 @@ class LiveKitVoiceEngine implements VoiceEngine {
   /// derived on demand, because the camera handshake has to know whether a
   /// grant is already in place before it decides to wait for one.
   VoicePublishRights _rights = VoicePublishRights.none;
+
+  /// The effects on this call's camera, if any are running.
+  final _effects = _TrackEffects();
 
   /// What the camera was last asked to be, and with what. Remembered so a
   /// track republished after a reconnect comes back with the same choice.
@@ -356,6 +361,9 @@ class LiveKitVoiceEngine implements VoiceEngine {
 
   @override
   Future<void> dispose() async {
+    // Before the room goes: the effects hold a segmentation thread, and the
+    // room disconnecting does not release it.
+    await _effects.clear();
     await _listener?.dispose();
     _listener = null;
     await _room?.disconnect();
@@ -658,6 +666,10 @@ class LiveKitVoiceEngine implements VoiceEngine {
   }
 
   Future<void> _stopCamera() async {
+    // Before the track goes: detaching needs the track to still be there, and
+    // the handle holds a segmentation thread that has to be let go either way.
+    await _effects.clear();
+
     final local = _room?.localParticipant;
     if (local != null) {
       try {
@@ -671,14 +683,25 @@ class LiveKitVoiceEngine implements VoiceEngine {
     _reportFeeds();
   }
 
-  /// Installs or removes the effects on a camera that is already running.
+  /// Installs, changes or removes the effects on the camera that is running.
   ///
-  /// Nothing happens here yet: the effects need a hook into the capture
-  /// pipeline that the media library does not expose, so `canUseCameraEffects`
-  /// is false everywhere and the sheet says so. The chosen effect is still
-  /// carried and persisted, so when that hook lands this is the one method that
-  /// changes.
-  Future<void> _applyEffect() async {}
+  /// The one place the effects touch a call. Everything about how they work
+  /// lives in [_TrackEffects]; what this knows is which track is currently
+  /// publishing and what the user asked for.
+  Future<void> _applyEffect() async {
+    final warning = await _effects.apply(_localCameraTrack, _camera.effect);
+    if (warning != null && !_warnings.isClosed) _warnings.add(warning);
+  }
+
+  /// The camera track this participant is publishing, if any.
+  LocalVideoTrack? get _localCameraTrack {
+    for (final publication
+        in _room?.localParticipant?.videoTrackPublications ??
+            const <LocalTrackPublication<LocalVideoTrack>>[]) {
+      if (publication.source == TrackSource.camera) return publication.track;
+    }
+    return null;
+  }
 
   CameraCaptureOptions _captureCamera() => CameraCaptureOptions(
     deviceId: _camera.deviceId,
@@ -901,10 +924,126 @@ class _LiveKitVideoFeed implements VoiceVideoFeed {
 ///
 /// It publishes nothing and touches no room: the sheet is reachable from
 /// settings with no call in progress, and opening a preview must not need one.
+/// The camera effects on one running track: the Rust handle and the native
+/// processor that calls into it.
+///
+/// The two are kept together because neither half is any use alone — a
+/// processor left on the track after the handle is destroyed calls into
+/// nothing, and a handle left behind after the processor is gone holds a
+/// segmentation thread for a camera that has stopped.
+///
+/// Used by both the call and the camera-and-effects sheet's preview, which is
+/// what makes the preview an honest preview: the same effect, applied the same
+/// way, to a track that simply is not published.
+class _TrackEffects {
+  CameraEffects? _running;
+
+  /// The track the processor is attached to, remembered rather than looked up,
+  /// because detaching has to name the track it was attached to even after that
+  /// track has stopped.
+  String? _trackId;
+
+  /// Whether the platform can take a processor at all. Asked once: the answer
+  /// is a property of the build, and asking per frame-rate change would be a
+  /// method channel round trip for a constant.
+  static Future<bool>? _supported;
+
+  static Future<bool> get _platformSupports =>
+      _supported ??= RaindropCameraEffects.isSupported;
+
+  /// Applies [effect] to [track], and returns a warning to show the user when
+  /// it could not be — never throws. A camera without its effect is still a
+  /// camera, and the call carries on.
+  Future<String?> apply(LocalVideoTrack? track, VoiceCameraEffect effect) async {
+    final wanted = effect.effective(effectsAvailable: cameraEffectsAvailable);
+
+    if (track == null || wanted == VoiceCameraEffectKind.none) {
+      await clear();
+      return null;
+    }
+
+    if (!await _platformSupports) {
+      await clear();
+      return null;
+    }
+
+    final trackId = track.mediaStreamTrack.id;
+    if (trackId == null) {
+      // Nothing to look the track up by on the native side, so there is
+      // nowhere to put the processor.
+      await clear();
+      return null;
+    }
+
+    // Already running on this very track: the effect changes under it, with no
+    // new processor and no restart, which is the whole point of doing this on
+    // the frames rather than on the capture.
+    if (_running case final running? when _trackId == trackId) {
+      try {
+        await running.apply(effect);
+        return null;
+      } on CameraEffectsFailure catch (failure) {
+        await clear();
+        return 'Your camera effect was turned off (${failure.message}).';
+      }
+    }
+
+    await clear();
+
+    try {
+      final effects = await CameraEffects.start(effect);
+      if (effects == null) return null;
+
+      await RaindropCameraEffects.attach(
+        trackId: trackId,
+        processAddress: effects.processAddress,
+        context: effects.context,
+      );
+
+      _running = effects;
+      _trackId = trackId;
+      return null;
+    } on CameraEffectsFailure catch (failure) {
+      await clear();
+      return 'Your camera effect could not be applied (${failure.message}).';
+    } on CameraEffectsUnavailable catch (failure) {
+      await clear();
+      return 'Your camera effect could not be applied (${failure.reason}).';
+    }
+  }
+
+  /// What the effects are costing, or null when none are running.
+  ///
+  /// Read by the preview, which waits for the first mask before it shows
+  /// anything: until one has been produced the frames go through untouched,
+  /// which looks exactly like the effect not working.
+  Future<CameraEffectsLoad?> load() async {
+    try {
+      return await _running?.load();
+    } on CameraEffectsFailure {
+      return null;
+    }
+  }
+
+  /// Takes the processor off and releases the effects. Safe at any point, and
+  /// in this order: the pipeline must stop calling before the handle goes.
+  Future<void> clear() async {
+    if (_trackId case final trackId?) {
+      _trackId = null;
+      await RaindropCameraEffects.detach(trackId: trackId);
+    }
+
+    final running = _running;
+    _running = null;
+    await running?.dispose();
+  }
+}
+
 class _LiveKitCameraPreview implements VoiceCameraPreview {
   LocalVideoTrack? _track;
   VoiceCameraOptions _options = const VoiceCameraOptions();
   bool _front = true;
+  final _effects = _TrackEffects();
 
   @override
   VoiceVideoFeed get feed => _LiveKitVideoFeed(
@@ -921,9 +1060,11 @@ class _LiveKitCameraPreview implements VoiceCameraPreview {
     _front = await LiveKitVoiceEngine._isFront(options.deviceId);
 
     // The effect is not a property of the capture, so only a different camera
-    // or quality reopens it. There is nothing to apply for the effect itself
-    // yet — see LiveKitVoiceEngine._applyEffect.
-    if (_track != null && !previous.needsRestartFor(options)) return;
+    // or quality reopens it.
+    if (_track != null && !previous.needsRestartFor(options)) {
+      _warning = await _effects.apply(_track, options.effect);
+      return;
+    }
 
     await _stop();
     _track = await LocalVideoTrack.createCameraTrack(
@@ -936,12 +1077,23 @@ class _LiveKitCameraPreview implements VoiceCameraPreview {
         },
       ),
     );
+    _warning = await _effects.apply(_track, options.effect);
   }
+
+  String? _warning;
+
+  @override
+  String? get warning => _warning;
+
+  @override
+  Future<CameraEffectsLoad?> load() => _effects.load();
 
   @override
   Future<void> dispose() => _stop();
 
   Future<void> _stop() async {
+    await _effects.clear();
+
     final track = _track;
     _track = null;
     if (track == null) return;

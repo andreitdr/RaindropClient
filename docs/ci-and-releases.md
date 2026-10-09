@@ -40,6 +40,17 @@ Three runner-only workarounds in the build, each undone with the checkout:
 Integration tests are **not** run in CI: they need a live server with a fresh database. Run them
 locally — see [Crypto](crypto.md#tests) for the full set and the `RAINDROP_TEST_SERVER` form.
 
+Two more gaps worth naming, both local-only on purpose:
+
+- The two tests that load the Rust library directly (`test/core/crypto/mls_crypto_engine_test.dart`
+  and `test/core/video/camera_effects_test.dart`) look for it under
+  `../RaindropCrypto/target/debug/`, which a `flutter build` does not produce — cargokit builds into
+  its own tree. They skip themselves in CI and run after a `cargo build -p raindrop_crypto_ffi`.
+- **Android is not built in CI**, so the Android half of
+  [`native/raindrop_camera_effects`](voice.md#camera-effects) — the JNI binding in particular, which
+  resolves by name at the first frame rather than at compile time — is only verified by a local
+  `flutter build apk`. Adding an Android job means an SDK, an NDK and a third Rust target matrix.
+
 ## `release.yml` — package and publish
 
 Triggered by a pushed version tag matching `v[0-9]+.[0-9]+.[0-9]+`.

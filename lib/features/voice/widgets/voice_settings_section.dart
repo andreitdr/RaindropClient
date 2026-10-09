@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/platform/platform_info.dart';
+import '../../../core/video/camera_effects_engine.dart';
 import '../../../core/voice/voice_engine.dart';
 import 'camera_effects_sheet.dart';
 import 'device_tile.dart';
@@ -141,7 +142,9 @@ class VoiceSettingsSection extends ConsumerWidget {
 /// The remembered camera choice in words, for the settings row's subtitle.
 String _cameraSummary(VoiceSettings settings) {
   final quality = settings.videoQuality.label;
-  if (!canUseCameraEffects) return '$quality · effects not available here';
+  if (!cameraEffectsAvailable) {
+    return '$quality · effects not available here';
+  }
   return '$quality · ${settings.cameraEffect.label.toLowerCase()}';
 }
 

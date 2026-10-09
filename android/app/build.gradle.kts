@@ -6,7 +6,11 @@ plugins {
 
 android {
     namespace = "com.raindrop.raindrop_client"
-    compileSdk = flutter.compileSdkVersion
+    // Pinned rather than `flutter.compileSdkVersion` (36 in this Flutter): one
+    // plugin's AAR metadata requires its consumers to compile against 37, and
+    // `checkDebugAarMetadata` fails the whole build if they do not.
+    // flutter_secure_storage is the one today; raise this when another asks.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

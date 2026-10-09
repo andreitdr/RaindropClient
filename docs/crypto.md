@@ -22,7 +22,7 @@ client uses. For the Rust core itself — every module, the byte formats, what's
 | [`../../RaindropCrypto/crates/raindrop_crypto`](../../RaindropCrypto/crates/raindrop_crypto) | The Rust core: MLS groups, identity keys and device certificates, key backup, the encrypted store. No Flutter here. |
 | [`../../RaindropCrypto/crates/raindrop_crypto_ffi`](../../RaindropCrypto/crates/raindrop_crypto_ffi) | The flutter_rust_bridge API (`src/api/`), plus the generated `frb_generated.rs` |
 | [`native/raindrop_crypto_builder`](../native/raindrop_crypto_builder) | Build glue (cargokit) that compiles the Rust crate during `flutter build` and links it in. No Rust here. |
-| [`lib/core/crypto/bridge/`](../lib/core/crypto/bridge) | Generated Dart bindings. Never edit by hand, and never import outside `core/crypto/`. |
+| [`lib/core/crypto/bridge/`](../lib/core/crypto/bridge) | Generated Dart bindings. Never edit by hand, and the only importers are `core/crypto/` and `core/video/camera_effects_engine.dart`. |
 | [`lib/core/crypto/`](../lib/core/crypto) | The Dart facade: `CryptoEngine`, `MlsCryptoEngine` and `CryptoStores` |
 
 The Rust code lives in its own top-level folder, `RaindropCrypto/`, kept apart from the Dart client
@@ -134,8 +134,16 @@ Needed on the machine (see [`CLAUDE.md`](../CLAUDE.md#commands)):
 - **CocoaPods**, for iOS and macOS. cargokit only supports CocoaPods, so this one plugin builds
   through the existing Podfiles while the others keep using Swift Package Manager.
 
-With those in place, `flutter build` / `flutter run` compiles the Rust crate on its own. The first
-build takes a few minutes, mostly SQLCipher and OpenMLS.
+With those in place, `flutter build` / `flutter run` compiles the Rust crate on its own, for every
+target including Android — cargokit cross-compiles with the installed NDK, so there is no separate
+step. The first build takes a few minutes, mostly SQLCipher and OpenMLS.
+
+**The same library also carries the camera effects.** `raindrop_crypto_ffi` depends on
+`raindrop_video`, so one cargokit builder, one codegen and one library serve both; the two share
+nothing else, and `raindrop_video` holds no key material. That is why
+`core/video/camera_effects_engine.dart` imports the bridge, and why it is the only file outside
+`core/crypto/` allowed to. See [Voice → Camera effects](voice.md#camera-effects) and
+[RaindropCrypto's camera-effects doc](../../RaindropCrypto/docs/video-effects.md).
 
 After changing anything under `raindrop_crypto_ffi/src/api/`, regenerate the bindings from
 `RaindropClient/`:
@@ -160,6 +168,11 @@ data-carrying enums, so there is still no `build_runner` step.
 - **Dart** (`test/core/crypto/mls_crypto_engine_test.dart`): runs the facade against the real library.
   Build it first with `cargo build -p raindrop_crypto_ffi` in `RaindropCrypto/`; without it, the test
   skips itself.
+- **Dart, the camera effects' C ABI** (`test/core/video/camera_effects_test.dart`): the same library,
+  but it calls the per-frame function *by address*, with padded strides in real native memory, the
+  way a capture pipeline does. It is the one place the C signature the platform code copies is
+  checked against the one Rust exports — nothing in either language's type system can do it. Skips
+  itself the same way.
 - **Against a live server** (`test/integration/e2ee_devices_test.dart`): the real Rust core against a
   real RaindropServer. It covers:
   - the first device establishing the identity
