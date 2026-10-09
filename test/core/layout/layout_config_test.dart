@@ -36,6 +36,7 @@ void main() {
       expect(layout.slot(MainSlots.userPanel), [
         MainButtons.mute,
         MainButtons.deafen,
+        MainButtons.camera,
         MainButtons.settings,
       ]);
       expect(layout.slot(MainSlots.topBar), [MainButtons.members]);
@@ -146,7 +147,8 @@ void main() {
 
     test('Settings goes back to its default slot when it is in none', () {
       final layout = normalized()
-          .removeButton(MainSlots.userPanel, 2)
+          // Settings is the last of the user panel's four.
+          .removeButton(MainSlots.userPanel, 3)
           .removeButton(MainSlots.railFooter, 1)
           .normalize(rules);
       expect(layout.slot(MainSlots.railFooter), [
@@ -156,6 +158,7 @@ void main() {
       expect(layout.slot(MainSlots.userPanel), [
         MainButtons.mute,
         MainButtons.deafen,
+        MainButtons.camera,
       ]);
     });
 
@@ -241,12 +244,13 @@ void main() {
       final layout = normalized().placeButton(
         MainButtons.mute,
         slotId: MainSlots.userPanel,
-        index: 3,
+        index: 4,
         fromSlot: MainSlots.userPanel,
         fromIndex: 0,
       );
       expect(layout.slot(MainSlots.userPanel), [
         MainButtons.deafen,
+        MainButtons.camera,
         MainButtons.settings,
         MainButtons.mute,
       ]);
@@ -276,7 +280,7 @@ void main() {
     });
 
     test('the last Settings button cannot be removed', () {
-      final one = normalized().removeButton(MainSlots.userPanel, 2);
+      final one = normalized().removeButton(MainSlots.userPanel, 3);
       expect(rules.canRemoveButton(one, MainSlots.railFooter, 1), isFalse);
       expect(rules.canRemoveButton(one, MainSlots.railFooter, 0), isTrue);
       expect(

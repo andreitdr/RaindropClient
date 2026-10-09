@@ -1,14 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/layout/layout_scope.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/voice/voice_engine.dart';
+import '../../../core/widgets/adaptive.dart';
 import '../../../core/widgets/rail_button.dart';
 import '../../channels/controllers/channels_controller.dart';
 import '../../servers/controllers/servers_controller.dart';
 import '../controllers/voice_call_controller.dart';
 import '../controllers/voice_settings_controller.dart';
+import 'camera_effects_sheet.dart';
 
 /// The microphone and headset buttons side by side, for the narrow layout's
 /// call bar and the voice view's in-call controls. In the main view's
@@ -96,6 +100,79 @@ class VoiceDeafenButton extends ConsumerWidget {
   }
 }
 
+/// Turns this client's camera on and off.
+///
+/// Unlike mute and deafen, the camera is **call state, not a persisted
+/// setting**: you cannot pre-arm a camera for a call you have not joined, and
+/// turning it on goes through the camera-and-effects sheet first, so the user
+/// sees what they are about to send before anybody else does.
+class VoiceCameraButton extends ConsumerWidget {
+  const VoiceCameraButton({
+    super.key,
+    this.style = SlotStyle.compact,
+    this.iconSize = 20,
+  });
+
+  final SlotStyle style;
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final call = ref.watch(voiceCallProvider);
+
+    final blocked = switch (call) {
+      VoiceCallState(inCall: false) => 'Join a call to show your camera',
+      VoiceCallState(videoAvailable: false) =>
+        'This server does not carry camera video in calls',
+      VoiceCallState(cameraSuppressed: true) when !call.cameraOn =>
+        'You cannot turn your camera on in this call',
+      _ => null,
+    };
+
+    return _SelfButton(
+      style: style,
+      iconSize: iconSize,
+      icon: call.cameraOn ? Icons.videocam : Icons.videocam_off,
+      // Not alarmed when off: a camera that is off is the ordinary state, where
+      // a muted microphone is worth flagging.
+      alarmed: false,
+      busy: call.cameraBusy,
+      tooltip: blocked ?? (call.cameraOn ? 'Turn camera off' : 'Turn camera on'),
+      onPressed: blocked != null
+          ? null
+          : () => unawaited(_toggle(context, ref, on: !call.cameraOn)),
+    );
+  }
+
+  Future<void> _toggle(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool on,
+  }) async {
+    final controller = ref.read(voiceCallProvider.notifier);
+
+    if (!on) {
+      await controller.setCameraEnabled(false);
+      return;
+    }
+
+    // The sheet comes first, so nothing is sent before the user has seen it.
+    final settings = ref.read(voiceSettingsProvider);
+    final chosen = await showCameraEffectsSheet(
+      context,
+      initial: settings.camera,
+      confirmLabel: 'Turn camera on',
+    );
+    if (chosen == null) return;
+
+    // Remembered, so the next time is one tap.
+    ref.read(voiceSettingsProvider.notifier).update(
+      (current) => current.withCamera(chosen),
+    );
+    await controller.setCameraEnabled(true, options: chosen);
+  }
+}
+
 class _SelfButton extends StatelessWidget {
   const _SelfButton({
     required this.style,
@@ -104,6 +181,7 @@ class _SelfButton extends StatelessWidget {
     required this.alarmed,
     required this.tooltip,
     required this.onPressed,
+    this.busy = false,
   });
 
   final SlotStyle style;
@@ -113,7 +191,14 @@ class _SelfButton extends StatelessWidget {
   /// Muted or deafened: drawn in the error colour.
   final bool alarmed;
   final String tooltip;
-  final VoidCallback onPressed;
+
+  /// Null disables the button; the tooltip then says why.
+  final VoidCallback? onPressed;
+
+  /// A spinner in place of the icon. Only the camera needs this: turning it on
+  /// is a round trip through the server and the media server, where mute and
+  /// deafen are immediate.
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
@@ -123,14 +208,16 @@ class _SelfButton extends StatelessWidget {
         icon: icon,
         iconColor: color,
         tooltip: tooltip,
-        onTap: onPressed,
+        onTap: onPressed ?? () {},
       ),
       SlotStyle.compact => IconButton(
         iconSize: iconSize,
         visualDensity: VisualDensity.compact,
         tooltip: tooltip,
-        icon: Icon(icon, color: color),
-        onPressed: onPressed,
+        icon: busy
+            ? AdaptiveActivityIndicator(size: iconSize)
+            : Icon(icon, color: color),
+        onPressed: busy ? null : onPressed,
       ),
     };
   }

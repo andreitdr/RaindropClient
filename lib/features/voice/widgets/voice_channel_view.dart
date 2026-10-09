@@ -2,14 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/voice_api.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/adaptive.dart';
 import '../../channels/models/channel.dart';
 import '../../servers/controllers/session_controller.dart';
 import '../controllers/voice_call_controller.dart';
 import '../controllers/voice_roster_controller.dart';
+import '../controllers/member_media_controller.dart';
 import 'voice_controls.dart';
 import 'voice_participant_tile.dart';
+import 'voice_video_tile.dart';
 
 /// What the main pane shows for a voice channel: who is in its call, and the
 /// way in — or, once in it, the controls to mute, deafen and hang up.
@@ -54,6 +57,8 @@ class VoiceChannelView extends ConsumerWidget {
             actions: trailingActions,
             count: participants.length,
             capacity: roster.maximumParticipants,
+            cameras: participants.where((p) => p.cameraOn).length,
+            cameraCapacity: roster.maximumCameraPublishers,
           ),
           const Divider(height: 1),
           Expanded(
@@ -75,7 +80,7 @@ class VoiceChannelView extends ConsumerWidget {
                         alignment: WrapAlignment.center,
                         children: [
                           for (final participant in participants)
-                            VoiceParticipantTile(
+                            _ParticipantSlot(
                               serverId: serverId,
                               participant: participant,
                               isCurrentUser: participant.userId == me,
@@ -124,6 +129,80 @@ class VoiceChannelView extends ConsumerWidget {
   }
 }
 
+/// What one participant looks like: their camera, a placeholder saying why it
+/// is not shown, or the plain tile when they have no camera on.
+class _ParticipantSlot extends ConsumerWidget {
+  const _ParticipantSlot({
+    required this.serverId,
+    required this.participant,
+    required this.isCurrentUser,
+  });
+
+  final String serverId;
+  final VoiceParticipant participant;
+  final bool isCurrentUser;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final call = ref.watch(voiceCallProvider);
+    final displayName = voiceMemberName(ref, serverId, participant.userId);
+
+    if (!participant.cameraOn) {
+      return VoiceParticipantTile(
+        serverId: serverId,
+        participant: participant,
+        isCurrentUser: isCurrentUser,
+      );
+    }
+
+    // Untrusted outranks hidden: nothing untrusted is ever drawn, and saying
+    // "hidden by you" about a camera that is actually refused would be a lie.
+    if (call.untrustedVideo.contains(participant.userId)) {
+      return VoiceVideoPlaceholder(
+        reason: VoiceVideoHiddenReason.untrusted,
+        displayName: displayName,
+      );
+    }
+
+    ref.watch(memberAudioProvider);
+    final hidden = !isCurrentUser &&
+        ref
+            .read(memberAudioProvider.notifier)
+            .of(serverId, participant.userId)
+            .videoHidden;
+
+    if (hidden) {
+      return VoiceVideoPlaceholder(
+        reason: VoiceVideoHiddenReason.hiddenByYou,
+        displayName: displayName,
+        onShow: () => ref
+            .read(memberAudioProvider.notifier)
+            .setVideoHidden(serverId, participant.userId, false),
+      );
+    }
+
+    final feed = call.feedFor(participant.userId);
+    if (feed == null) {
+      // Their camera is on and nothing has arrived yet — joining, or a track
+      // still being negotiated. The plain tile is the honest thing to show.
+      return VoiceParticipantTile(
+        serverId: serverId,
+        participant: participant,
+        isCurrentUser: isCurrentUser,
+      );
+    }
+
+    return VoiceVideoTile(
+      feed: feed,
+      serverId: serverId,
+      participant: participant,
+      displayName: displayName,
+      isCurrentUser: isCurrentUser,
+      speaking: call.speaking.contains(participant.userId),
+    );
+  }
+}
+
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.channel,
@@ -131,6 +210,8 @@ class _TopBar extends StatelessWidget {
     required this.actions,
     required this.count,
     required this.capacity,
+    required this.cameras,
+    required this.cameraCapacity,
   });
 
   final Channel channel;
@@ -138,6 +219,10 @@ class _TopBar extends StatelessWidget {
   final List<Widget> actions;
   final int count;
   final int capacity;
+  final int cameras;
+
+  /// 0 when this server carries no camera video, which hides the counter.
+  final int cameraCapacity;
 
   @override
   Widget build(BuildContext context) {
@@ -167,6 +252,24 @@ class _TopBar extends StatelessWidget {
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
+            // Shown beside the member count, because the camera limit is a
+            // separate and much smaller one, and running into it without
+            // warning would be baffling.
+            if (cameraCapacity > 0) ...[
+              const SizedBox(width: 10),
+              Icon(
+                Icons.videocam_outlined,
+                size: 16,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '$cameras / $cameraCapacity',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
             const Spacer(),
             ...actions,
             const SizedBox(width: 8),
@@ -231,6 +334,11 @@ class _InCallControls extends ConsumerWidget {
           const SizedBox(width: 12),
         ],
         const VoiceSelfControls(iconSize: 26),
+        // Here as well as in the layout's toolbars: `LayoutConfig.normalize`
+        // keeps unknown button ids but never adds new ones, so an existing
+        // user's saved layout will not gain the camera button. This is where
+        // it is always reachable.
+        const VoiceCameraButton(iconSize: 26),
         const SizedBox(width: 16),
         FilledButton.icon(
           style: FilledButton.styleFrom(

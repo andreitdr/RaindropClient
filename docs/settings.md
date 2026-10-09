@@ -29,14 +29,22 @@ and hide the main view's panes and buttons, reset, import and export. Disabled u
 narrow layout that the saved layout does not arrange is shown; the subtitle says whether a custom
 layout is in use.
 
-### Voice & audio
+### Voice & video
 
 [`VoiceSettingsSection`](../lib/features/voice/widgets/voice_settings_section.dart), reading and writing
 `voiceSettingsProvider`: microphone and speakers (desktop only — `canChooseAudioDevices`; phones let the
 OS route audio), output volume (0–200%, multiplied into every member's own volume), and echo
 cancellation, noise suppression and automatic gain control. Changes reach a call in progress
-immediately. There is no microphone volume — see [Voice](voice.md#ui). Per-member volume and local mute
-are set from the member menu in a call, not here.
+immediately. There is no microphone volume — see [Voice](voice.md#ui). Per-member volume, local mute
+and a hidden camera are set from the member menu in a call, not here.
+
+**Camera & effects** opens the same sheet the camera button in a call opens
+([`camera_effects_sheet.dart`](../lib/features/voice/widgets/camera_effects_sheet.dart)): a live
+preview, the camera picker, the quality, and the background effect. Shown on every platform, unlike
+the audio devices — a phone's front and back cameras are two devices, and the effect is a choice
+everywhere even where it cannot yet be applied. What is remembered is *which* camera and *which*
+effect, never whether the camera is on: mute and deafen are states that carry over from one call to
+the next, and a camera is not. See [Voice](voice.md#camera).
 
 ### Connected servers
 

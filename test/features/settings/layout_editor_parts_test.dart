@@ -176,6 +176,7 @@ void main() {
     expect(config.slot(MainSlots.userPanel), [
       MainButtons.mute,
       MainButtons.deafen,
+      MainButtons.camera,
       MainButtons.settings,
       MainButtons.members,
     ]);
@@ -204,6 +205,7 @@ void main() {
       MainButtons.members,
       MainButtons.mute,
       MainButtons.deafen,
+      MainButtons.camera,
       MainButtons.settings,
     ]);
   });

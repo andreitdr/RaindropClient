@@ -22,6 +22,9 @@ class AppPrefs {
   static const _kLastServerId = 'settings.last_server_id';
   static const _kServers = 'servers.list';
   static const _kVoiceSettings = 'voice.settings';
+  // The name stayed when per-member *audio* became per-member *media* (a
+  // hidden camera lives here too now): renaming the key would silently throw
+  // away every volume anybody has ever set.
   static const _kMemberAudio = 'voice.member_audio';
 
   /// The id of the currently selected theme: `"system"`, one of the two
@@ -78,8 +81,8 @@ class AppPrefs {
   Future<void> setVoiceSettingsJson(Map<String, dynamic> settings) =>
       _prefs.setString(_kVoiceSettings, jsonEncode(settings));
 
-  /// Per-member volume and local mute, keyed `serverId/userId` — a member's
-  /// UUID only means something on one server.
+  /// Per-member volume, local mute and hidden camera, keyed `serverId/userId`
+  /// — a member's UUID only means something on one server.
   Map<String, dynamic> get memberAudioJson {
     final raw = _prefs.getString(_kMemberAudio);
     if (raw == null) return {};

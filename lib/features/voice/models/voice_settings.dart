@@ -1,8 +1,13 @@
 import '../../../core/voice/voice_engine.dart';
 
-/// This client's own voice preferences — the "Voice & audio" settings, plus
+/// This client's own voice preferences — the "Voice & video" settings, plus
 /// whether it is muted or deafened, which carries over from one call to the
 /// next the way a headset's mute switch would.
+///
+/// The camera's settings are here too, but the camera itself is not: mute and
+/// deafen are remembered *states*, and a camera is not. You cannot pre-arm a
+/// camera for the next call, so what is kept is only which camera and which
+/// effect to use when one is turned on.
 class VoiceSettings {
   const VoiceSettings({
     this.outputVolume = 1.0,
@@ -14,6 +19,9 @@ class VoiceSettings {
     this.selfMute = false,
     this.selfDeaf = false,
     this.mutedBeforeDeafen = false,
+    this.videoDeviceId,
+    this.videoQuality = VoiceVideoQuality.sd540,
+    this.cameraEffect = const VoiceCameraEffect(),
   });
 
   /// Everybody's volume here, multiplied into each member's own: 1 as sent.
@@ -39,8 +47,24 @@ class VoiceSettings {
   /// puts it back how it was rather than always switching it on.
   final bool mutedBeforeDeafen;
 
+  /// The camera to use, or null for whichever the system offers first.
+  final String? videoDeviceId;
+
+  final VoiceVideoQuality videoQuality;
+
+  /// What to do to the camera's background. Remembered so turning the camera
+  /// on is one tap after the first time.
+  final VoiceCameraEffect cameraEffect;
+
   /// Whether the microphone should be sending.
   bool get micOn => !selfMute && !selfDeaf;
+
+  /// The remembered camera choice, as the engine takes it.
+  VoiceCameraOptions get camera => VoiceCameraOptions(
+    deviceId: videoDeviceId,
+    quality: videoQuality,
+    effect: cameraEffect,
+  );
 
   VoiceAudioProcessing get processing => VoiceAudioProcessing(
     echoCancellation: echoCancellation,
@@ -58,6 +82,9 @@ class VoiceSettings {
     bool? selfMute,
     bool? selfDeaf,
     bool? mutedBeforeDeafen,
+    String? Function()? videoDeviceId,
+    VoiceVideoQuality? videoQuality,
+    VoiceCameraEffect? cameraEffect,
   }) => VoiceSettings(
     outputVolume: outputVolume ?? this.outputVolume,
     inputDeviceId: inputDeviceId != null ? inputDeviceId() : this.inputDeviceId,
@@ -70,6 +97,16 @@ class VoiceSettings {
     selfMute: selfMute ?? this.selfMute,
     selfDeaf: selfDeaf ?? this.selfDeaf,
     mutedBeforeDeafen: mutedBeforeDeafen ?? this.mutedBeforeDeafen,
+    videoDeviceId: videoDeviceId != null ? videoDeviceId() : this.videoDeviceId,
+    videoQuality: videoQuality ?? this.videoQuality,
+    cameraEffect: cameraEffect ?? this.cameraEffect,
+  );
+
+  /// The whole camera choice at once, which is what the sheet returns.
+  VoiceSettings withCamera(VoiceCameraOptions camera) => copyWith(
+    videoDeviceId: () => camera.deviceId,
+    videoQuality: camera.quality,
+    cameraEffect: camera.effect,
   );
 
   Map<String, dynamic> toJson() => {
@@ -82,6 +119,9 @@ class VoiceSettings {
     'selfMute': selfMute,
     'selfDeaf': selfDeaf,
     'mutedBeforeDeafen': mutedBeforeDeafen,
+    'videoDeviceId': videoDeviceId,
+    'videoQuality': videoQuality.name,
+    'cameraEffect': cameraEffect.toJson(),
   };
 
   /// Reads what [toJson] wrote, falling back to the defaults for anything
@@ -93,6 +133,14 @@ class VoiceSettings {
         : defaults.outputVolume;
     bool flag(Object? v, bool fallback) => v is bool ? v : fallback;
 
+    // By name, never by index: an index would silently mean a different
+    // quality the moment a value is inserted into the enum.
+    final quality = VoiceVideoQuality.values
+        .where((value) => value.name == j['videoQuality'])
+        .firstOrNull;
+
+    final effect = j['cameraEffect'];
+
     return VoiceSettings(
       outputVolume: volume(j['outputVolume']),
       inputDeviceId: j['inputDeviceId'] as String?,
@@ -103,6 +151,11 @@ class VoiceSettings {
       selfMute: flag(j['selfMute'], false),
       selfDeaf: flag(j['selfDeaf'], false),
       mutedBeforeDeafen: flag(j['mutedBeforeDeafen'], false),
+      videoDeviceId: j['videoDeviceId'] as String?,
+      videoQuality: quality ?? defaults.videoQuality,
+      cameraEffect: effect is Map
+          ? VoiceCameraEffect.fromJson(Map<String, dynamic>.from(effect))
+          : defaults.cameraEffect,
     );
   }
 }

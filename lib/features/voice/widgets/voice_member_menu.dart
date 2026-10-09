@@ -8,7 +8,7 @@ import '../../../core/platform/platform_info.dart';
 import '../../../core/voice/voice_engine.dart';
 import '../../servers/controllers/server_permissions.dart';
 import '../../servers/controllers/session_controller.dart';
-import '../controllers/member_audio_controller.dart';
+import '../controllers/member_media_controller.dart';
 
 /// The menu for one member in a call — right-click on desktop, long press on
 /// touch: how loud they are here, muting them here, and (for a moderator)
@@ -37,7 +37,12 @@ Future<void> showVoiceMemberMenu(
         position & Size.zero,
         Offset.zero & overlay.size,
       ),
-      items: [_ControlsEntry(child: controls)],
+      items: [
+        _ControlsEntry(
+          height: participant.cameraOn ? 250 : 180,
+          child: controls,
+        ),
+      ],
     );
     return;
   }
@@ -52,12 +57,17 @@ Future<void> showVoiceMemberMenu(
 /// A menu entry that is not an item: dragging the slider or ticking the box
 /// inside it must not close the menu the way tapping a [PopupMenuItem] does.
 class _ControlsEntry extends PopupMenuEntry<void> {
-  const _ControlsEntry({required this.child});
+  const _ControlsEntry({required this.child, required this.height});
 
   final Widget child;
 
+  /// A hard-coded height, because `showMenu` sizes its entries up front.
+  ///
+  /// It has to be told how many rows there are: a row added without raising
+  /// this is clipped silently, and only on desktop right-click, which is the
+  /// path least likely to be looked at.
   @override
-  double get height => 180;
+  final double height;
 
   @override
   bool represents(void value) => false;
@@ -127,6 +137,20 @@ class _VoiceMemberControls extends ConsumerWidget {
             onChanged: (value) =>
                 audioController.setVolume(serverId, participant.userId, value),
           ),
+          if (participant.cameraOn)
+            CheckboxListTile(
+              value: audio.videoHidden,
+              onChanged: (hidden) => audioController.setVideoHidden(
+                serverId,
+                participant.userId,
+                hidden ?? false,
+              ),
+              title: const Text('Hide camera'),
+              subtitle: const Text('Only for you — they are not told'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
           CheckboxListTile(
             value: audio.muted,
             onChanged: (muted) => audioController.setMuted(
