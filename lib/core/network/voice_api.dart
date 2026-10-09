@@ -111,7 +111,9 @@ class VoiceParticipant {
     cameraOn: m.cameraOn,
     cameraSuppressed: m.cameraSuppressed,
     screenShareOn: m.screenShareOn,
-    screenShareKind: m.screenShareOn ? Wire.screenShareKind(m.screenShareKind) : null,
+    screenShareKind: m.screenShareOn
+        ? Wire.screenShareKind(m.screenShareKind)
+        : null,
     screenShareAudio: m.screenShareOn && m.screenShareAudio,
     screenShareSuppressed: m.screenShareSuppressed,
   );

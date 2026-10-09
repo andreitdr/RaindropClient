@@ -45,9 +45,13 @@ the **app**; the other two projects keep their own, and a gap here is often a ga
   source to put a processor into, so `canUseCameraEffects` is false there and the sheet says so. The
   effects themselves are already built and tested for every target in
   [RaindropCrypto](../../RaindropCrypto/docs/video-effects.md).
-- **Screen sharing.** The camera widened the call token's `canPublishSources`; widening it again to
-  the screen is the change, and the camera's handshake and cap are there to copy.
-  [Server roadmap](../../RaindropServer/docs/roadmap.md#voice)
+- **Screen sharing's screens.** The engine and the call controller share a screen or a window (with
+  its sound on Windows 11), cap it at 1080p and receive shares unwatched; the share picker, the share
+  button and watching are the next stage. [Voice](voice.md#screen-sharing)
+- **Sharing from a phone.** Needs background calls first: showing another app backgrounds Raindrop.
+- **A window's sound on macOS and Linux.** macOS has no custom audio source in its WebRTC build short
+  of a fork; Linux's capture records everything Raindrop plays too and needs a change in
+  flutter_webrtc. [Voice](voice.md#screen-sharing)
 - **Microphone volume.** The voice library has no input gain on desktop; automatic gain control stands
   in for it.
 

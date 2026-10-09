@@ -88,7 +88,8 @@ chat views.
 
 ```
 core/
-  platform/   — the only place that branches on OS (RaindropPlatform, isApplePlatform, …)
+  platform/   — the only place that branches on OS (RaindropPlatform, isApplePlatform, …), and
+                windows_processes (which process owns a window, over dart:ffi, for screen sharing)
   theme/      — AppThemeDefinition (JSON-backed theme model), AppTheme's ThemeData builder, the
                 AppSurfaces color-role extension, and the catalog/active-theme controllers
   widgets/    — Panel (flat chrome surface), AdaptiveSwitch/AdaptiveActivityIndicator/showAdaptiveConfirm
@@ -100,7 +101,7 @@ core/
                 EventStream (the bidirectional push stream, heartbeating), and one wrapper per service
                 with its models: UsersApi, ChannelsApi, TextMessagesApi, MembersApi, RolesApi,
                 VoiceApi, E2eeApi, AttachmentsApi
-  voice/      — VoiceEngine (a call's microphone and camera, transport-agnostic) +
+  voice/      — VoiceEngine (a call's microphone, camera and screen share, transport-agnostic) +
                 LiveKitVoiceEngine, the only code that imports livekit_client / flutter_webrtc, and
                 VoiceVideoView (draws a feed, which builds its own surface — so no widget outside
                 core/voice/ ever names a track type)
@@ -384,6 +385,14 @@ camera and moderate; the media goes over the transport it names on join (`liveki
   until the server adds the camera. A grant that never comes takes the claim back, so the roster never
   shows a camera nobody can see. Turning it off reverses the order, so the grant is never withdrawn
   from under a live track.
+- **Screen sharing** (`voice.screen.v1`): a screen or a window, desktop only, with the camera's
+  handshake (`startScreenShare`). **The 1080p cap is ours to enforce** — livekit_client sizes a desktop
+  share from what it asked for, not what it got — so `_ScreenSizeGuard` reads the captured size from
+  the sender's stats and scales every layer by `screenShareScale`. A screen never carries sound; a
+  window's sound only on Windows 11, through flutter_webrtc's process-tree loopback, refused for any
+  window whose tree contains Raindrop (`windowAudioUnavailableReason`). **Nobody's share is received
+  until it is watched** (`disable()` on publish). Adaptive stream and dynacast are on, which is why
+  the feed list never reads `publication.enabled`. See `docs/voice.md#screen-sharing`.
 - **Hiding somebody's camera really stops the stream** (`publication.disable()`, not a hidden widget),
   saving the bandwidth as well as the screen space, and it is re-applied on every republish so it does
   not leak when they turn their camera off and on. `unsubscribe()` is kept for the untrusted case.
@@ -411,8 +420,9 @@ camera and moderate; the media goes over the transport it names on join (`liveki
 
 - **Background voice on phones** (iOS background audio, Android microphone foreground service), and
   rejoining automatically after a dropped connection.
-- Push-to-talk, **camera effects on Windows and Linux** (they run on macOS, iOS and Android), screen
-  sharing, microphone gain; changing your username or password from the app; any role-editing or report-moderation UI;
+- Push-to-talk, **camera effects on Windows and Linux** (they run on macOS, iOS and Android), the
+  screen-share picker and watching UI, sharing from a phone, a window's sound on macOS and Linux,
+  microphone gain; changing your username or password from the app; any role-editing or report-moderation UI;
   notifications.
 
 The full, maintained inventory is [`docs/roadmap.md`](docs/roadmap.md) — update it in the same change

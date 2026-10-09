@@ -20,7 +20,12 @@ split the same way:
   message instead of a crash.
 - `core/voice/livekit_voice_engine.dart` is the LiveKit implementation. It is the **only** file that
   imports `livekit_client` or `flutter_webrtc`. It sends speech-bitrate Opus with DTX (silence is sent
-  as nothing), and has no adaptive stream or dynacast since calls are audio-only.
+  as nothing). **Adaptive stream and dynacast are on**: video goes only where a tile is visible, at
+  the size it is drawn, and a layer nobody receives is not even encoded — which is what makes an
+  unwatched screen share cost its sharer nothing. One consequence is load-bearing: with adaptive
+  stream, `publication.enabled` turns false whenever no tile is visible, so the feed list filters on
+  this client's own wishes (a hidden camera, a watched share) and never on `enabled` — a feed dropped
+  for being invisible would never get a tile to become visible in.
 
 **The connection goes through the server you already pin.** Joining, leaving, mute and deafen are
 gRPC calls (`VoiceService`), and call state arrives on the event stream. The audio's signalling is the
@@ -295,14 +300,15 @@ The server carries camera video when it advertises `voice.video.v1`
   server carries none.
 - `VoiceParticipant.screenShareOn` / `.screenShareKind` (`VoiceShareKinds.screen` or `.window`) /
   `.screenShareAudio` / `.screenShareSuppressed` and `VoiceStatus.maximumScreenShares` — the same for
-  screen sharing (`voice.screen.v1`). This build reads them off the wire; it does not share yet.
+  screen sharing (`voice.screen.v1`); see [Screen sharing](#screen-sharing).
 - `VoiceApi.setSelfState(cameraOn:, screenShareOn:, …)` — **the whole self-state, not a change.**
   The server reads every field, so a mute that left out the camera would turn the camera off at the
   server and withdraw its grant from under the live track. `cameraOn` and `screenShareOn` are
   therefore required parameters, and every report goes through
-  `VoiceCallController._sendSelfState`, which repeats the camera as last *claimed* to the server
-  (`_cameraClaimed`) — not `VoiceCallState.cameraOn`, which only turns true once the track is
-  sending, after the server has already been told.
+  `VoiceCallController._sendSelfState`, which repeats the camera and the share as last *claimed* to
+  the server (`_cameraClaimed`, `_shareClaim`) — not `VoiceCallState.cameraOn`, which only turns
+  true once the track is sending, after the server has already been told. A claim the server
+  refuses is put back, so the next mute does not ask for it again.
 - **The camera is a piece of self-state that can be refused.** Mute and deafen are only everybody's
   icons; turning the camera on is what earns the media server's permission to send one, so it
   answers `missing_permission` without `video` and `camera_limit_reached` when the call is full of
@@ -313,6 +319,97 @@ The camera grant follows the camera being on, not the permission: a join token n
 only, and the server adds the camera after `setSelfState` succeeds. So a client **waits for the
 permission update before publishing**, and stops publishing *before* turning the camera off on the
 server — never the other way round, or the grant would be withdrawn from under a live track.
+
+## Screen sharing
+
+The server carries screen sharing when it advertises `voice.screen.v1`
+([server docs](../../RaindropServer/docs/voice.md#screen-sharing)). A member shares **a whole screen**
+or **one window**; a window can also carry **its own sound**, if its sharer ticks the box every time
+they share. A screen is never shared with sound — the host's sound is never sent — and that is held
+in three places: `VoiceScreenShareOptions` drops `withAudio` for a screen before anything sees it,
+the engine asks the capturer for sound only for a window, and the server never grants a screen's
+sound anyway.
+
+**Who can share.** The desktops (`canShareScreen`). Phones can watch but not share: showing another
+app sends Raindrop to the background, and until calls keep running there the share would stop the
+moment it started.
+
+**Whose sound can be shared** — `windowAudioUnavailableReason(windowId)` in `platform_info.dart`:
+
+| Platform | A window's sound |
+|---|---|
+| Windows 11 (build 20348+) | Yes. flutter_webrtc already captures it with WASAPI *process-tree* loopback into a separate track, published as `screenShareAudio` |
+| Windows 10 | No: its audio engine cannot separate one app's sound from everything else's |
+| macOS | Not yet. Apple's WebRTC build has no custom audio source, so the only way without a fork is mixing it into the microphone track — decided against |
+| Linux | Not yet. flutter_webrtc's capture records the whole default output, Raindrop's own call included, and ignores which window was chosen; it needs a change in flutter_webrtc itself |
+
+**The process-tree guard (Windows).** The capture takes the window's process *and everything it
+started*. That is right for a browser, whose sound comes from a child process, and badly wrong for
+Explorer, which started nearly everything — Raindrop included. So sound is refused for Raindrop's own
+windows and for any window whose process is one of Raindrop's ancestors
+(`windowAudioRefusal`, answered by `core/platform/windows_processes.dart` over `dart:ffi`: the
+window's owner, and a Toolhelp32 walk up from this process). A UWP app's window belongs to
+`ApplicationFrameHost`, whose tree does not contain the app, so it shares silently. And if the window
+has closed by the time sharing starts, flutter_webrtc falls back to *all* sound except Raindrop's —
+so the window is checked again (`isWindowStillOpen`) right before sharing.
+
+**The 1080p cap is enforced on the sender, by us.** livekit_client cannot: on desktop it works out a
+share's encodings from the size it *asked* for, not the size it got (`getSettings()` is read on web
+and mobile only), and never scales the top layer below the source. The desktop capturers ignore
+size constraints too, and macOS captures at the display's size in points. Left alone, a 4K screen goes
+out at 4K. `_ScreenSizeGuard` reads the size actually being captured from the sender's `media-source`
+statistic (the largest encoded layer, scaled back up, if that is missing), and sets every layer's
+`scaleResolutionDownBy` to LiveKit's own value times `screenShareScale` — the picture fitted inside
+1920×1080, turned for a portrait source, never scaled up. It looks every 250 ms until it has a size
+and every 2 s after, since windows are resized. For the first quarter-second a share can go out
+unscaled; the 2.5 Mbit/s ceiling bounds the bandwidth even then.
+
+**How a share is sent** (`_screenPublish`): VP8 pinned for both codecs (the codec is a security
+setting, see [Codecs](#codecs-and-the-frame-cryptor)), simulcast with a half-size layer, 15 fps, 2.5
+Mbit/s, and `maintainResolution` — under congestion a share drops frames rather than going soft,
+because blurry text is unreadable and slightly late text is not. A window's sound goes as music
+(`presetMusic`, no DTX), not with the microphone's speech settings, which would cut a film's quiet
+passages to nothing.
+
+**The handshake is the camera's.** `VoiceCallController.startScreenShare` tells the server
+(`_sendSelfState(share: …)`), waits for the media server's grant — the sound's too, when asked for
+(`_awaitShareGrant`) — and only then has the engine capture and publish; nothing is captured for a
+share the server refused. A grant that never comes takes the claim back. `stopScreenShare` stops the
+engine first, then tells the server. A share already running is switched by starting another.
+
+**The engine can end or trim a share itself**, and the controller then tells the server so the
+roster stays true (`_onEngineShare`):
+- the shared window closed — `_ShareEndWatch` watches the window list, because the desktop capturers
+  report nothing (their stop and error callbacks only log), and waiting for frames to stop would be
+  wrong for a screen, which on macOS sends none while nothing on it changes;
+- the grant was withdrawn (the permission went, or a mute for everyone took the sound);
+- it could not be encrypted — the send-side check covers both screen tracks, and withdraws both;
+- the window's sound could not be captured: the picture carries on, and the user is told.
+
+**Claims follow the engine, never `voice.state` events** — for the camera as well. An event can arrive
+after a newer report has already gone out, and a claim moved back by a stale one would have the next
+mute end the camera or the share at the server. Whatever the server takes away on its own it also
+takes from the media server's grant, the engine stops what it must, and the controller corrects the
+claim from that (`_onEngineShare`, and the camera's listener, which now also reports a camera the
+engine stopped for failing to encrypt). Switching what is shared stops the old share before the new
+one is claimed, so the sound grant a screen withdraws is never read as the server silencing a live
+window.
+
+A share being started is withdrawn by publication, never by source, if it is stopped while
+publishing is still in flight — so a stop that lands mid-start leaves nothing published and nothing
+capturing.
+
+**Receiving.** Nobody's share is received until it is watched (`setScreenShareWatched`): it is
+`disable()`d the moment it is published, picture and sound, so the media server forwards nothing from
+it, and the wish outlives the share like a hidden camera does. `screenShares` names everybody sharing
+something this client trusts, watched or not, so a share can be offered before it is received; an
+untrusted one (`untrustedScreenShares`) is never drawn or played. A share's sound has its own volume
+(`setScreenShareVolume`), separate from the member's voice, and follows the default volume — so it
+goes silent with deafen — until one is set. Hiding somebody's camera only ever touches their camera.
+
+**macOS** asks for the Screen Recording permission when the picker opens
+(`needsScreenCapturePermission`); refused once, it can only be granted in System Settings → Privacy
+& Security → Screen & System Audio Recording, and `VoiceScreenSources.captureAllowed` says so.
 
 ## State
 
@@ -425,10 +522,10 @@ Speaking and "connected" colours reuse `AppSurfaces.onlineIndicator`, so no them
 
 | Platform | What voice needed |
 |---|---|
-| macOS | `com.apple.security.device.audio-input`, `com.apple.security.network.client` **and `com.apple.security.network.server`** in *both* entitlements files; `NSMicrophoneUsageDescription` in `Info.plist` |
+| macOS | `com.apple.security.device.audio-input`, `com.apple.security.network.client` **and `com.apple.security.network.server`** in *both* entitlements files; `NSMicrophoneUsageDescription` in `Info.plist`. Screen sharing needs no entitlement or usage string: the system asks for Screen Recording itself |
 | iOS | `NSMicrophoneUsageDescription`. **No** background audio mode: calls are foreground-only for now |
 | Android | `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `BLUETOOTH_CONNECT` (+ legacy `BLUETOOTH` ≤ API 30), and `INTERNET`/`ACCESS_NETWORK_STATE` in the **main** manifest (release builds had no network access before). No foreground service yet |
-| Windows, Linux | nothing |
+| Windows, Linux | nothing. Sharing a window's sound needs Windows 11 |
 
 flutter_webrtc and livekit_client ship Swift Package Manager manifests, so the Apple builds stay on
 SPM with no Podfile. `native/raindrop_camera_effects` is an SPM package too, and depends on
@@ -454,7 +551,10 @@ in release builds only — the same trap the Android manifest fell into.
 - Background audio on phones (iOS background mode, Android microphone foreground service).
 - Push-to-talk.
 - Rejoining automatically after a network drop (the call ends with a notice; you join again).
-- Screen sharing.
+- **The share picker, the share button and watching shares.** The engine and the call controller
+  can share and receive a share; the screens that drive them are the next stage.
+- **Sharing from a phone** — needs background calls first; phones can watch.
+- **A window's sound on macOS and Linux** ([why](#screen-sharing)).
 - **Camera effects on Windows and Linux.** They run on macOS, iOS and Android; see
   [Camera effects](#camera-effects). Those two have no chain between the capturer and the video
   source to put a processor into, so `canUseCameraEffects` is false there and the sheet says so.
