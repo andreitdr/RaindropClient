@@ -43,6 +43,12 @@ flutter_rust_bridge_codegen generate
 The Dart package, the Rust crate and the codegen must all be flutter_rust_bridge **2.13.0**. See
 `docs/crypto.md`.
 
+`native/raindrop_camera_effects` is the other local plugin: it puts the camera effects' native
+processor on a camera track flutter_webrtc is already capturing, through flutter_webrtc's own public
+API. Unlike the cargokit one it is SPM on Apple and a plain `com.android.library` on Android, and it
+builds no Rust of its own — the effects are in the same library the crypto core already ships. See
+`docs/voice.md#camera-effects` and its own README.
+
 The wire protocol lives in `../RaindropProto`. Its Dart is generated into
 `lib/core/network/grpc/generated/` and **committed**, so nothing has to run before `flutter run`; after
 any change to RaindropProto, regenerate it and commit the result (needs `brew install protobuf` and
@@ -67,8 +73,11 @@ codes, and the event stream:
 RAINDROP_TEST_SERVER=localhost:5001 flutter test test/integration/transport_test.dart
 ```
 
-Android and web toolchains are not set up on the reference dev machine (`flutter doctor` will show
-Android SDK and Chrome missing); macOS, iOS, Windows, and Linux desktop targets build as-is.
+The web toolchain is not set up on the reference dev machine (`flutter doctor` will show Chrome
+missing, and the web is not a target); macOS, iOS, Android, Windows and Linux build as-is. The
+Android SDK and NDK are installed — cargokit cross-compiles the Rust core for Android itself, so a
+`flutter build apk` needs no extra step, but the first one is slow for the same reason the first
+desktop build is.
 
 ## Architecture
 
@@ -95,8 +104,10 @@ core/
                 LiveKitVoiceEngine, the only code that imports livekit_client / flutter_webrtc, and
                 VoiceVideoView (draws a feed, which builds its own surface — so no widget outside
                 core/voice/ ever names a track type)
-  video/      — VoiceCameraEffect: what the user chose to do to their camera's background. The choice
-                only; the work is native, in ../RaindropCrypto's raindrop_video crate
+  video/      — VoiceCameraEffect (what the user chose to do to their camera's background) and
+                CameraEffects, the handle on the running native effects — the only file outside
+                crypto/ that imports the generated bridge, because the effects ride in the same Rust
+                library. No frame comes through Dart; the work is ../RaindropCrypto's raindrop_video
   crypto/     — CryptoEngine (end-to-end encryption, MLS) + MlsCryptoEngine over the generated Rust
                 bridge in crypto/bridge/ (never import it elsewhere), AttachmentCipher (files, per-file
                 keys) + RustAttachmentCipher, and CryptoStores (one SQLCipher store per server, its
@@ -376,9 +387,14 @@ camera and moderate; the media goes over the transport it names on join (`liveki
 - **Hiding somebody's camera really stops the stream** (`publication.disable()`, not a hidden widget),
   saving the bandwidth as well as the screen space, and it is re-applied on every republish so it does
   not leak when they turn their camera off and on. `unsubscribe()` is kept for the untrusted case.
-- **Camera effects are chosen but not yet applied**: they need a capture-pipeline hook the media
-  library does not expose, so `canUseCameraEffects` is false everywhere and the sheet says so. The
-  effects themselves are built in `../RaindropCrypto`'s `raindrop_video`.
+- **Camera effects run on macOS, iOS and Android**, and nothing is forked to make them: flutter_webrtc's
+  per-frame hook is already public natively (`addProcessing:` / `addProcessor`) and only its Dart layer
+  never uses it, so `native/raindrop_camera_effects` is a small plugin of ours that reaches it. Frames
+  never come through Dart — `core/video/camera_effects_engine.dart` hands the platform a Rust handle and
+  a function address, and the capture thread does the rest. The effects themselves are
+  `../RaindropCrypto`'s `raindrop_video`; **a build with no segmentation model offers no effect at all**
+  (`cameraEffectsAvailable`, which is the platform answer `canUseCameraEffects` plus that one). Windows
+  and Linux have no processor chain to insert into, and are still to do.
 - **Calls are end-to-end encrypted** on a server with `e2ee.voice.v1`: the media key comes from the
   voice channel's MLS group (`ChannelGroups.mediaKey`, before joining — no key, no join), LiveKit's
   frame cryptor uses it (`VoiceEngine.connect(mediaKey:)`, `setMediaKey` on every epoch change), the
@@ -394,8 +410,8 @@ camera and moderate; the media goes over the transport it names on join (`liveki
 
 - **Background voice on phones** (iOS background audio, Android microphone foreground service), and
   rejoining automatically after a dropped connection.
-- Push-to-talk, **camera effects** (chosen and offered, not yet applied), screen sharing, microphone
-  gain; changing your username or password from the app; any role-editing or report-moderation UI;
+- Push-to-talk, **camera effects on Windows and Linux** (they run on macOS, iOS and Android), screen
+  sharing, microphone gain; changing your username or password from the app; any role-editing or report-moderation UI;
   notifications.
 
 The full, maintained inventory is [`docs/roadmap.md`](docs/roadmap.md) — update it in the same change

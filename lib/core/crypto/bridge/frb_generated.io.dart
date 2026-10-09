@@ -5,6 +5,7 @@
 
 import 'api/attachment.dart';
 import 'api/session.dart';
+import 'api/video.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -66,6 +67,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PinnedIdentity dco_decode_box_autoadd_pinned_identity(dynamic raw);
 
   @protected
+  VideoEffectsConfig dco_decode_box_autoadd_video_effects_config(dynamic raw);
+
+  @protected
   CachedMessage dco_decode_cached_message(dynamic raw);
 
   @protected
@@ -79,6 +83,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ExternalJoin dco_decode_external_join(dynamic raw);
+
+  @protected
+  double dco_decode_f_32(dynamic raw);
 
   @protected
   GroupMember dco_decode_group_member(dynamic raw);
@@ -171,6 +178,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BigInt dco_decode_usize(dynamic raw);
 
   @protected
+  VideoEffectsCapabilities dco_decode_video_effects_capabilities(dynamic raw);
+
+  @protected
+  VideoEffectsConfig dco_decode_video_effects_config(dynamic raw);
+
+  @protected
+  VideoEffectsStats dco_decode_video_effects_stats(dynamic raw);
+
+  @protected
+  VideoFailure dco_decode_video_failure(dynamic raw);
+
+  @protected
+  VideoFailureKind dco_decode_video_failure_kind(dynamic raw);
+
+  @protected
   CryptoSession
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCryptoSession(
     SseDeserializer deserializer,
@@ -216,6 +238,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  VideoEffectsConfig sse_decode_box_autoadd_video_effects_config(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   CachedMessage sse_decode_cached_message(SseDeserializer deserializer);
 
   @protected
@@ -231,6 +258,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ExternalJoin sse_decode_external_join(SseDeserializer deserializer);
+
+  @protected
+  double sse_decode_f_32(SseDeserializer deserializer);
 
   @protected
   GroupMember sse_decode_group_member(SseDeserializer deserializer);
@@ -337,6 +367,27 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BigInt sse_decode_usize(SseDeserializer deserializer);
 
   @protected
+  VideoEffectsCapabilities sse_decode_video_effects_capabilities(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  VideoEffectsConfig sse_decode_video_effects_config(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  VideoEffectsStats sse_decode_video_effects_stats(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  VideoFailure sse_decode_video_failure(SseDeserializer deserializer);
+
+  @protected
+  VideoFailureKind sse_decode_video_failure_kind(SseDeserializer deserializer);
+
+  @protected
   void
   sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCryptoSession(
     CryptoSession self,
@@ -394,6 +445,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_video_effects_config(
+    VideoEffectsConfig self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_cached_message(CachedMessage self, SseSerializer serializer);
 
   @protected
@@ -413,6 +470,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_external_join(ExternalJoin self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_f_32(double self, SseSerializer serializer);
 
   @protected
   void sse_encode_group_member(GroupMember self, SseSerializer serializer);
@@ -551,6 +611,33 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_usize(BigInt self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_video_effects_capabilities(
+    VideoEffectsCapabilities self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_video_effects_config(
+    VideoEffectsConfig self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_video_effects_stats(
+    VideoEffectsStats self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_video_failure(VideoFailure self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_video_failure_kind(
+    VideoFailureKind self,
+    SseSerializer serializer,
+  );
 }
 
 // Section: wire_class

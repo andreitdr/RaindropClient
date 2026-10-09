@@ -5,6 +5,7 @@
 
 import 'api/attachment.dart';
 import 'api/session.dart';
+import 'api/video.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -70,7 +71,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 964364491;
+  int get rustContentHash => -302320025;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -327,6 +328,30 @@ abstract class RustLibApi extends BaseApi {
     required List<int> keyA,
     required String userB,
     required List<int> keyB,
+  });
+
+  VideoEffectsCapabilities crateApiVideoVideoEffectsCapabilities();
+
+  Future<BigInt> crateApiVideoVideoEffectsCreate({
+    required VideoEffectsConfig config,
+  });
+
+  Future<void> crateApiVideoVideoEffectsDestroy({required BigInt handle});
+
+  BigInt crateApiVideoVideoEffectsProcessAddress();
+
+  Future<void> crateApiVideoVideoEffectsSetBackgroundFile({
+    required BigInt handle,
+    required String path,
+  });
+
+  Future<VideoEffectsStats> crateApiVideoVideoEffectsStats({
+    required BigInt handle,
+  });
+
+  Future<void> crateApiVideoVideoEffectsUpdate({
+    required BigInt handle,
+    required VideoEffectsConfig config,
   });
 
   RustArcIncrementStrongCountFnType
@@ -2071,6 +2096,223 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         argNames: ["userA", "keyA", "userB", "keyB"],
       );
 
+  @override
+  VideoEffectsCapabilities crateApiVideoVideoEffectsCapabilities() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 46)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_video_effects_capabilities,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiVideoVideoEffectsCapabilitiesConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiVideoVideoEffectsCapabilitiesConstMeta =>
+      const TaskConstMeta(
+        debugName: "video_effects_capabilities",
+        argNames: [],
+      );
+
+  @override
+  Future<BigInt> crateApiVideoVideoEffectsCreate({
+    required VideoEffectsConfig config,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_box_autoadd_video_effects_config(config, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 47,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_u_64,
+          decodeErrorData: sse_decode_video_failure,
+        ),
+        constMeta: kCrateApiVideoVideoEffectsCreateConstMeta,
+        argValues: [config],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiVideoVideoEffectsCreateConstMeta =>
+      const TaskConstMeta(
+        debugName: "video_effects_create",
+        argNames: ["config"],
+      );
+
+  @override
+  Future<void> crateApiVideoVideoEffectsDestroy({required BigInt handle}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_64(handle, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 48,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiVideoVideoEffectsDestroyConstMeta,
+        argValues: [handle],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiVideoVideoEffectsDestroyConstMeta =>
+      const TaskConstMeta(
+        debugName: "video_effects_destroy",
+        argNames: ["handle"],
+      );
+
+  @override
+  BigInt crateApiVideoVideoEffectsProcessAddress() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 49)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_usize,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiVideoVideoEffectsProcessAddressConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiVideoVideoEffectsProcessAddressConstMeta =>
+      const TaskConstMeta(
+        debugName: "video_effects_process_address",
+        argNames: [],
+      );
+
+  @override
+  Future<void> crateApiVideoVideoEffectsSetBackgroundFile({
+    required BigInt handle,
+    required String path,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_64(handle, serializer);
+          sse_encode_String(path, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 50,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_video_failure,
+        ),
+        constMeta: kCrateApiVideoVideoEffectsSetBackgroundFileConstMeta,
+        argValues: [handle, path],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiVideoVideoEffectsSetBackgroundFileConstMeta =>
+      const TaskConstMeta(
+        debugName: "video_effects_set_background_file",
+        argNames: ["handle", "path"],
+      );
+
+  @override
+  Future<VideoEffectsStats> crateApiVideoVideoEffectsStats({
+    required BigInt handle,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_64(handle, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 51,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_video_effects_stats,
+          decodeErrorData: sse_decode_video_failure,
+        ),
+        constMeta: kCrateApiVideoVideoEffectsStatsConstMeta,
+        argValues: [handle],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiVideoVideoEffectsStatsConstMeta =>
+      const TaskConstMeta(
+        debugName: "video_effects_stats",
+        argNames: ["handle"],
+      );
+
+  @override
+  Future<void> crateApiVideoVideoEffectsUpdate({
+    required BigInt handle,
+    required VideoEffectsConfig config,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_64(handle, serializer);
+          sse_encode_box_autoadd_video_effects_config(config, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 52,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_video_failure,
+        ),
+        constMeta: kCrateApiVideoVideoEffectsUpdateConstMeta,
+        argValues: [handle, config],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiVideoVideoEffectsUpdateConstMeta =>
+      const TaskConstMeta(
+        debugName: "video_effects_update",
+        argNames: ["handle", "config"],
+      );
+
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_CryptoSession => wire
       .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCryptoSession;
@@ -2149,6 +2391,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  VideoEffectsConfig dco_decode_box_autoadd_video_effects_config(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_video_effects_config(raw);
+  }
+
+  @protected
   CachedMessage dco_decode_cached_message(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -2209,6 +2457,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       groupId: dco_decode_list_prim_u_8_strict(arr[0]),
       pending: dco_decode_pending_commit(arr[1]),
     );
+  }
+
+  @protected
+  double dco_decode_f_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as double;
   }
 
   @protected
@@ -2451,6 +2705,63 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  VideoEffectsCapabilities dco_decode_video_effects_capabilities(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return VideoEffectsCapabilities(
+      available: dco_decode_bool(arr[0]),
+      backend: dco_decode_String(arr[1]),
+    );
+  }
+
+  @protected
+  VideoEffectsConfig dco_decode_video_effects_config(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return VideoEffectsConfig(
+      kind: dco_decode_i_32(arr[0]),
+      blurStrength: dco_decode_f_32(arr[1]),
+      maskHz: dco_decode_f_32(arr[2]),
+    );
+  }
+
+  @protected
+  VideoEffectsStats dco_decode_video_effects_stats(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return VideoEffectsStats(
+      frames: dco_decode_u_64(arr[0]),
+      masks: dco_decode_u_64(arr[1]),
+      degraded: dco_decode_bool(arr[2]),
+      degradations: dco_decode_u_32(arr[3]),
+    );
+  }
+
+  @protected
+  VideoFailure dco_decode_video_failure(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return VideoFailure(
+      kind: dco_decode_video_failure_kind(arr[0]),
+      message: dco_decode_String(arr[1]),
+    );
+  }
+
+  @protected
+  VideoFailureKind dco_decode_video_failure_kind(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return VideoFailureKind.values[raw as int];
+  }
+
+  @protected
   CryptoSession
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCryptoSession(
     SseDeserializer deserializer,
@@ -2538,6 +2849,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  VideoEffectsConfig sse_decode_box_autoadd_video_effects_config(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_video_effects_config(deserializer));
+  }
+
+  @protected
   CachedMessage sse_decode_cached_message(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_groupId = sse_decode_list_prim_u_8_strict(deserializer);
@@ -2603,6 +2922,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_groupId = sse_decode_list_prim_u_8_strict(deserializer);
     var var_pending = sse_decode_pending_commit(deserializer);
     return ExternalJoin(groupId: var_groupId, pending: var_pending);
+  }
+
+  @protected
+  double sse_decode_f_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getFloat32();
   }
 
   @protected
@@ -2913,6 +3238,66 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  VideoEffectsCapabilities sse_decode_video_effects_capabilities(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_available = sse_decode_bool(deserializer);
+    var var_backend = sse_decode_String(deserializer);
+    return VideoEffectsCapabilities(
+      available: var_available,
+      backend: var_backend,
+    );
+  }
+
+  @protected
+  VideoEffectsConfig sse_decode_video_effects_config(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_kind = sse_decode_i_32(deserializer);
+    var var_blurStrength = sse_decode_f_32(deserializer);
+    var var_maskHz = sse_decode_f_32(deserializer);
+    return VideoEffectsConfig(
+      kind: var_kind,
+      blurStrength: var_blurStrength,
+      maskHz: var_maskHz,
+    );
+  }
+
+  @protected
+  VideoEffectsStats sse_decode_video_effects_stats(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_frames = sse_decode_u_64(deserializer);
+    var var_masks = sse_decode_u_64(deserializer);
+    var var_degraded = sse_decode_bool(deserializer);
+    var var_degradations = sse_decode_u_32(deserializer);
+    return VideoEffectsStats(
+      frames: var_frames,
+      masks: var_masks,
+      degraded: var_degraded,
+      degradations: var_degradations,
+    );
+  }
+
+  @protected
+  VideoFailure sse_decode_video_failure(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_kind = sse_decode_video_failure_kind(deserializer);
+    var var_message = sse_decode_String(deserializer);
+    return VideoFailure(kind: var_kind, message: var_message);
+  }
+
+  @protected
+  VideoFailureKind sse_decode_video_failure_kind(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return VideoFailureKind.values[inner];
+  }
+
+  @protected
   void
   sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCryptoSession(
     CryptoSession self,
@@ -3009,6 +3394,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_video_effects_config(
+    VideoEffectsConfig self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_video_effects_config(self, serializer);
+  }
+
+  @protected
   void sse_encode_cached_message(CachedMessage self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(self.groupId, serializer);
@@ -3055,6 +3449,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(self.groupId, serializer);
     sse_encode_pending_commit(self.pending, serializer);
+  }
+
+  @protected
+  void sse_encode_f_32(double self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putFloat32(self);
   }
 
   @protected
@@ -3349,6 +3749,55 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_usize(BigInt self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putBigUint64(self);
+  }
+
+  @protected
+  void sse_encode_video_effects_capabilities(
+    VideoEffectsCapabilities self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.available, serializer);
+    sse_encode_String(self.backend, serializer);
+  }
+
+  @protected
+  void sse_encode_video_effects_config(
+    VideoEffectsConfig self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.kind, serializer);
+    sse_encode_f_32(self.blurStrength, serializer);
+    sse_encode_f_32(self.maskHz, serializer);
+  }
+
+  @protected
+  void sse_encode_video_effects_stats(
+    VideoEffectsStats self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(self.frames, serializer);
+    sse_encode_u_64(self.masks, serializer);
+    sse_encode_bool(self.degraded, serializer);
+    sse_encode_u_32(self.degradations, serializer);
+  }
+
+  @protected
+  void sse_encode_video_failure(VideoFailure self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_video_failure_kind(self.kind, serializer);
+    sse_encode_String(self.message, serializer);
+  }
+
+  @protected
+  void sse_encode_video_failure_kind(
+    VideoFailureKind self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
   }
 }
 

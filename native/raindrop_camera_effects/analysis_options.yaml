@@ -1,0 +1,15 @@
+# The app's analysis_options.yaml excludes `native/`, which is right for
+# cargokit's vendored build glue but not for this plugin's own Dart. It is a
+# package of its own, so it gets the same lints the app uses:
+#
+#   cd native/raindrop_camera_effects && flutter analyze
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - build/**
+    # Native sources; `ios/` and `macos/` are symlinks into `darwin/`.
+    - android/**
+    - darwin/**
+    - ios/**
+    - macos/**

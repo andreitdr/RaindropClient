@@ -22,6 +22,7 @@ the **app**; the other two projects keep their own, and a gap here is often a ga
 | Attachments | Picking, dropping, streamed encrypted upload with progress and resume, inline image/video/audio previews, thumbnails, saving, cache on disk | [Attachments](attachments.md) |
 | Voice | Joining a call, mute, deafen, per-member volume and local mute, mute for everyone, the LiveKit engine over the server's relay with the same pinning, **media end-to-end encrypted** from the channel's MLS group | [Voice](voice.md) |
 | Camera | Showing your camera in a call (grant before track, so a refusal never leaves a camera nobody can see), the camera-and-effects sheet with a live preview, camera and quality pickers, video tiles, and hiding one person's camera locally — which really stops the stream | [Voice](voice.md#camera) |
+| Camera effects | Background blur and background replacement, applied to the frames in place on macOS, iOS and Android, with no fork of the media library and no frame ever reaching Dart | [Voice](voice.md#camera-effects) |
 | Members | The roster pane, presence grouping, pushed presence updates | [Members & presence](members-presence.md) |
 | Live updates | `EventStream` over the server's bidirectional gRPC stream with heartbeats and resubscribe on resume, `LiveSync` merging by id, reconnect with backoff and fallback polling | [Live updates](live-updates.md) |
 | Layout | A user-arranged main view: pane order, widths, buttons in slots, hiding, saved to a local layout file, edited in a layout editor | [Layout](layout.md) |
@@ -39,10 +40,10 @@ the **app**; the other two projects keep their own, and a gap here is often a ga
 - **Rejoining automatically after a dropped connection.** LiveKit's own reconnect is handled and shown
   as `reconnecting`, but a connection that is really gone ends the call with a notice; you join again.
 - **Push-to-talk.**
-- **Camera effects.** Background blur and background replacement are chosen, persisted and offered in
-  the camera sheet, but not applied: they need a hook into the capture pipeline that the media library
-  does not expose, so `canUseCameraEffects` is false everywhere and the sheet says so. The effects
-  themselves are built and tested in
+- **Camera effects on Windows and Linux.** They run on macOS, iOS and Android
+  ([Voice](voice.md#camera-effects)); those two have no chain between the capturer and the video
+  source to put a processor into, so `canUseCameraEffects` is false there and the sheet says so. The
+  effects themselves are already built and tested for every target in
   [RaindropCrypto](../../RaindropCrypto/docs/video-effects.md).
 - **Screen sharing.** The camera widened the call token's `canPublishSources`; widening it again to
   the screen is the change, and the camera's handshake and cap are there to copy.

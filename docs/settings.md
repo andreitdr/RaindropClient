@@ -41,8 +41,9 @@ and a hidden camera are set from the member menu in a call, not here.
 **Camera & effects** opens the same sheet the camera button in a call opens
 ([`camera_effects_sheet.dart`](../lib/features/voice/widgets/camera_effects_sheet.dart)): a live
 preview, the camera picker, the quality, and the background effect. Shown on every platform, unlike
-the audio devices — a phone's front and back cameras are two devices, and the effect is a choice
-everywhere even where it cannot yet be applied. What is remembered is *which* camera and *which*
+the audio devices — a phone's front and back cameras are two devices. The effect rows are disabled
+with a reason where effects cannot run (Windows and Linux, or a build with no segmentation model:
+`cameraEffectsAvailable`), and the preview still shows the plain camera there. What is remembered is *which* camera and *which*
 effect, never whether the camera is on: mute and deafen are states that carry over from one call to
 the next, and a camera is not. See [Voice](voice.md#camera).
 

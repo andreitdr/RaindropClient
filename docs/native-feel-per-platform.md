@@ -19,10 +19,12 @@ re-deriving the check:
 - `canChooseCamera` — **true everywhere**, unlike the audio devices: a phone's front and back cameras
   are two devices and choosing between them is the whole point, where audio routing is the OS's
   business.
-- `canUseCameraEffects` — whether background blur and background replacement can run here. The camera
-  itself works on every platform; the effects need a capture-pipeline hook the media library does not
-  expose, so this is false everywhere for now and the camera sheet says so rather than offering an
-  effect that would do nothing. See [Voice](voice.md#camera).
+- `canUseCameraEffects` — whether this platform has somewhere to put a frame processor: macOS, iOS and
+  Android do, Windows and Linux have no chain between the capturer and the video source. The camera
+  itself works everywhere. This is only the platform half of the answer — `cameraEffectsAvailable`
+  (`core/video/camera_effects_engine.dart`) adds whether the build carries a segmentation model, and
+  that is what the camera sheet reads, so a build without one offers no effect rather than one that
+  would blur the wrong shape. See [Voice](voice.md#camera-effects).
 - `isRunningOnWeb`, `operatingSystemName`
 
 Keeping every check in one file means a new target only needs updating here.
