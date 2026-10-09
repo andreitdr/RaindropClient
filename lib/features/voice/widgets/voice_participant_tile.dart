@@ -260,6 +260,16 @@ class VoiceStatusIcons extends ConsumerWidget {
         if (locallyMuted) icon(Icons.volume_off, 'Muted by you', color),
         if (cameraHidden)
           icon(Icons.videocam_off, 'Camera hidden by you', color),
+        if (participant.screenShareOn)
+          icon(
+            Icons.screen_share,
+            participant.screenShareKind == VoiceShareKinds.window
+                ? participant.screenShareAudio
+                      ? 'Sharing a window, with its sound'
+                      : 'Sharing a window'
+                : 'Sharing their screen',
+            color,
+          ),
       ],
     );
   }

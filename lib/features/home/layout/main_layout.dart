@@ -114,6 +114,12 @@ final mainLayoutButtons = <String, LayoutButtonSpec>{
     icon: Icons.videocam,
     build: (context, style) => VoiceCameraButton(style: style),
   ),
+  MainButtons.screenShare: LayoutButtonSpec(
+    id: MainButtons.screenShare,
+    label: 'Share screen',
+    icon: Icons.screen_share,
+    build: (context, style) => VoiceScreenShareButton(style: style),
+  ),
   MainButtons.members: LayoutButtonSpec(
     id: MainButtons.members,
     label: 'Show members',

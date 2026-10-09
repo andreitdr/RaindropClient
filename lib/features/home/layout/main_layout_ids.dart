@@ -27,5 +27,6 @@ abstract final class MainButtons {
   static const mute = 'voice.mute';
   static const deafen = 'voice.deafen';
   static const camera = 'voice.camera';
+  static const screenShare = 'voice.screen';
   static const members = 'members.toggle';
 }

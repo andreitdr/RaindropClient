@@ -288,16 +288,20 @@ void main() {
       final stored = container.read(appPrefsProvider).memberAudioJson;
       final second = ProviderContainer(
         overrides: [
-          appPrefsProvider.overrideWithValue(
-            container.read(appPrefsProvider),
-          ),
+          appPrefsProvider.overrideWithValue(container.read(appPrefsProvider)),
         ],
       );
       addTearDown(second.dispose);
 
       expect(stored.containsKey('s1/bob'), isTrue);
-      expect(second.read(memberAudioProvider.notifier).of('s1', 'bob').videoHidden, isTrue);
-      expect(second.read(memberAudioProvider.notifier).of('s1', 'bob').volume, 0.5);
+      expect(
+        second.read(memberAudioProvider.notifier).of('s1', 'bob').videoHidden,
+        isTrue,
+      );
+      expect(
+        second.read(memberAudioProvider.notifier).of('s1', 'bob').volume,
+        0.5,
+      );
     });
 
     test('a settings blob from before hidden cameras reads as not hidden', () {
@@ -311,12 +315,18 @@ void main() {
     });
 
     test('MemberMedia round-trips through JSON', () {
-      const media = MemberMedia(volume: 0.25, muted: true, videoHidden: true);
+      const media = MemberMedia(
+        volume: 0.25,
+        muted: true,
+        videoHidden: true,
+        screenVolume: 0.4,
+      );
       final back = MemberMedia.fromJson(media.toJson());
 
       expect(back.volume, media.volume);
       expect(back.muted, media.muted);
       expect(back.videoHidden, media.videoHidden);
+      expect(back.screenVolume, media.screenVolume);
     });
 
     test('isDefault accounts for every field', () {
@@ -324,6 +334,51 @@ void main() {
       expect(const MemberMedia(volume: 0.5).isDefault, isFalse);
       expect(const MemberMedia(muted: true).isDefault, isFalse);
       expect(const MemberMedia(videoHidden: true).isDefault, isFalse);
+      expect(const MemberMedia(screenVolume: 0.5).isDefault, isFalse);
+    });
+
+    test('a settings blob from before shares reads its share as sent', () {
+      final media = MemberMedia.fromJson({'volume': 0.5, 'videoHidden': true});
+
+      expect(media.screenVolume, 1.0);
+      expect(media.videoHidden, isTrue);
+    });
+
+    test('a share volume out of range is clamped, and garbage is ignored', () {
+      expect(
+        MemberMedia.fromJson({'screenVolume': 9}).screenVolume,
+        maximumVolume,
+      );
+      expect(MemberMedia.fromJson({'screenVolume': -1}).screenVolume, 0);
+      expect(MemberMedia.fromJson({'screenVolume': 'loud'}).screenVolume, 1.0);
+    });
+
+    test("a shared window's sound follows deafen, but not a member's mute", () {
+      // Muting somebody mutes their voice; their film has its own slider.
+      expect(
+        effectiveScreenVolume(
+          outputVolume: 1,
+          member: const MemberMedia(muted: true, screenVolume: 0.5),
+          deafened: false,
+        ),
+        0.5,
+      );
+      expect(
+        effectiveScreenVolume(
+          outputVolume: 1,
+          member: const MemberMedia(screenVolume: 0.5),
+          deafened: true,
+        ),
+        0,
+      );
+      expect(
+        effectiveScreenVolume(
+          outputVolume: 2,
+          member: const MemberMedia(screenVolume: 2),
+          deafened: false,
+        ),
+        maximumVolume,
+      );
     });
   });
 
@@ -432,10 +487,7 @@ void main() {
       const silent = VoicePublishRights(microphone: true, camera: false);
 
       expect(muted, isNot(silent));
-      expect(
-        muted,
-        const VoicePublishRights(microphone: false, camera: true),
-      );
+      expect(muted, const VoicePublishRights(microphone: false, camera: true));
       expect(VoicePublishRights.none.microphone, isFalse);
       expect(VoicePublishRights.none.camera, isFalse);
     });

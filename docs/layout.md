@@ -61,8 +61,9 @@ still be moved or removed.
 ones.** A missing slot gets its defaults, but a slot that already exists does not gain a button a
 later build added to the default layout — so an existing user's saved `layout.json` never grows a new
 button, however the defaults change. A new button that must be reachable therefore has to live
-somewhere that is not layout-driven as well; the camera button is in the voice view's in-call controls
-for exactly this reason. Only a new install, or Reset, picks up a changed default.
+somewhere that is not layout-driven as well; the camera and share buttons are in the voice view's
+in-call controls for exactly this reason. Only a new install, or Reset, picks up a changed default.
+(The share button, `voice.screen`, is not in the defaults at all — it can be added from the editor.)
 
 The rules live with the feature, not in `core/`: [`main_layout.dart`](../lib/features/home/layout/main_layout.dart)
 defines `mainDefaultLayout`, `mainLayoutRules` and `mainLayoutButtons`, and `main.dart` hands the
