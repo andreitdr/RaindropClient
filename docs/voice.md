@@ -69,13 +69,48 @@ The audio itself is DTLS-SRTP to the LiveKit server, over UDP 7882 or the TCP 78
   also refreshed once right after connecting, in case the epoch moved during connect.
 - **Rotation.** Every 10 minutes, the participant with the lowest member id rotates the group's keys
   (`ChannelGroups.rotate`), so a call rekeys once per interval rather than once per participant.
-- **Failing closed.** A remote track published without encryption is kept at volume 0 for as long as
-  that participant is in the call. A participant whose frames stop decrypting is silenced until a key
-  change or a good frame. `engine.encryptionChanges` reports `active`, `degraded` or `none`.
+- **Failing closed.** A remote track published without encryption marks that *participant* untrusted
+  for as long as they are in the call: their audio is kept at volume 0 and their camera is never
+  drawn, whatever the keys do afterwards. A client that sent one frame in the clear is not using the
+  group's key, and republishing does not earn it a second chance. A *publication* whose frames stop
+  decrypting is silenced until a key change or a good frame — that verdict is per track sid, because
+  LiveKit keeps one frame cryptor per track, so one participant's microphone can decrypt while their
+  camera does not and neither verdict may reach the other.
+  `engine.encryptionChanges` reports `active`, `degraded` or `none`.
+- **Warnings.** `engine.warnings` is how the engine says it refused something without ending the
+  call — media it could not encrypt, an effect it had to turn off. It becomes
+  `VoiceCallState.warning`, shown as a dismissible banner in the voice view. Deliberately not
+  `VoiceCallState.notice`, which means specifically why a call *ended*; a warning leaves the call
+  running, and conflating the two would read as a hang-up that did not happen.
 - **The lock.** `VoiceCallState.encryption` drives a lock in `VoiceConnectionBar`:
   - a closed lock: encrypted
   - a clock-lock: somebody is not decrypting and is silenced
   - an open lock: the server does not offer encrypted calls, so its media server can hear
+
+### Codecs and the frame cryptor
+
+The call states its video codec (`RoomOptions.defaultVideoPublishOptions`) instead of inheriting the
+SDK's default, because here the codec is a security setting and not only a quality one. VP8, with
+simulcast and the backup codec pinned to it as well, so no negotiation can quietly land elsewhere.
+
+**AV1 is refused outright** (`blockedVideoCodecs` in `core/voice/voice_engine.dart`). `livekit_client`
+skips frame-cryptor setup entirely for AV1 — the `isAV1Codec` early returns in `e2ee_manager.dart`,
+in both the publish and the subscribe handler — while the publication still reports its encryption
+type as AES-GCM. An AV1 track would therefore travel **in the clear with nothing to notice it**, and
+a check on the publication's own encryption state cannot catch it. So:
+
+- **Sending**, `LocalTrackPublishedEvent` withdraws any video publication whose codec is blocked or
+  whose encryption never came up, and warns the user that the camera was turned off. This is the one
+  thing standing between a camera and the media server seeing it; the receive side can only keep
+  somebody else's mistake quiet.
+- **Receiving**, a blocked codec counts as unencrypted even when the publication claims otherwise.
+  Audio is kept silent (silence is the guarantee, and dropping the subscription would lose the
+  speaking indicator with it); video is unsubscribed, since it will never be drawn and so should not
+  cost bandwidth either.
+
+A `livekit_client` bump must re-read those two early returns before anything is removed from
+`blockedVideoCodecs`. `test/features/voice/voice_trust_test.dart` guards the list and the two pure
+rules (`gatedVolume`, `isBlockedVideoCodec`).
 
 ### Checking it by hand
 
@@ -86,12 +121,15 @@ member derives the same one, rotation, and removal. It cannot play audio. To che
 2. Join the same LiveKit room from outside Raindrop with a token minted by the server's LiveKit key
    (for example with the LiveKit CLI, `lk room join`). That participant receives only undecodable
    frames: noise or silence, never speech.
+3. To prove the codec guard rather than trust it, force `_videoCodec` to `'av1'` in a scratch build
+   and turn a camera on: the publication must be withdrawn and the warning banner must appear, with
+   nothing sent. Worth doing once, deliberately, since nothing else exercises that path.
 
 ## State
 
 | Provider | What | Lifetime |
 |---|---|---|
-| `voiceCallProvider` (`features/voice/controllers/voice_call_controller.dart`) | The **one** call this client is in, across all servers: server and channel, `joining`/`connected`/`reconnecting`, who is speaking, whether you are muted for everyone or suppressed, and a one-shot `notice` for why a call ended | global, kept alive |
+| `voiceCallProvider` (`features/voice/controllers/voice_call_controller.dart`) | The **one** call this client is in, across all servers: server and channel, `joining`/`connected`/`reconnecting`, who is speaking, whether you are muted for everyone or suppressed, a one-shot `notice` for why a call ended, and a dismissible `warning` for something the engine refused mid-call | global, kept alive |
 | `voiceRosterProvider(serverId)` (`voice_roster_controller.dart`) | Who is in every call on a server, plus `available` and `maximumParticipants`; drives the sidebar and the voice view | per server |
 | `voiceSettingsProvider` (`voice_settings_controller.dart`) | Your mute/deafen, output volume, devices, and echo cancellation / noise suppression / auto gain | global, persisted |
 | `memberAudioProvider` (`member_audio_controller.dart`) | Per-member volume and local mute, keyed `serverId/userId` | global, persisted |
@@ -160,8 +198,9 @@ units mistake, and why the cap is 2.
   - a capacity count;
   - a **Join voice** button, or "Switch to this call" if you are in another one. The button is disabled,
     with the reason, without `connect`, when voice is unavailable, or when the call is full;
-  - once you are in the call: mute, deafen and **Disconnect**, and a banner when a moderator muted you
-    or you can only listen.
+  - once you are in the call: mute, deafen and **Disconnect**; a banner when a moderator muted you or
+    you can only listen; and a dismissible banner when the engine refused something (the state
+    banners have no dismiss, because the state would still be true afterwards).
 
   **Selecting a channel never joins it**: joining is the button.
 - **Narrow layout**: the sidebar lives in a drawer, so a call in progress gets a thin

@@ -157,6 +157,11 @@ abstract class VoiceEngine {
   /// changes.
   Stream<bool> get canSpeakChanges;
 
+  /// Something the engine refused for safety, in words for the user — media it
+  /// could not encrypt, an effect it had to turn off. Never fatal: the call
+  /// goes on without whatever was refused.
+  Stream<String> get warnings;
+
   Future<void> dispose();
 }
 
@@ -164,6 +169,39 @@ abstract class VoiceEngine {
 /// they were sent. The WebRTC source gain this maps onto accepts up to 10,
 /// but past 2 speech clips audibly.
 const double maximumVolume = 2.0;
+
+/// How loud a participant's audio plays once trust is taken into account:
+/// silence for anything this device will not vouch for, and nothing else
+/// touched. Pulled out of the engine so the rule can be tested without a
+/// media library.
+///
+/// [unencrypted] is per participant and lasts the whole call — a client that
+/// sent one frame in the clear does not get a second chance. [undecryptable]
+/// is per publication and transient, usually a key change the other side has
+/// not made yet.
+double gatedVolume({
+  required double volume,
+  required bool unencrypted,
+  required bool undecryptable,
+}) => unencrypted || undecryptable ? 0 : volume;
+
+/// Video codecs a call will not carry.
+///
+/// AV1 is refused because `livekit_client` silently skips frame-cryptor setup
+/// for it (`e2ee_manager.dart` in 2.13.0, the `isAV1Codec` early returns in
+/// both the publish and the subscribe handler) while the publication still
+/// reports itself as encrypted. An AV1 track would therefore travel in the
+/// clear with nothing to notice it. Re-read those two early returns on every
+/// `livekit_client` bump before removing anything from here.
+const Set<String> blockedVideoCodecs = {'av1'};
+
+/// Whether a codec name — from `publication.track?.codec` when sending, or the
+/// subtype of `publication.mimeType` when receiving — is one a call refuses.
+/// Tolerates the case and the `video/` prefix either side may use.
+bool isBlockedVideoCodec(String codec) {
+  final name = codec.toLowerCase().split('/').last.trim();
+  return blockedVideoCodecs.contains(name);
+}
 
 /// The engine for a transport the server named, or null when this build does
 /// not speak it.

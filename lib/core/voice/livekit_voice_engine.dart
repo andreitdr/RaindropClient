@@ -26,22 +26,37 @@ class LiveKitVoiceEngine implements VoiceEngine {
   final _disconnects = StreamController<VoiceDisconnectReason>.broadcast();
   final _canSpeak = StreamController<bool>.broadcast();
   final _encryption = StreamController<VoiceEncryption>.broadcast();
+  final _warnings = StreamController<String>.broadcast();
 
   /// Set when the call is end-to-end encrypted.
   BaseKeyProvider? _keyProvider;
 
-  /// Participants who published audio without encryption in an encrypted
-  /// call. Kept silent for as long as they are in it, whatever the keys do.
+  /// Participants who published media without encryption in an encrypted
+  /// call. Kept silent, and their camera unshown, for as long as they are in
+  /// it, whatever the keys do afterwards: a client that sent one frame in the
+  /// clear is not using the group's key, and republishing does not earn it a
+  /// second chance. Deliberately per participant rather than per publication,
+  /// which is the stricter of the two readings.
   final _unencrypted = <String>{};
 
-  /// Participants whose frames currently fail to decrypt. Usually a key
-  /// change one side has not made yet, so this clears on the next key change
-  /// or the first frame that decrypts; the cryptor drops those frames anyway.
+  /// Publications whose frames currently fail to decrypt, by track sid.
+  /// Usually a key change one side has not made yet, so this clears on the
+  /// next key change or the first frame that decrypts; the cryptor drops
+  /// those frames anyway.
+  ///
+  /// Keyed by publication, not by participant: `E2EEManager` keeps one frame
+  /// cryptor per track, so one participant's microphone can decrypt while
+  /// their camera does not, and a verdict about one must not reach the other.
   final _failing = <String>{};
 
   /// The key ring LiveKit keeps per call: this many past keys stay usable, so
   /// frames sent just before a key change still decrypt after it.
   static const keyRingSize = 16;
+
+  /// What a camera is sent as. VP8 is universally supported by the frame
+  /// cryptor; see [blockedVideoCodecs] for the codec that is not, and why
+  /// this is pinned rather than negotiated.
+  static const _videoCodec = 'vp8';
 
   @override
   Stream<VoiceConnectionState> get connectionStates => _connectionStates.stream;
@@ -57,6 +72,9 @@ class LiveKitVoiceEngine implements VoiceEngine {
 
   @override
   Stream<VoiceEncryption> get encryptionChanges => _encryption.stream;
+
+  @override
+  Stream<String> get warnings => _warnings.stream;
 
   @override
   Future<void> connect(
@@ -107,6 +125,20 @@ class LiveKitVoiceEngine implements VoiceEngine {
           dtx: true,
         ),
         defaultAudioOutputOptions: AudioOutputOptions(deviceId: outputDeviceId),
+        // Stated rather than inherited from the SDK's defaults, because the
+        // codec is a security setting here and not only a quality one: see
+        // [blockedVideoCodecs]. Simulcast and the backup codec are pinned to
+        // the same codec so no negotiation can quietly land on another one.
+        defaultVideoPublishOptions: const VideoPublishOptions(
+          videoCodec: _videoCodec,
+          simulcast: true,
+          backupVideoCodec: BackupVideoCodec(
+            enabled: true,
+            codec: _videoCodec,
+            simulcast: true,
+          ),
+          degradationPreference: DegradationPreference.maintainFramerate,
+        ),
         encryption: encryption,
       ),
     );
@@ -136,7 +168,7 @@ class LiveKitVoiceEngine implements VoiceEngine {
     // Switch what this participant sends to the new key. Receivers already
     // hold it too, and still hold the old one for frames in flight.
     await _room?.e2eeManager?.setKeyIndex(key.index);
-    // A participant whose frames failed may simply have been ahead of us.
+    // A publication whose frames failed may simply have been ahead of us.
     _failing.clear();
     await _reapplyVolumes();
     _reportEncryption();
@@ -164,7 +196,11 @@ class LiveKitVoiceEngine implements VoiceEngine {
 
     for (final publication in participant.audioTrackPublications) {
       final track = publication.track;
-      if (track != null) await _setTrackVolume(track, _gate(identity, clamped));
+      if (track == null) continue;
+      await _setTrackVolume(
+        track,
+        _gateAudio(identity, publication.sid, clamped),
+      );
     }
   }
 
@@ -177,12 +213,11 @@ class LiveKitVoiceEngine implements VoiceEngine {
       if (_volumes.containsKey(participant.identity)) continue;
       for (final publication in participant.audioTrackPublications) {
         final track = publication.track;
-        if (track != null) {
-          await _setTrackVolume(
-            track,
-            _gate(participant.identity, _defaultVolume),
-          );
-        }
+        if (track == null) continue;
+        await _setTrackVolume(
+          track,
+          _gateAudio(participant.identity, publication.sid, _defaultVolume),
+        );
       }
     }
   }
@@ -225,6 +260,7 @@ class LiveKitVoiceEngine implements VoiceEngine {
     await _disconnects.close();
     await _canSpeak.close();
     await _encryption.close();
+    await _warnings.close();
   }
 
   // ── Devices ────────────────────────────────────────────────────────────────
@@ -270,7 +306,7 @@ class LiveKitVoiceEngine implements VoiceEngine {
       })
       ..on<ParticipantDisconnectedEvent>((event) {
         _unencrypted.remove(event.participant.identity);
-        _failing.remove(event.participant.identity);
+        _failing.removeAll(event.participant.trackPublications.keys);
         _reportEncryption();
       })
       ..on<ActiveSpeakersChangedEvent>(
@@ -279,36 +315,94 @@ class LiveKitVoiceEngine implements VoiceEngine {
         }),
       )
       ..on<TrackSubscribedEvent>((event) async {
-        final track = event.track;
-        if (track is! RemoteAudioTrack) return;
         final identity = event.participant.identity;
-        // Fail closed: in an encrypted call, audio published without
+        final publication = event.publication;
+
+        // Fail closed: in an encrypted call, media published without
         // encryption is from somebody not using the group's key — the media
-        // server itself, or a client that is not a member. It stays silent.
-        if (_keyProvider != null &&
-            event.publication.encryptionType == EncryptionType.kNone) {
-          _unencrypted.add(identity);
+        // server itself, or a client that is not a member. A blocked codec
+        // counts as unencrypted even when the publication claims otherwise,
+        // because for those the frame cryptor is never set up at all.
+        final trusted =
+            _keyProvider == null ||
+            (publication.encryptionType != EncryptionType.kNone &&
+                !isBlockedVideoCodec(publication.mimeType));
+        if (!trusted && _unencrypted.add(identity)) {
           _reportEncryption();
+          // Untrusting a participant has to reach the media they already have
+          // playing, not only the publication that gave them away: an
+          // unencrypted camera is reason enough to stop trusting the
+          // microphone that arrived before it.
+          await _reapplyVolumes();
         }
-        await _setTrackVolume(
-          track,
-          _gate(identity, _volumes[identity] ?? _defaultVolume),
-        );
+
+        switch (event.track) {
+          case final RemoteAudioTrack track:
+            // Untrusted audio arrives and is kept silent, rather than
+            // refused: silence is the whole guarantee, and dropping the
+            // subscription would lose the speaking indicator with it.
+            await _setTrackVolume(
+              track,
+              _gateAudio(
+                identity,
+                publication.sid,
+                _volumes[identity] ?? _defaultVolume,
+              ),
+            );
+          case RemoteVideoTrack _:
+            // Untrusted video is never drawn, so it should not cost bandwidth
+            // either — unlike audio there is nothing to keep it around for.
+            if (!trusted) await publication.unsubscribe();
+          case _:
+        }
       })
       ..on<TrackE2EEStateEvent>((event) async {
-        final identity = event.participant.identity;
+        // By publication, not by participant: this fires per frame cryptor,
+        // and a participant's microphone and camera each have their own.
+        final sid = event.publication.sid;
         switch (event.state) {
           case E2EEState.kOk:
-            if (_failing.remove(identity)) await _reapplyVolumes();
+            if (_failing.remove(sid)) await _reapplyVolumes();
           case E2EEState.kDecryptionFailed ||
               E2EEState.kMissingKey ||
               E2EEState.kEncryptionFailed ||
               E2EEState.kInternalError:
-            if (_failing.add(identity)) await _reapplyVolumes();
+            if (_failing.add(sid)) await _reapplyVolumes();
           case E2EEState.kNew || E2EEState.kKeyRatcheted:
         }
         _reportEncryption();
       })
+      ..on<LocalTrackPublishedEvent>((event) async {
+        if (_keyProvider == null) return;
+        final publication = event.publication;
+        if (publication.kind != TrackType.VIDEO) return;
+
+        // Fail closed on the way out, which matters more than on the way in:
+        // the receive side can only keep somebody else's mistake quiet, but
+        // this is the only thing standing between a camera and the media
+        // server seeing it. A publication the frame cryptor did not take —
+        // a blocked codec, or encryption that never came up — is withdrawn
+        // rather than left sending in the clear.
+        final codec = publication.track?.codec ?? publication.mimeType;
+        if (!isBlockedVideoCodec(codec) &&
+            publication.encryptionType != EncryptionType.kNone) {
+          return;
+        }
+
+        await event.participant.removePublishedTrack(publication.sid);
+        _reportEncryption();
+        if (!_warnings.isClosed) {
+          _warnings.add(
+            'Your camera could not be encrypted, so it was turned off.',
+          );
+        }
+      })
+      ..on<LocalTrackUnpublishedEvent>(
+        (event) => _failing.remove(event.publication.sid),
+      )
+      ..on<TrackUnsubscribedEvent>(
+        (event) => _failing.remove(event.publication.sid),
+      )
       ..on<ParticipantPermissionsUpdatedEvent>((event) async {
         if (event.participant != room.localParticipant) return;
         _canSpeak.add(event.permissions.canPublish);
@@ -320,22 +414,24 @@ class LiveKitVoiceEngine implements VoiceEngine {
       });
   }
 
-  /// A participant's volume, or silence while their audio is not trusted.
-  double _gate(String identity, double volume) =>
-      _unencrypted.contains(identity) || _failing.contains(identity)
-      ? 0
-      : volume;
+  /// One publication's volume, or silence while it is not trusted.
+  double _gateAudio(String identity, String sid, double volume) => gatedVolume(
+    volume: volume,
+    unencrypted: _unencrypted.contains(identity),
+    undecryptable: _failing.contains(sid),
+  );
 
   Future<void> _reapplyVolumes() async {
     for (final participant
         in _room?.remoteParticipants.values ?? const <RemoteParticipant>[]) {
-      final volume = _gate(
-        participant.identity,
-        _volumes[participant.identity] ?? _defaultVolume,
-      );
+      final wanted = _volumes[participant.identity] ?? _defaultVolume;
       for (final publication in participant.audioTrackPublications) {
         final track = publication.track;
-        if (track != null) await _setTrackVolume(track, volume);
+        if (track == null) continue;
+        await _setTrackVolume(
+          track,
+          _gateAudio(participant.identity, publication.sid, wanted),
+        );
       }
     }
   }

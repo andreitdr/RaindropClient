@@ -30,6 +30,7 @@ class VoiceCallState {
     this.serverMuted = false,
     this.suppressed = false,
     this.notice,
+    this.warning,
     this.encryption = VoiceEncryption.none,
   });
 
@@ -50,6 +51,13 @@ class VoiceCallState {
   /// shown once, then cleared with [VoiceCallController.dismissNotice].
   final String? notice;
 
+  /// Something the engine refused during a call that is still going: media it
+  /// could not encrypt, an effect it had to turn off. Separate from [notice],
+  /// which is specifically why a call *ended* — this one leaves the call
+  /// running, so conflating them would read as a hang-up that did not happen.
+  /// Cleared with [VoiceCallController.dismissWarning].
+  final String? warning;
+
   bool get inCall => status != VoiceCallStatus.idle;
 
   bool isIn(String serverId, String channelId) =>
@@ -59,11 +67,14 @@ class VoiceCallState {
   /// call UI.
   final VoiceEncryption encryption;
 
+  /// [warning] takes a nullary function rather than a plain value so a
+  /// warning can be *cleared*, which a `??` fallback could never express.
   VoiceCallState copyWith({
     VoiceCallStatus? status,
     Set<String>? speaking,
     bool? serverMuted,
     bool? suppressed,
+    String? Function()? warning,
     VoiceEncryption? encryption,
   }) => VoiceCallState(
     serverId: serverId,
@@ -73,6 +84,7 @@ class VoiceCallState {
     serverMuted: serverMuted ?? this.serverMuted,
     suppressed: suppressed ?? this.suppressed,
     notice: notice,
+    warning: warning == null ? this.warning : warning(),
     encryption: encryption ?? this.encryption,
   );
 }
@@ -296,6 +308,10 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     if (!state.inCall && state.notice != null) state = const VoiceCallState();
   }
 
+  void dismissWarning() {
+    if (state.warning != null) state = state.copyWith(warning: () => null);
+  }
+
   // ── Following the call ─────────────────────────────────────────────────────
 
   void _follow(String serverId, ServerSession session, VoiceEngine engine) {
@@ -323,6 +339,11 @@ class VoiceCallController extends Notifier<VoiceCallState> {
         engine.encryptionChanges.listen(
           (encryption) => state = state.copyWith(encryption: encryption),
         ),
+      )
+      ..add(
+        engine.warnings.listen((warning) {
+          if (state.inCall) state = state.copyWith(warning: () => warning);
+        }),
       );
 
     // Every epoch of the voice channel's group is a new media key: somebody
