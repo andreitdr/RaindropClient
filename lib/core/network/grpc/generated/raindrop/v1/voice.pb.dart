@@ -29,6 +29,8 @@ class VoiceParticipant extends $pb.GeneratedMessage {
     $core.bool? suppressed,
     $core.bool? connected,
     $1.Timestamp? joinedAt,
+    $core.bool? cameraOn,
+    $core.bool? cameraSuppressed,
   }) {
     final result = VoiceParticipant._();
     if (channelId != null) result.channelId = channelId;
@@ -39,6 +41,8 @@ class VoiceParticipant extends $pb.GeneratedMessage {
     if (suppressed != null) result.suppressed = suppressed;
     if (connected != null) result.connected = connected;
     if (joinedAt != null) result.joinedAt = joinedAt;
+    if (cameraOn != null) result.cameraOn = cameraOn;
+    if (cameraSuppressed != null) result.cameraSuppressed = cameraSuppressed;
     return result;
   }
 
@@ -64,6 +68,8 @@ class VoiceParticipant extends $pb.GeneratedMessage {
     ..aOB(7, _omitFieldNames ? '' : 'connected')
     ..aOM<$1.Timestamp>(8, _omitFieldNames ? '' : 'joinedAt',
         subBuilder: $1.Timestamp.$_createMessage)
+    ..aOB(9, _omitFieldNames ? '' : 'cameraOn')
+    ..aOB(10, _omitFieldNames ? '' : 'cameraSuppressed')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -165,6 +171,27 @@ class VoiceParticipant extends $pb.GeneratedMessage {
   void clearJoinedAt() => $_clearField(8);
   @$pb.TagNumber(8)
   $1.Timestamp ensureJoinedAt() => $_ensure(7);
+
+  /// They are sending their camera to the call.
+  @$pb.TagNumber(9)
+  $core.bool get cameraOn => $_getBF(8);
+  @$pb.TagNumber(9)
+  set cameraOn($core.bool value) => $_setBool(8, value);
+  @$pb.TagNumber(9)
+  $core.bool hasCameraOn() => $_has(8);
+  @$pb.TagNumber(9)
+  void clearCameraOn() => $_clearField(9);
+
+  /// They may listen and talk but not turn their camera on: they lack video, or every camera place in
+  /// this call is taken.
+  @$pb.TagNumber(10)
+  $core.bool get cameraSuppressed => $_getBF(9);
+  @$pb.TagNumber(10)
+  set cameraSuppressed($core.bool value) => $_setBool(9, value);
+  @$pb.TagNumber(10)
+  $core.bool hasCameraSuppressed() => $_has(9);
+  @$pb.TagNumber(10)
+  void clearCameraSuppressed() => $_clearField(10);
 }
 
 /// Asks for voice status.
@@ -218,6 +245,7 @@ class GetVoiceStatusResponse extends $pb.GeneratedMessage {
     $core.String? transport,
     $core.int? maximumParticipants,
     $core.Iterable<VoiceParticipant>? participants,
+    $core.int? maximumCameraPublishers,
   }) {
     final result = GetVoiceStatusResponse._();
     if (available != null) result.available = available;
@@ -225,6 +253,8 @@ class GetVoiceStatusResponse extends $pb.GeneratedMessage {
     if (maximumParticipants != null)
       result.maximumParticipants = maximumParticipants;
     if (participants != null) result.participants.addAll(participants);
+    if (maximumCameraPublishers != null)
+      result.maximumCameraPublishers = maximumCameraPublishers;
     return result;
   }
 
@@ -246,6 +276,7 @@ class GetVoiceStatusResponse extends $pb.GeneratedMessage {
     ..aI(3, _omitFieldNames ? '' : 'maximumParticipants')
     ..pPM<VoiceParticipant>(4, _omitFieldNames ? '' : 'participants',
         subBuilder: VoiceParticipant.$_createMessage)
+    ..aI(5, _omitFieldNames ? '' : 'maximumCameraPublishers')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -304,6 +335,17 @@ class GetVoiceStatusResponse extends $pb.GeneratedMessage {
   /// By channel, then join time.
   @$pb.TagNumber(4)
   $pb.PbList<VoiceParticipant> get participants => $_getList(3);
+
+  /// How many members of one call may send their camera at once. 0 when this server carries no camera
+  /// video, which is also when it does not advertise voice.video.v1.
+  @$pb.TagNumber(5)
+  $core.int get maximumCameraPublishers => $_getIZ(4);
+  @$pb.TagNumber(5)
+  set maximumCameraPublishers($core.int value) => $_setSignedInt32(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasMaximumCameraPublishers() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearMaximumCameraPublishers() => $_clearField(5);
 }
 
 /// Joins a call.
@@ -652,15 +694,17 @@ class LeaveVoiceResponse extends $pb.GeneratedMessage {
   void clearLeft() => $_clearField(1);
 }
 
-/// Sets your own mute and deafen.
+/// Sets your own mute, deafen and camera.
 class SetVoiceSelfStateRequest extends $pb.GeneratedMessage {
   factory SetVoiceSelfStateRequest({
     $core.bool? selfMute,
     $core.bool? selfDeaf,
+    $core.bool? cameraOn,
   }) {
     final result = SetVoiceSelfStateRequest._();
     if (selfMute != null) result.selfMute = selfMute;
     if (selfDeaf != null) result.selfDeaf = selfDeaf;
+    if (cameraOn != null) result.cameraOn = cameraOn;
     return result;
   }
 
@@ -679,6 +723,7 @@ class SetVoiceSelfStateRequest extends $pb.GeneratedMessage {
       createEmptyInstance: SetVoiceSelfStateRequest.$_createMessage)
     ..aOB(1, _omitFieldNames ? '' : 'selfMute')
     ..aOB(2, _omitFieldNames ? '' : 'selfDeaf')
+    ..aOB(3, _omitFieldNames ? '' : 'cameraOn')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -723,6 +768,17 @@ class SetVoiceSelfStateRequest extends $pb.GeneratedMessage {
   $core.bool hasSelfDeaf() => $_has(1);
   @$pb.TagNumber(2)
   void clearSelfDeaf() => $_clearField(2);
+
+  /// Turn the camera on or off. A client too old to send this reads as off, which is what it was.
+  /// Joining never starts the camera, so this is the only way it goes on.
+  @$pb.TagNumber(3)
+  $core.bool get cameraOn => $_getBF(2);
+  @$pb.TagNumber(3)
+  set cameraOn($core.bool value) => $_setBool(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasCameraOn() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearCameraOn() => $_clearField(3);
 }
 
 /// Your state in the call now.
