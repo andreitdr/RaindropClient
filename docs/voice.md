@@ -87,6 +87,27 @@ The audio itself is DTLS-SRTP to the LiveKit server, over UDP 7882 or the TCP 78
   - a clock-lock: somebody is not decrypting and is silenced
   - an open lock: the server does not offer encrypted calls, so its media server can hear
 
+### Camera video on the wire
+
+The server carries camera video when it advertises `voice.video.v1`
+([server docs](../../RaindropServer/docs/voice.md#camera-video)). What the protocol adds:
+
+- `VoiceParticipant.cameraOn` / `.cameraSuppressed` — on every `voice.state` event and in every
+  roster, merged on `(channelId, userId)` like the rest of the state. `cameraSuppressed` means they
+  lack `video` or every camera place in the call is taken.
+- `VoiceStatus.maximumCameraPublishers` — how many cameras one call carries at once; 0 when this
+  server carries none.
+- `VoiceApi.setSelfState(cameraOn:)` — **the camera is the one piece of self-state that can be
+  refused.** Mute and deafen are only everybody's icons; turning the camera on is what earns the
+  media server's permission to send one, so it answers `missing_permission` without `video` and
+  `camera_limit_reached` when the call is full of cameras. A refusal leaves a mute in the same
+  request standing, so the two have to be reported separately.
+
+The camera grant follows the camera being on, not the permission: a join token names the microphone
+only, and the server adds the camera after `setSelfState` succeeds. So a client **waits for the
+permission update before publishing**, and stops publishing *before* turning the camera off on the
+server — never the other way round, or the grant would be withdrawn from under a live track.
+
 ### Codecs and the frame cryptor
 
 The call states its video codec (`RoomOptions.defaultVideoPublishOptions`) instead of inheriting the
@@ -130,7 +151,7 @@ member derives the same one, rotation, and removal. It cannot play audio. To che
 | Provider | What | Lifetime |
 |---|---|---|
 | `voiceCallProvider` (`features/voice/controllers/voice_call_controller.dart`) | The **one** call this client is in, across all servers: server and channel, `joining`/`connected`/`reconnecting`, who is speaking, whether you are muted for everyone or suppressed, a one-shot `notice` for why a call ended, and a dismissible `warning` for something the engine refused mid-call | global, kept alive |
-| `voiceRosterProvider(serverId)` (`voice_roster_controller.dart`) | Who is in every call on a server, plus `available` and `maximumParticipants`; drives the sidebar and the voice view | per server |
+| `voiceRosterProvider(serverId)` (`voice_roster_controller.dart`) | Who is in every call on a server, plus `available`, `maximumParticipants` and `maximumCameraPublishers`; drives the sidebar and the voice view | per server |
 | `voiceSettingsProvider` (`voice_settings_controller.dart`) | Your mute/deafen, output volume, devices, and echo cancellation / noise suppression / auto gain | global, persisted |
 | `memberAudioProvider` (`member_audio_controller.dart`) | Per-member volume and local mute, keyed `serverId/userId` | global, persisted |
 

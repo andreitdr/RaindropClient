@@ -20,9 +20,10 @@ import 'voice.pb.dart' as $0;
 
 export 'voice.pb.dart';
 
-/// Voice calls. Raindrop decides who may join, speak and moderate; the audio itself goes over the media
-/// transport a join names (LiveKit today: WebRTC, its signalling relayed by this server as a WebSocket,
-/// end-to-end encrypted with a key from the channel's MLS group). This service is the control half only.
+/// Voice calls. Raindrop decides who may join, speak, show their camera and moderate; the media itself
+/// goes over the media transport a join names (LiveKit today: WebRTC, its signalling relayed by this
+/// server as a WebSocket, end-to-end encrypted with a key from the channel's MLS group — one key for a
+/// call, covering voice and camera alike). This service is the control half only.
 @$pb.GrpcServiceName('raindrop.v1.VoiceService')
 class VoiceServiceClient extends $grpc.Client {
   /// The hostname for this service.
@@ -59,7 +60,9 @@ class VoiceServiceClient extends $grpc.Client {
     return $createUnaryCall(_$leaveVoice, request, options: options);
   }
 
-  /// Self mute and deafen, for everybody's icons.
+  /// Self mute, deafen and camera. Mute and deafen are only everybody's icons; turning the camera on is
+  /// also what earns the media transport's permission to send it, so it can be refused: needs video,
+  /// and refuses with camera_limit_reached when every camera place in the call is taken.
   $grpc.ResponseFuture<$0.SetVoiceSelfStateResponse> setVoiceSelfState(
     $0.SetVoiceSelfStateRequest request, {
     $grpc.CallOptions? options,

@@ -1,7 +1,8 @@
 /// The app's view of `raindrop.v1.VoiceService` (RaindropProto's
 /// `voice.proto`): call control only.
 ///
-/// The server decides who may join, speak and moderate; the audio itself
+/// The server decides who may join, speak, show their camera and moderate;
+/// the media itself
 /// travels over a media transport it names in [VoiceJoinResult.transport] —
 /// see `core/voice/` for the engine that speaks it. That engine's signalling
 /// is the one connection to the server that is not gRPC: LiveKit's own
@@ -37,6 +38,8 @@ class VoiceParticipant {
     required this.suppressed,
     required this.connected,
     required this.joinedAtUtc,
+    this.cameraOn = false,
+    this.cameraSuppressed = false,
   });
 
   final String channelId;
@@ -59,6 +62,13 @@ class VoiceParticipant {
 
   final DateTime joinedAtUtc;
 
+  /// They are sending their camera to the call.
+  final bool cameraOn;
+
+  /// They lack `video`, or every camera place in the call is taken, so they
+  /// cannot turn their camera on. The counterpart of [suppressed].
+  final bool cameraSuppressed;
+
   /// Whether they could be heard at all right now.
   bool get canBeHeard => !selfMute && !selfDeaf && !serverMute && !suppressed;
 
@@ -71,6 +81,8 @@ class VoiceParticipant {
     suppressed: m.suppressed,
     connected: m.connected,
     joinedAtUtc: Wire.time(m.joinedAt),
+    cameraOn: m.cameraOn,
+    cameraSuppressed: m.cameraSuppressed,
   );
 }
 
@@ -101,12 +113,18 @@ class VoiceStatus {
     required this.transport,
     required this.maximumParticipants,
     required this.participants,
+    this.maximumCameraPublishers = 0,
   });
 
   final bool available;
   final String transport;
   final int maximumParticipants;
   final List<VoiceParticipant> participants;
+
+  /// How many members of one call may send their camera at once. 0 when this
+  /// server carries no camera video, which is also when it does not advertise
+  /// `voice.video.v1`.
+  final int maximumCameraPublishers;
 
   factory VoiceStatus.fromProto(pb.GetVoiceStatusResponse m) => VoiceStatus(
     available: m.available,
@@ -115,6 +133,7 @@ class VoiceStatus {
     participants: [
       for (final p in m.participants) VoiceParticipant.fromProto(p),
     ],
+    maximumCameraPublishers: m.maximumCameraPublishers,
   );
 }
 
@@ -216,15 +235,27 @@ class VoiceApi {
         token: token,
       )).left;
 
-  /// Tells everybody you muted or deafened yourself.
+  /// Tells everybody you muted or deafened yourself, and turns your camera on
+  /// or off.
+  ///
+  /// Mute and deafen are only everybody's icons and are always accepted. The
+  /// camera is what earns the media server's permission to send one, so it can
+  /// be refused — `missing_permission` without `video`, `camera_limit_reached`
+  /// when every camera place in the call is taken — and a refusal leaves a
+  /// mute in the same request standing.
   Future<VoiceParticipant> setSelfState(
     String token, {
     required bool selfMute,
     required bool selfDeaf,
+    bool cameraOn = false,
   }) async => VoiceParticipant.fromProto(
     (await _channel.call(
       (o) => _voice.setVoiceSelfState(
-        pb.SetVoiceSelfStateRequest(selfMute: selfMute, selfDeaf: selfDeaf),
+        pb.SetVoiceSelfStateRequest(
+          selfMute: selfMute,
+          selfDeaf: selfDeaf,
+          cameraOn: cameraOn,
+        ),
         options: o,
       ),
       token: token,
