@@ -16,6 +16,7 @@ import 'core/storage/app_prefs.dart';
 import 'core/storage/attachment_cache.dart';
 import 'core/theme/theme_controller.dart';
 import 'core/theme/theme_definition.dart';
+import 'core/voice/voice_engine.dart';
 import 'features/home/layout/main_layout.dart';
 
 Future<void> main() async {
@@ -31,6 +32,10 @@ Future<void> main() async {
 
   // Plays video and audio attachments on every platform the app targets.
   MediaKit.ensureInitialized();
+
+  // The call audio stack, before anything can join a call: on phones the
+  // session type a call needs is fixed at initialization. See initializeVoice.
+  await initializeVoice();
 
   // Decrypted attachments live only as long as the run that opened them:
   // emptied now (in case the last run was killed) and again on the way out.

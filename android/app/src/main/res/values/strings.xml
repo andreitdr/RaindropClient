@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The launcher name. The Flutter template used the package name
+         ("raindrop_client"), which is not what the product is called. -->
+    <string name="app_name">Raindrop</string>
+
+    <!-- The ongoing-call notification, and the channel it belongs to (which
+         the user can see and silence in the system's notification settings). -->
+    <string name="call_channel_name">Voice calls</string>
+    <string name="call_channel_description">Shown while you are in a voice call, so the call keeps running when Raindrop is not on screen.</string>
+    <string name="call_ongoing">In a voice call</string>
+</resources>

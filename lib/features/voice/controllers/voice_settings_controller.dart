@@ -28,6 +28,11 @@ class VoiceSettingsController extends Notifier<VoiceSettings> {
         : s.copyWith(selfMute: !s.selfMute),
   );
 
+  /// Flips the loudspeaker on a phone. Remembered like mute is, so a call
+  /// starts the way the last one was left.
+  void toggleSpeakerphone() =>
+      update((s) => s.copyWith(speakerphone: !s.speakerphone));
+
   /// Flips deafen. Deafening mutes; undeafening puts the microphone back how
   /// it was before.
   void toggleDeafen() => update(

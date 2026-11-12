@@ -1,8 +1,20 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// Release signing. `android/key.properties` is deliberately not in the repository — it names a
+// keystore and holds its passwords. Without it (a fresh clone, or CI) the release build falls
+// back to the debug keys, so `flutter build apk --release` still works for testing; such a build
+// just cannot be published. See docs/mobile.md.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val hasReleaseKeystore = keystoreProperties.getProperty("storeFile") != null
 
 android {
     namespace = "com.raindrop.raindrop_client"
@@ -19,11 +31,12 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.raindrop.raindrop_client"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // Android 8.0. Above Flutter's own default (24) on purpose: the call's foreground
+        // service needs `startForegroundService` and notification channels, both API 26, and
+        // guarding those for Android 7 would add branches for a version no longer in use.
+        // The plugins' own floors are lower (webrtc/livekit 21, secure storage 24).
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
@@ -31,15 +44,42 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        ndk {
+            // The ABIs the Rust crypto core is cross-compiled for too (cargokit reads this).
+            // No 32-bit x86: no current device or emulator image needs it, and every ABI
+            // listed is another full Rust build.
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+    }
+
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
+}
+
+dependencies {
+    // NotificationCompat, for the ongoing-call notification (CallForegroundService). The Flutter
+    // embedding pulls androidx.core in already; naming it here means this app's own code does not
+    // depend on that staying true.
+    implementation("androidx.core:core-ktx:1.15.0")
 }
 
 kotlin {

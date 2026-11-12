@@ -32,6 +32,8 @@ class VoiceSelfControls extends StatelessWidget {
       children: [
         VoiceMuteButton(iconSize: iconSize),
         VoiceDeafenButton(iconSize: iconSize),
+        // Draws nothing off a phone; see [VoiceSpeakerphoneButton].
+        VoiceSpeakerphoneButton(iconSize: iconSize),
       ],
     );
   }
@@ -55,10 +57,13 @@ class VoiceMuteButton extends ConsumerWidget {
     final call = ref.watch(voiceCallProvider);
     final controller = ref.read(voiceSettingsProvider.notifier);
 
-    // A moderator's mute (or no `speak` here) outranks the button: it shows
-    // as muted either way, and says why.
+    // A moderator's mute (or no `speak` here) outranks the button, and so
+    // does a microphone that would not open: it shows as muted in every
+    // case, and says which one it is. Only the last of those is worth
+    // trying again, which un-muting does.
     final forcedMute = call.inCall && (call.serverMuted || call.suppressed);
-    final on = settings.micOn && !forcedMute;
+    final broken = call.inCall && call.microphoneFailed;
+    final on = settings.micOn && !forcedMute && !broken;
 
     return _SelfButton(
       style: style,
@@ -69,10 +74,17 @@ class VoiceMuteButton extends ConsumerWidget {
           ? (call.serverMuted
                 ? 'Muted for everyone by a moderator'
                 : 'You cannot speak in this channel')
+          : broken
+          ? 'Your microphone could not be opened — something else may be '
+                'using it. Nobody can hear you; tap to try again.'
           : settings.micOn
           ? 'Mute'
           : 'Unmute',
-      onPressed: controller.toggleMute,
+      // While the microphone is the problem, the button retries it: muting
+      // would change nothing anybody can hear.
+      onPressed: broken
+          ? ref.read(voiceCallProvider.notifier).retryMicrophone
+          : controller.toggleMute,
     );
   }
 }
@@ -255,6 +267,39 @@ class VoiceScreenShareButton extends ConsumerWidget {
     final chosen = await showScreenSharePicker(context);
     if (chosen == null) return;
     await controller.startScreenShare(chosen);
+  }
+}
+
+/// The loudspeaker button, on phones. Like mute and deafen it is a remembered
+/// setting rather than call state, so a call starts out of whichever one the
+/// last call was left on.
+class VoiceSpeakerphoneButton extends ConsumerWidget {
+  const VoiceSpeakerphoneButton({
+    super.key,
+    this.style = SlotStyle.compact,
+    this.iconSize = 20,
+  });
+
+  final SlotStyle style;
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Desktop has no earpiece to switch to; its output device picker in
+    // settings is the equivalent. Drawing nothing here is what lets this
+    // button sit in the shipped layout without appearing there.
+    if (!canUseSpeakerphone) return const SizedBox.shrink();
+
+    final on = ref.watch(voiceSettingsProvider.select((s) => s.speakerphone));
+    return _SelfButton(
+      style: style,
+      iconSize: iconSize,
+      icon: on ? Icons.volume_up : Icons.phone_in_talk,
+      // Neither setting is a problem, so neither is drawn as one.
+      alarmed: false,
+      tooltip: on ? 'Use the earpiece' : 'Use the speaker',
+      onPressed: ref.read(voiceSettingsProvider.notifier).toggleSpeakerphone,
+    );
   }
 }
 

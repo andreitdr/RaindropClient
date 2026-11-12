@@ -63,6 +63,16 @@ routes to `ReauthPrompt` (see [Servers & sessions](servers-and-sessions.md)). Th
 after a **server restart**, which logs everyone out: the stream backs off while the server is down, is
 refused as `invalid_session` when it is back, and the user is asked for their password.
 
+### Coming back from the background
+
+Anything could have changed while the app was not looking — a phone unlocked, a laptop woken — even if
+the stream survived. So `serverEventsProvider` registers an `AppLifecycleListener` whose `onResume`
+calls `EventStream.resubscribe()`: it asks the server for a fresh `ready` on the open stream, and that
+`ready` is every feature's cue to re-read, since the server replays nothing. Nothing is torn down, and
+it does nothing while the stream is not open (a stream that is down is already reconnecting). Desktop
+windows are never suspended, so there it is cheap and rarely matters. See
+[Android and iOS](mobile.md).
+
 ### `LiveSync` — how a controller follows the stream
 
 Every controller that shows server state constructs one in `build`, handing it three things:
@@ -115,3 +125,4 @@ silently dropped every later re-read.
   the server's guarantees.
 - [Network layer](network-layer.md) — `RaindropChannel` and pinning.
 - [Servers & sessions](servers-and-sessions.md) — how a `sessionEnded` becomes a reauth prompt.
+- [Android and iOS](mobile.md) — why a phone needs `resubscribe()` at all.

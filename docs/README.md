@@ -29,6 +29,7 @@ The sibling checkouts are not optional: `native/raindrop_crypto_builder` builds
 | [Architecture overview](architecture-overview.md) | `core/` vs. `features/` split, state management, folder layout |
 | [Theming](theming.md) | `AppThemeDefinition`, the two built-in themes, custom themes, the theme editor |
 | [Native feel per platform](native-feel-per-platform.md) | Platform branching, adaptive widgets, the responsive shell |
+| [Android and iOS](mobile.md) | What a phone needs that a desktop does not: background voice, resuming after suspension, rejoining a dropped call, the speaker, building and permissions |
 | [Connecting to a server](connecting-to-a-server.md) | `ConnectServerFlow`, registration/login/rejoin, fingerprint pinning |
 | [Servers & sessions](servers-and-sessions.md) | The local server list, `ServerSession`, cold-start session resolution, reauth |
 | [Channels](channels.md) | The channel list, creating/renaming/deleting channels, the sidebar |
@@ -64,12 +65,14 @@ The sibling checkouts are not optional: `native/raindrop_crypto_builder` builds
   encrypted media), live updates over the server's event stream (messages, deletions, channels, roster,
   presence and who is in which call arrive as they happen), device setup and linking for encryption,
   theming (built-in + custom), a user-arranged main view (panes and buttons moved, resized and hidden in
-  a layout editor, saved to a local file), per-platform adaptive chrome.
+  a layout editor, saved to a local file), per-platform adaptive chrome, and phones as a full target
+  (calls that survive switching apps, event streams re-read on the way back, a dropped call rejoined,
+  and the earpiece/loudspeaker choice). See [Android and iOS](mobile.md).
 - **End-to-end encryption is on by default** wherever the server offers it: this app drives each
   channel's MLS group through the server's delivery service, so text, files and call media are all
   encrypted for real. See [Crypto](crypto.md).
-- **What's not implemented yet:** background voice on phones, push-to-talk, camera and screen sharing,
-  changing your username or password from the app, any role-editing UI, and notifications. See
+- **What's not implemented yet:** push-to-talk, camera effects on Windows and Linux, sharing a screen
+  from a phone, changing your username or password from the app, any role-editing UI, and notifications. See
   [Roadmap](roadmap.md).
 
 ## Keeping this wiki current

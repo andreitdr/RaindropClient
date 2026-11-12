@@ -63,7 +63,11 @@ Integration tests against a live server (the real Rust core, the real server) ar
 fresh database; see `docs/crypto.md#tests`.
 
 Unit tests live under `test/` (`flutter test`) — pure logic only (models, merges, settings round-trips,
-the payload encodings), plus one widget test for the layout editor's hit-testing (`test/core/layout/`).
+the payload encodings), plus one widget test for the layout editor's hit-testing (`test/core/layout/`)
+and two that stand a fake platform up behind a channel or a binding
+(`test/core/voice/call_session_host_test.dart`, `test/core/platform/app_lifecycle_test.dart`). Note that
+`flutter test` reports `defaultTargetPlatform` as **android**, so anything that branches on the platform
+has to say which one it means (`debugDefaultTargetPlatformOverride`) rather than relying on the default.
 To check the network layer against a real server, run the server per its own CLAUDE.md
 (`dotnet run --project ServerCli` from `RaindropServer/`, default `https://localhost:5001`) and run
 `test/integration/transport_test.dart`, which needs no Rust core — the handshake and the pin, error
@@ -78,6 +82,11 @@ missing, and the web is not a target); macOS, iOS, Android, Windows and Linux bu
 Android SDK and NDK are installed — cargokit cross-compiles the Rust core for Android itself, so a
 `flutter build apk` needs no extra step, but the first one is slow for the same reason the first
 desktop build is.
+**Android is still proven in CI as well as locally** — `.github/workflows/ci.yml` builds `android` and
+`ios` alongside the desktop targets, so a change to either platform's configuration is not verified
+until that runs. An Android build needs a Rust target per ABI
+(`rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`). See
+`docs/mobile.md`.
 
 ## Architecture
 
@@ -88,8 +97,10 @@ chat views.
 
 ```
 core/
-  platform/   — the only place that branches on OS (RaindropPlatform, isApplePlatform, …), and
-                windows_processes (which process owns a window, over dart:ffi, for screen sharing)
+  platform/   — the only place that branches on OS (RaindropPlatform, isApplePlatform, …),
+                windows_processes (which process owns a window, over dart:ffi, for screen sharing), and
+                appLifecycleProvider (whether the app is on screen — a phone suspends a backgrounded
+                app outright, and calls have to be told)
   theme/      — AppThemeDefinition (JSON-backed theme model), AppTheme's ThemeData builder, the
                 AppSurfaces color-role extension, and the catalog/active-theme controllers
   widgets/    — Panel (flat chrome surface), AdaptiveSwitch/AdaptiveActivityIndicator/showAdaptiveConfirm
@@ -104,7 +115,8 @@ core/
   voice/      — VoiceEngine (a call's microphone, camera and screen share, transport-agnostic) +
                 LiveKitVoiceEngine, the only code that imports livekit_client / flutter_webrtc, and
                 VoiceVideoView (draws a feed, which builds its own surface — so no widget outside
-                core/voice/ ever names a track type)
+                core/voice/ ever names a track type), and CallSessionHost (keeping a call running
+                while the app is off screen: a no-op except on Android)
   video/      — VoiceCameraEffect (what the user chose to do to their camera's background) and
                 CameraEffects, the handle on the running native effects — the only file outside
                 crypto/ that imports the generated bridge, because the effects ride in the same Rust
@@ -201,6 +213,10 @@ Nothing here builds separate UI trees per OS. Instead:
 - The shell (`features/home/screens/home_shell.dart`) is responsive by width, not by platform: a
   `LayoutBuilder` collapses the four-pane desktop layout into a single pane behind a drawer under
   680px, which is what makes phones and small windows usable without a separate mobile codebase.
+- What a responsive layout *cannot* cover — a phone stopping a backgrounded app, and having two
+  speakers instead of a device picker — sits behind its own seam (`CallSessionHost`,
+  `appLifecycleProvider`, `VoiceEngine.setSpeakerphone`), each inert off the platform that needs it.
+  See `docs/mobile.md`.
 
 ### Connecting to a server
 
@@ -418,14 +434,19 @@ camera and moderate; the media goes over the transport it names on join (`liveki
 - `voiceRosterProvider(serverId)` follows `voice.state` / `voice.left` / `channel.deleted` and drives
   the sidebar's per-channel participant list and the voice view. Selecting a voice channel opens the
   view; joining is its button.
+- **Calls survive the app leaving the screen on a phone**, and a call the network drops is rejoined
+  (five tries over ~30s) rather than ended. The two platforms want opposite things for the first —
+  iOS a background mode in `Info.plist`, Android a `microphone` foreground service — so both go
+  through `core/voice/CallSessionHost`, and `InactiveCallSessionHost` covers everywhere that needs
+  nothing. See `docs/mobile.md`.
 
 ### What's still missing
 
-- **Background voice on phones** (iOS background audio, Android microphone foreground service), and
-  rejoining automatically after a dropped connection.
 - Push-to-talk, **camera effects on Windows and Linux** (they run on macOS, iOS and Android), sharing
-  a screen from a phone, a window's sound on macOS and Linux, microphone gain; changing your username or password from the app; any role-editing or report-moderation UI;
-  notifications.
+  a screen from a phone, a window's sound on macOS and Linux, microphone gain; changing your username or
+  password from the app; any role-editing or report-moderation UI.
+- **Notifications**, including for messages that arrive while the app is closed. Raindrop is self-hosted
+  with no push infrastructure; `docs/roadmap.md` lays out what closing that would cost.
 
 The full, maintained inventory is [`docs/roadmap.md`](docs/roadmap.md) — update it in the same change
 that closes one of these.

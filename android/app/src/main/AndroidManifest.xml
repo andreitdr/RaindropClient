@@ -11,8 +11,18 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- Keeping a call running while the app is not on screen. Android stops the process
+         (and the microphone with it) otherwise; from Android 14 the service has to say what
+         it is for, and a call is "microphone". See CallForegroundService. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- The notification that service is required to show. Denying it does not stop a call;
+         Android 13+ just shows nothing, and the service still runs. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
-        android:label="raindrop_client"
+        android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -37,6 +47,13 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+
+        <!-- Not exported: only this app starts it, and only while a call is in progress. -->
+        <service
+            android:name=".CallForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

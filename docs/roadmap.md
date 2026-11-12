@@ -35,17 +35,17 @@ the **app**; the other two projects keep their own, and a gap here is often a ga
 ## Not implemented yet
 
 ### Voice
-- **Background audio on phones.** iOS has no background audio mode set and Android has no microphone
-  foreground service, so a call stops being heard once the app is backgrounded.
-- **Rejoining automatically after a dropped connection.** LiveKit's own reconnect is handled and shown
-  as `reconnecting`, but a connection that is really gone ends the call with a notice; you join again.
+- **CallKit / ConnectionService.** A call is started from inside the app and never rings, so it does
+  not appear in the phone's own call UI. That would need push to be worth much.
+  [Android and iOS](mobile.md)
 - **Push-to-talk.**
 - **Camera effects on Windows and Linux.** They run on macOS, iOS and Android
   ([Voice](voice.md#camera-effects)); those two have no chain between the capturer and the video
   source to put a processor into, so `canUseCameraEffects` is false there and the sheet says so. The
   effects themselves are already built and tested for every target in
   [RaindropCrypto](../../RaindropCrypto/docs/video-effects.md).
-- **Sharing from a phone.** Needs background calls first: showing another app backgrounds Raindrop.
+- **Sharing from a phone.** Background calls now exist ([Android and iOS](mobile.md)), so this is
+  unblocked, but nothing captures a phone's screen yet.
 - **A window's sound on macOS and Linux.** macOS has no custom audio source in its WebRTC build short
   of a fork; Linux's capture records everything Raindrop plays too and needs a change in
   flutter_webrtc. [Voice](voice.md#screen-sharing)
@@ -66,7 +66,11 @@ the **app**; the other two projects keep their own, and a gap here is often a ga
   and search.** None of these exist on the server either; they are joint work.
   [Server roadmap](../../RaindropServer/docs/roadmap.md#chat)
 - **Notifications.** No local or push notifications on any platform; the app only shows what is on
-  screen while it is open.
+  screen while it is open. Raindrop is self-hosted with no push infrastructure, so closing this on
+  phones means FCM/APNs (every deployment needs credentials, and message metadata passes through
+  Google or Apple) or a self-hosted relay (ntfy, UnifiedPush; iOS still needs APNs to wake an app),
+  ideally as a pluggable transport. Local notifications while the app is merely backgrounded would
+  cover part of it with no infrastructure. [Android and iOS](mobile.md)
 
 ### Protocol and packaging
 - **Mobile release artefacts.** `release.yml` packages Linux (AppImage/deb/rpm), macOS (dmg) and

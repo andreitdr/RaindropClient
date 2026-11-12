@@ -203,6 +203,22 @@ void main() {
       expect(back.outputVolume, 1.0);
       expect(back.selfDeaf, isFalse);
     });
+
+    // Settings saved by a build without a speakerphone toggle — every
+    // desktop build before phones were a target — must not read as
+    // "earpiece", which on a phone would be a call nobody can hear.
+    test('settings from a build without a speakerphone default to it', () {
+      expect(VoiceSettings.fromJson(const {}).speakerphone, isTrue);
+      expect(
+        VoiceSettings.fromJson(const {'speakerphone': 'yes'}).speakerphone,
+        isTrue,
+      );
+    });
+
+    test('a chosen earpiece survives the round trip', () {
+      const settings = VoiceSettings(speakerphone: false);
+      expect(VoiceSettings.fromJson(settings.toJson()).speakerphone, isFalse);
+    });
   });
 
   group('mute and deafen', () {
@@ -236,6 +252,18 @@ void main() {
       final settings = container.read(voiceSettingsProvider);
       expect(settings.selfDeaf, isFalse);
       expect(settings.micOn, isTrue);
+    });
+
+    test('the speaker is remembered from one call to the next', () async {
+      final first = await containerWithPrefs();
+      first.read(voiceSettingsProvider.notifier).toggleSpeakerphone();
+      expect(first.read(voiceSettingsProvider).speakerphone, isFalse);
+
+      final stored = (await SharedPreferences.getInstance()).getString(
+        'voice.settings',
+      )!;
+      final second = await containerWithPrefs({'voice.settings': stored});
+      expect(second.read(voiceSettingsProvider).speakerphone, isFalse);
     });
 
     test('persists across restarts', () async {

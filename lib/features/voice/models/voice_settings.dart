@@ -22,6 +22,7 @@ class VoiceSettings {
     this.videoDeviceId,
     this.videoQuality = VoiceVideoQuality.sd540,
     this.cameraEffect = const VoiceCameraEffect(),
+    this.speakerphone = true,
   });
 
   /// Everybody's volume here, multiplied into each member's own: 1 as sent.
@@ -55,6 +56,13 @@ class VoiceSettings {
   /// What to do to the camera's background. Remembered so turning the camera
   /// on is one tap after the first time.
   final VoiceCameraEffect cameraEffect;
+  /// Phones only: play the call out of the loudspeaker rather than the
+  /// earpiece. It is the sensible default for a chat app — a call joined from
+  /// a channel list is one you are listening to, not one held to your ear —
+  /// and the toggle in the call controls is how you put it back. Desktop has
+  /// no earpiece to choose between, and ignores this; see
+  /// `canUseSpeakerphone`.
+  final bool speakerphone;
 
   /// Whether the microphone should be sending.
   bool get micOn => !selfMute && !selfDeaf;
@@ -85,6 +93,7 @@ class VoiceSettings {
     String? Function()? videoDeviceId,
     VoiceVideoQuality? videoQuality,
     VoiceCameraEffect? cameraEffect,
+    bool? speakerphone,
   }) => VoiceSettings(
     outputVolume: outputVolume ?? this.outputVolume,
     inputDeviceId: inputDeviceId != null ? inputDeviceId() : this.inputDeviceId,
@@ -100,6 +109,7 @@ class VoiceSettings {
     videoDeviceId: videoDeviceId != null ? videoDeviceId() : this.videoDeviceId,
     videoQuality: videoQuality ?? this.videoQuality,
     cameraEffect: cameraEffect ?? this.cameraEffect,
+    speakerphone: speakerphone ?? this.speakerphone,
   );
 
   /// The whole camera choice at once, which is what the sheet returns.
@@ -122,6 +132,7 @@ class VoiceSettings {
     'videoDeviceId': videoDeviceId,
     'videoQuality': videoQuality.name,
     'cameraEffect': cameraEffect.toJson(),
+    'speakerphone': speakerphone,
   };
 
   /// Reads what [toJson] wrote, falling back to the defaults for anything
@@ -156,6 +167,7 @@ class VoiceSettings {
       cameraEffect: effect is Map
           ? VoiceCameraEffect.fromJson(Map<String, dynamic>.from(effect))
           : defaults.cameraEffect,
+      speakerphone: flag(j['speakerphone'], defaults.speakerphone),
     );
   }
 }

@@ -150,6 +150,11 @@ bool isWindowStillOpen(String windowId) {
   final hwnd = int.tryParse(windowId);
   return hwnd != null && windows.windowExists(hwnd);
 }
+/// Whether a call can be moved between the earpiece and the loudspeaker.
+/// Only phones have both; on desktop the output device picker
+/// ([canChooseAudioDevices]) is the equivalent, and the two are deliberately
+/// never offered together.
+bool get canUseSpeakerphone => isMobilePlatform;
 
 /// Whether the camera can scan a QR code here — the device-link code another
 /// device shows. `mobile_scanner` covers iOS, Android and macOS; elsewhere

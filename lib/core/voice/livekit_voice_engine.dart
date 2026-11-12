@@ -17,6 +17,27 @@ class LiveKitVoiceEngine implements VoiceEngine {
   /// The transport name the server uses for LiveKit.
   static const transportName = 'livekit';
 
+  /// Prepares the media stack, once, before any call.
+  ///
+  /// Only phones need this: WebRTC reads Android's playout attributes when it
+  /// builds its audio device module, which happens on the first call and
+  /// cannot be changed afterwards, so the call's own settings have to be in
+  /// place before then. Asking for a *communication* session is what routes a
+  /// call to the earpiece and Bluetooth headsets rather than the media
+  /// speaker, and what lets it keep the microphone in the background.
+  /// Desktop initializes itself lazily and is left alone.
+  static Future<void> initialize() async {
+    if (!isMobilePlatform) return;
+    await LiveKitClient.initialize(
+      // LiveKit marks the audio-session API experimental. Passing nothing
+      // leaves Android's playout attributes on media defaults, which puts a
+      // call on the media stream — wrong volume rocker, wrong routing — so
+      // this is worth following across an SDK upgrade rather than skipping.
+      // ignore: experimental_member_use
+      initialAudioSessionOptions: const AudioSessionOptions.communication(),
+    );
+  }
+
   Room? _room;
   EventsListener<RoomEvent>? _listener;
   bool _micWanted = false;
@@ -29,6 +50,7 @@ class LiveKitVoiceEngine implements VoiceEngine {
   final _activeSpeakers = StreamController<Set<String>>.broadcast();
   final _disconnects = StreamController<VoiceDisconnectReason>.broadcast();
   final _publishRights = StreamController<VoicePublishRights>.broadcast();
+  final _micFailures = StreamController<void>.broadcast();
   final _encryption = StreamController<VoiceEncryption>.broadcast();
   final _warnings = StreamController<String>.broadcast();
   final _cameraStates = StreamController<bool>.broadcast();
@@ -136,6 +158,9 @@ class LiveKitVoiceEngine implements VoiceEngine {
 
   @override
   Stream<Set<String>> get untrustedVideo => _untrustedVideo.stream;
+
+  @override
+  Stream<void> get microphoneFailures => _micFailures.stream;
 
   @override
   Stream<VoiceEncryption> get encryptionChanges => _encryption.stream;
@@ -469,9 +494,17 @@ class LiveKitVoiceEngine implements VoiceEngine {
     _endWatch?.stop();
     await _listener?.dispose();
     _listener = null;
-    await _room?.disconnect();
+    // A disconnect waits for the server to acknowledge it and times out when
+    // the connection is already gone — which is exactly the case a call
+    // usually ends in. Hanging up must not throw for that.
+    try {
+      await _room?.disconnect();
+    } on Object catch (e) {
+      debugPrint('voice: the room did not disconnect cleanly: $e');
+    }
     await _room?.dispose();
     _room = null;
+    await _micFailures.close();
     await _connectionStates.close();
     await _activeSpeakers.close();
     await _disconnects.close();
@@ -1263,12 +1296,36 @@ class LiveKitVoiceEngine implements VoiceEngine {
     );
   }
 
+  /// Opens or closes the microphone, and never throws for failing to.
+  ///
+  /// Capture can fail for reasons that have nothing to do with this call —
+  /// another app holding the microphone, no input device at all — and it is
+  /// reached from a connect, a settings change and a permissions event, none
+  /// of which should end a call that is otherwise working. So a failure is
+  /// reported on [microphoneFailures] and the call carries on without this
+  /// participant's audio.
   Future<void> _applyMic() async {
     final local = _room?.localParticipant;
     if (local == null) return;
 
     if (_micWanted && !_rights.microphone) return;
-    await local.setMicrophoneEnabled(_micWanted);
+    try {
+      await local.setMicrophoneEnabled(_micWanted);
+    } on Object catch (e) {
+      // Turning it *off* is not worth reporting: it is already not being
+      // heard, which is what was asked for.
+      if (!_micWanted) return;
+      debugPrint('voice: could not open the microphone: $e');
+      if (!_micFailures.isClosed) _micFailures.add(null);
+    }
+  }
+
+  @override
+  Future<void> setSpeakerphone(bool enabled) async {
+    if (!AudioManager.instance.canSwitchSpeakerphone) return;
+    // Not forced: a headset or a Bluetooth earpiece that is plugged in still
+    // wins, which is what somebody putting one on expects.
+    await AudioManager.instance.setSpeakerOutputPreferred(enabled);
   }
 
   Future<void> _selectOutput(String deviceId) async {
