@@ -120,16 +120,12 @@ jobs:
           echo "OPENSSL_SRC_PERL=$(cygpath -m "$perl_exe")" >> "$GITHUB_ENV"
           echo "STRAWBERRY_PERL_BIN=$(dirname "$perl_exe")" >> "$GITHUB_ENV"
 
-      # OpenSSL's build tree is deep. Under cargokit's default folder (inside build/, inside the doubled
-      # workspace path) its longest files exceed Windows' 260-character path limit, and Perl's Configure
-      # then fails with "No such file or directory" (exit code 2). Build in a short folder instead.
-      # Runner-only edit; the repository's copy of cargokit is untouched.
+      # OpenSSL's build tree is deep. cargokit.cmake already builds Rust in a short folder on Windows
+      # (%LOCALAPPDATA%\rdcargo by default). The runner keeps the even shorter C:/ck it was first
+      # proven with.
       - name: Shorten cargokit build path
         if: matrix.name == 'windows'
-        run: |
-          file=native/raindrop_crypto_builder/cargokit/cmake/cargokit.cmake
-          sed -i 's|set(CARGOKIT_TEMP_DIR "${CMAKE_CURRENT_BINARY_DIR}/cargokit_build")|set(CARGOKIT_TEMP_DIR "C:/ck")|' "$file"
-          grep -n 'CARGOKIT_TEMP_DIR "C:/ck"' "$file"
+        run: echo "RAINDROP_CARGO_BUILD_DIR=C:/ck" >> "$GITHUB_ENV"
 
       - name: Restore packages
         run: flutter pub get

@@ -29,6 +29,7 @@ The sibling checkouts are not optional: `native/raindrop_crypto_builder` builds
 | [Architecture overview](architecture-overview.md) | `core/` vs. `features/` split, state management, folder layout |
 | [Theming](theming.md) | `AppThemeDefinition`, the two built-in themes, custom themes, the theme editor |
 | [Native feel per platform](native-feel-per-platform.md) | Platform branching, adaptive widgets, the responsive shell |
+| [Building on Windows](building-on-windows.md) | Everything a Windows PC needs to build and run the app — Visual Studio, Rust, Strawberry Perl, NASM, Developer Mode — with download links, the path-length workaround, and common errors |
 | [Android and iOS](mobile.md) | What a phone needs that a desktop does not: background voice, resuming after suspension, rejoining a dropped call, the speaker, building and permissions |
 | [Connecting to a server](connecting-to-a-server.md) | `ConnectServerFlow`, registration/login/rejoin, fingerprint pinning |
 | [Servers & sessions](servers-and-sessions.md) | The local server list, `ServerSession`, cold-start session resolution, reauth |

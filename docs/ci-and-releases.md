@@ -23,10 +23,10 @@ still in progress.
 
 | Job | Runners | Does |
 |---|---|---|
-| `build` | `ubuntu-latest`, `macos-latest`, `windows-latest` (`fail-fast: false`) | `flutter pub get`, `flutter analyze` (on Linux only — it is platform-independent), `flutter build <platform> --release` |
+| `build` | `linux` (`ubuntu-latest`), `macos` (`macos-latest`), `windows` (`windows-latest`), `android` (`ubuntu-latest`), `ios` (`macos-latest`); `fail-fast: false` | `flutter pub get`, `flutter analyze` (on Linux only — it is platform-independent), then `flutter build <platform> --release` (`apk` for Android, `ios --no-codesign` for iOS) |
 | `test` | `ubuntu-latest`, after `build` | `flutter test` — the unit tests. The integration tests skip themselves because `RAINDROP_TEST_SERVER` is unset |
 
-Three runner-only workarounds in the build, each undone with the checkout:
+Three workarounds in the build. The first two are runner-only and undone with the checkout:
 
 - **macOS signing.** The project signs with the developer's own Apple Development certificate, which
   CI does not have, so `project.pbxproj` is rewritten to ad-hoc signing (and the step fails if any
@@ -35,7 +35,9 @@ Three runner-only workarounds in the build, each undone with the checkout:
   Strawberry Perl and NASM; Git Bash otherwise puts Git's cut-down Perl first on `PATH`, and
   OpenSSL's `Configure` fails on it.
 - **Windows path length.** OpenSSL's build tree under cargokit's default folder exceeds the
-  260-character limit inside the doubled workspace path, so the build is redirected to `C:/ck`.
+  260-character limit. `cargokit.cmake` moves the Rust build to `%LOCALAPPDATA%\rdcargo` on every
+  Windows machine; CI sets `RAINDROP_CARGO_BUILD_DIR=C:/ck` to make it shorter still. See
+  [Building on Windows](building-on-windows.md#path-length).
 
 Integration tests are **not** run in CI: they need a live server with a fresh database. Run them
 locally — see [Crypto](crypto.md#tests) for the full set and the `RAINDROP_TEST_SERVER` form.
@@ -46,10 +48,10 @@ Two more gaps worth naming, both local-only on purpose:
   and `test/core/video/camera_effects_test.dart`) look for it under
   `../RaindropCrypto/target/debug/`, which a `flutter build` does not produce — cargokit builds into
   its own tree. They skip themselves in CI and run after a `cargo build -p raindrop_crypto_ffi`.
-- **Android is not built in CI**, so the Android half of
+- **Android and iOS are compiled in CI but never run**, so the Android half of
   [`native/raindrop_camera_effects`](voice.md#camera-effects) — the JNI binding in particular, which
-  resolves by name at the first frame rather than at compile time — is only verified by a local
-  `flutter build apk`. Adding an Android job means an SDK, an NDK and a third Rust target matrix.
+  resolves by name at the first frame rather than at compile time — is only verified by running the
+  app on a device.
 
 ## `release.yml` — package and publish
 
