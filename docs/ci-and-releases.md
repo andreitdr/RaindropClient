@@ -26,6 +26,17 @@ still in progress.
 | `build` | `linux` (`ubuntu-latest`), `macos` (`macos-latest`), `windows` (`windows-latest`), `android` (`ubuntu-latest`), `ios` (`macos-latest`); `fail-fast: false` | `flutter pub get`, `flutter analyze` (on Linux only — it is platform-independent), then `flutter build <platform> --release` (`apk` for Android, `ios --no-codesign` for iOS) |
 | `test` | `ubuntu-latest`, after `build` | `flutter test` — the unit tests. The integration tests skip themselves because `RAINDROP_TEST_SERVER` is unset |
 
+**Flutter is pinned** (`FLUTTER_VERSION` at the top of both workflows) to the release the app is
+developed with, rather than following the latest stable. A new Flutter can deprecate things, and
+`flutter analyze` treats its deprecation notices as failures. Flutter 3.50 deprecated importing
+`package:flutter/material.dart` and `cupertino.dart`, which failed the Linux job on 45 notices while
+nothing in the repository had changed. To move CI forward, upgrade Flutter locally first, fix what
+`flutter analyze` reports, and then change the pin.
+
+**Android's licences** are accepted with `(yes || true) | sdkmanager --licenses`. The steps run with
+`pipefail`, and `yes` fails with "Broken pipe" once `sdkmanager` stops reading, which on its own failed
+the job before anything was built.
+
 Three workarounds in the build. The first two are runner-only and undone with the checkout:
 
 - **macOS signing.** The project signs with the developer's own Apple Development certificate, which

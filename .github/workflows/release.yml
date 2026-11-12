@@ -11,6 +11,13 @@ on:
 permissions:
   contents: read
 
+env:
+  # The Flutter release the app is developed and checked with. Pinned, not "latest stable", so a new
+  # Flutter cannot fail a build nobody changed: 3.50 deprecated importing package:flutter/material.dart
+  # and package:flutter/cupertino.dart, and `flutter analyze` treats those 45 deprecations as fatal.
+  # Move this together with the reference machine's Flutter, and fix what the new one reports first.
+  FLUTTER_VERSION: "3.47.2"
+
 jobs:
   ci:
     name: Build and test
@@ -49,6 +56,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
       - name: Linux build and packaging tools
