@@ -309,7 +309,7 @@ class LiveKitVoiceEngine implements VoiceEngine {
   @override
   Future<void> disconnect() async {
     _disconnectReported = true;
-    await _room?.disconnect();
+    await _closeRoom();
   }
 
   @override
@@ -503,21 +503,19 @@ class LiveKitVoiceEngine implements VoiceEngine {
     // Before the room goes: the effects hold a segmentation thread, and the
     // room disconnecting does not release it; the share's guards hold timers.
     await _effects.clear();
+    // Nothing still starting may publish after this, and nothing is wanted
+    // any more: a call that is over has no camera and no share to restore.
     _shareGeneration++;
     _sizeGuard?.stop();
+    _sizeGuard = null;
     _endWatch?.stop();
+    _endWatch = null;
+    _share = const VoiceScreenShareState.off();
+    _cameraWanted = false;
+    _micWanted = false;
     await _listener?.dispose();
     _listener = null;
-    // A disconnect waits for the server to acknowledge it and times out when
-    // the connection is already gone — which is exactly the case a call
-    // usually ends in. Hanging up must not throw for that.
-    try {
-      await _room?.disconnect();
-    } on Object catch (e) {
-      debugPrint('voice: the room did not disconnect cleanly: $e');
-    }
-    await _room?.dispose();
-    _room = null;
+    await _closeRoom();
     await _micFailures.close();
     await _connectionStates.close();
     await _activeSpeakers.close();
@@ -594,6 +592,54 @@ class LiveKitVoiceEngine implements VoiceEngine {
 
   // ── Plumbing ───────────────────────────────────────────────────────────────
 
+  /// Leaves the room and releases everything it holds, at once.
+  ///
+  /// Deliberately not `Room.disconnect()`: that sends LiveKit's leave and then
+  /// waits — up to a fixed ten seconds — for the server to answer with a leave
+  /// of its own, which a client-initiated leave does not reliably get, and
+  /// only *after* that wait does it stop the local tracks. Hanging up through
+  /// it left the microphone (and any camera or shared screen) capturing for
+  /// ten seconds after the call had ended on screen, and then threw.
+  ///
+  /// So, in this order: stop capturing — microphone, camera, the shared
+  /// screen and its sound — so every device light goes off whatever happens
+  /// next; tell LiveKit we are leaving without waiting for an answer; and
+  /// dispose the room, which closes both peer connections and the signalling
+  /// socket. Raindrop's own `LeaveVoice` is what takes this participant out of
+  /// the call for everybody else; the leave sent here only makes LiveKit
+  /// notice sooner. Safe to call twice.
+  Future<void> _closeRoom() async {
+    final room = _room;
+    _room = null;
+    if (room == null) return;
+
+    for (final publication
+        in room.localParticipant?.trackPublications.values.toList() ??
+            const <LocalTrackPublication>[]) {
+      try {
+        await publication.track?.stop();
+      } on Object catch (e) {
+        debugPrint('voice: could not stop a local track: $e');
+      }
+    }
+
+    try {
+      // `Room.disconnect()` minus its wait (see above). The engine is marked
+      // internal; if an upgrade takes it away, disposing below still closes
+      // every connection and Raindrop's leave still ends the call.
+      // ignore: invalid_use_of_internal_member
+      await room.engine.disconnect();
+    } on Object catch (e) {
+      debugPrint('voice: could not send the leave to the media server: $e');
+    }
+
+    try {
+      await room.dispose();
+    } on Object catch (e) {
+      debugPrint('voice: the room did not close cleanly: $e');
+    }
+  }
+
   AudioCaptureOptions _captureOptions(String? deviceId) => AudioCaptureOptions(
     deviceId: deviceId,
     echoCancellation: _processing.echoCancellation,
@@ -622,8 +668,16 @@ class LiveKitVoiceEngine implements VoiceEngine {
         _disconnects.add(_reasonOf(event.reason));
       })
       ..on<ParticipantDisconnectedEvent>((event) {
-        _unencrypted.remove(event.participant.identity);
-        _failing.removeAll(event.participant.trackPublications.keys);
+        final identity = event.participant.identity;
+        final sids = event.participant.trackPublications.keys;
+        _unencrypted.remove(identity);
+        _failing.removeAll(sids);
+        _subscribeRetried.removeAll(sids);
+        // `_watching` is left to the call controller, which drops it when
+        // Raindrop says they left the call: the media server also reports a
+        // participant gone when they are only rejoining after a network drop,
+        // and that share should keep being watched.
+        //
         // `_videoHidden` deliberately survives them leaving: it is the user's
         // standing wish about a person, not about a publication, and it is
         // persisted across restarts anyway.
