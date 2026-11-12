@@ -101,6 +101,10 @@ with it, because the server forgets session bindings when sessions end. The serv
 
 - **First device of an account.** The controller creates the identity, registers the device, binds
   the session with a signed challenge, then seals a backup under a new recovery key and uploads it.
+  `build` reruns whenever the session does, so overlapping runs share one in-flight setup per server
+  (`_firstDeviceSetups`) instead of each calling `createIdentity` — the second would fail with "this
+  store already holds a device identity". The recovery words are kept (`_unshownRecoveryWords`) until
+  `acknowledgeRecoveryWords`, so whichever run ends up live still shows them.
 - **Linking.** The new device shows `DeviceLinkCode` (`RDL1-<link id>-<commitment>`) as text and as a
   QR code (`qr_flutter`). The user enters or scans it under Settings → Encryption → *Link a new device*
   on a device that has keys. Scanning (`mobile_scanner`, `link_code_scanner.dart`) is offered where
