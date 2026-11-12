@@ -70,6 +70,16 @@ class LiveKitVoiceEngine implements VoiceEngine {
   bool _cameraWanted = false;
   VoiceCameraOptions _camera = const VoiceCameraOptions();
 
+  /// The camera publish in flight, if any. Publishing is single-flight: the
+  /// grant arriving and the call controller reacting to it can both ask, and
+  /// two overlapping `setCameraEnabled(true)` calls can leave this device
+  /// showing a track nobody else receives.
+  Future<void>? _cameraApplying;
+
+  /// Publications whose failed subscription has already been asked for once
+  /// more, so a track that cannot be received is retried once, not forever.
+  final _subscribeRetried = <String>{};
+
   /// Whether the chosen camera faces the user, which is the only thing that
   /// decides whether their own picture is mirrored. Resolved from the device
   /// list when the camera is chosen, since a capture track does not say.
@@ -204,11 +214,13 @@ class LiveKitVoiceEngine implements VoiceEngine {
     // undecryptable frames are dropped, not played.
     E2EEOptions? encryption;
     if (mediaKey != null) {
-      final provider = await BaseKeyProvider.create(
-        sharedKey: true,
-        ratchetWindowSize: 0,
-        failureTolerance: -1,
-        keyRingSize: keyRingSize,
+      final provider = _SharedKeyProvider.from(
+        await BaseKeyProvider.create(
+          sharedKey: true,
+          ratchetWindowSize: 0,
+          failureTolerance: -1,
+          keyRingSize: keyRingSize,
+        ),
       );
       await provider.setSharedKey(
         String.fromCharCodes(mediaKey.key),
@@ -372,6 +384,8 @@ class LiveKitVoiceEngine implements VoiceEngine {
     // Swapping the effect leaves the capture alone; changing the camera or the
     // quality cannot, and other participants see that as a brief freeze.
     if (previous.needsRestartFor(options)) {
+      // After any publish already running, which captured the old options.
+      await _cameraApplying;
       await _applyCamera();
     } else {
       await _applyEffect();
@@ -637,7 +651,13 @@ class LiveKitVoiceEngine implements VoiceEngine {
         if (publication.kind != TrackType.VIDEO) return;
         if (_videoHidden.contains(identity)) {
           await _applyVisibility(publication, false);
+        } else if (!publication.subscribed &&
+            !_unencrypted.contains(identity)) {
+          // A backstop for auto-subscribe: a camera nobody asked for is a tile
+          // that never leaves its avatar. A no-op once it is on its way.
+          await publication.subscribe();
         }
+        _reportFeeds();
       })
       ..on<TrackUnpublishedEvent>((_) => _reportFeeds())
       ..on<TrackSubscribedEvent>((event) async {
@@ -772,10 +792,40 @@ class LiveKitVoiceEngine implements VoiceEngine {
         _failing.remove(event.publication.sid);
         _reportFeeds();
       })
+      // A camera whose subscription fails would otherwise just never get a
+      // feed, and its owner's tile would quietly stay an avatar. Asked for
+      // once more, and said out loud if that fails as well.
+      ..on<TrackSubscriptionExceptionEvent>((event) async {
+        final participant = event.participant;
+        final sid = event.sid;
+        if (participant != null && sid != null && _subscribeRetried.add(sid)) {
+          final publication = participant.getTrackPublicationBySid(sid);
+          if (publication != null &&
+              !_unencrypted.contains(participant.identity)) {
+            await publication.subscribe();
+          }
+        } else if (!_warnings.isClosed) {
+          _warnings.add(
+            "Somebody's video could not be received (${event.reason.name}).",
+          );
+        }
+        _reportFeeds();
+      })
+      // Anything that can make a feed appear after it was first missed —
+      // subscribing becoming allowed, a track resuming — rebuilds the list.
+      ..on<TrackSubscriptionPermissionChangedEvent>((_) => _reportFeeds())
+      ..on<TrackStreamStateUpdatedEvent>((_) => _reportFeeds())
+      ..on<TrackMutedEvent>((_) => _reportFeeds())
+      ..on<TrackUnmutedEvent>((_) => _reportFeeds())
       ..on<ParticipantPermissionsUpdatedEvent>((event) async {
         if (event.participant != room.localParticipant) return;
 
         final before = _rights;
+        // Read before announcing the new rights: the call controller wakes on
+        // that announcement and publishes the camera itself, so only a camera
+        // that was already wanted (a reconnect, a grant given back) is this
+        // handler's to publish.
+        final cameraWantedBefore = _cameraWanted;
         _rights = _rightsOf(event.permissions);
         if (_rights != before && !_publishRights.isClosed) {
           _publishRights.add(_rights);
@@ -788,7 +838,11 @@ class LiveKitVoiceEngine implements VoiceEngine {
         // The camera grant arriving is the second half of the handshake the
         // call controller started. It asked the server, the server told the
         // media server, and this is it coming back — so publish now.
-        if (_rights.camera && !before.camera && _cameraWanted) {
+        if (_rights.camera &&
+            !before.camera &&
+            cameraWantedBefore &&
+            _cameraWanted &&
+            _localCameraTrack == null) {
           await _applyCamera();
         }
         // And taken away: stop, rather than leave a track the media server has
@@ -829,7 +883,19 @@ class LiveKitVoiceEngine implements VoiceEngine {
       publication.source == TrackSource.screenShareVideo ||
       publication.source == TrackSource.screenShareAudio;
 
-  Future<void> _applyCamera() async {
+  /// Publishes the camera, joining a publish already in flight rather than
+  /// starting a second one alongside it.
+  Future<void> _applyCamera() {
+    final running = _cameraApplying;
+    if (running != null) return running;
+    final applying = _applyCameraOnce();
+    _cameraApplying = applying;
+    return applying.whenComplete(() {
+      if (identical(_cameraApplying, applying)) _cameraApplying = null;
+    });
+  }
+
+  Future<void> _applyCameraOnce() async {
     final local = _room?.localParticipant;
     if (local == null) return;
 
@@ -1858,5 +1924,31 @@ class _ShareEndWatch {
     _done = true;
     _timer?.cancel();
     unawaited(_removed?.cancel());
+  }
+}
+
+/// LiveKit's key provider, made to remember which slot the shared key is in.
+///
+/// Every frame cryptor LiveKit creates — one per track, at the moment it is
+/// published — starts on `getLatestIndex`. In shared-key mode
+/// [BaseKeyProvider.setSharedKey] never records the slot it was given, so that
+/// answer is always 0. The call's key sits in slot `epoch mod 16`, so a camera
+/// or a screen share started after joining was encrypting with an empty slot:
+/// every frame was dropped as `kMissingKey`, nothing reached the media server,
+/// and nobody else ever saw the track. `E2EEManager.setKeyIndex` cannot cover
+/// it, because it only reaches the cryptors that already exist when it runs.
+class _SharedKeyProvider extends BaseKeyProvider {
+  _SharedKeyProvider.from(BaseKeyProvider base)
+    : super(base.keyProvider, base.options);
+
+  int _index = 0;
+
+  @override
+  int getLatestIndex(String participantId) => _index;
+
+  @override
+  Future<void> setSharedKey(String key, {int? keyIndex}) async {
+    await super.setSharedKey(key, keyIndex: keyIndex);
+    _index = keyIndex ?? 0;
   }
 }
