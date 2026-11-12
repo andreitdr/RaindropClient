@@ -108,9 +108,44 @@ class DeviceSetupController
     final device = await engine.device();
     if (device != null) return _activate(session, engine, device);
 
+    // build() reruns whenever the session does, and this path awaits the
+    // network before creating keys, so two runs can overlap. Share one
+    // first-device setup per server: a second createIdentity on the same
+    // store fails ("already holds a device identity"), and a superseded run
+    // would carry off the only copy of the recovery words.
+    final joined = _firstDeviceSetups.containsKey(serverId);
+    final result = await (_firstDeviceSetups[serverId] ??= _setUpFirstDevice(
+      session,
+      engine,
+    ).whenComplete(() => _firstDeviceSetups.remove(serverId)));
+    if (result is! DeviceSetupReady) return result;
+
+    final words = _unshownRecoveryWords[serverId];
+    if (!joined) return DeviceSetupReady(result.device, recoveryWords: words);
+
+    // Another run made the keys with its session; bind this one too.
+    final ready = await _activate(session, engine, result.device);
+    if (ready is! DeviceSetupReady) return ready;
+    return DeviceSetupReady(result.device, recoveryWords: words);
+  }
+
+  /// In-flight first-device setups, by server id.
+  static final _firstDeviceSetups = <String, Future<DeviceSetupState>>{};
+
+  /// Recovery words made by a first-device setup and not yet acknowledged, by
+  /// server id — so whichever run ends up live still shows them.
+  static final _unshownRecoveryWords = <String, String>{};
+
+  Future<DeviceSetupState> _setUpFirstDevice(
+    ServerSession session,
+    MlsCryptoEngine engine,
+  ) async {
     final own = await session.e2eeApi.listDevices(session.token, [
       session.currentUser.userId,
     ]);
+    // Another run may have finished while we waited.
+    final existing = await engine.device();
+    if (existing != null) return _activate(session, engine, existing);
     if (own.isNotEmpty && own.first.identityKey != null) {
       return const DeviceSetupNeedsKeys();
     }
@@ -125,7 +160,8 @@ class DeviceSetupController
 
     final backup = await engine.sealBackupWithRecoveryKey();
     await session.e2eeApi.putBackup(session.token, backup.blob);
-    return DeviceSetupReady(created, recoveryWords: backup.recoveryWords);
+    _unshownRecoveryWords[arg] = backup.recoveryWords!;
+    return DeviceSetupReady(created);
   }
 
   /// Registers [device] (a no-op when it already is) and binds the session.
@@ -169,6 +205,7 @@ class DeviceSetupController
 
   /// The recovery words have been shown; stop offering them.
   void acknowledgeRecoveryWords() {
+    _unshownRecoveryWords.remove(arg);
     final current = state.valueOrNull;
     if (current is DeviceSetupReady) {
       state = AsyncData(DeviceSetupReady(current.device));
@@ -259,6 +296,7 @@ class DeviceSetupController
 
   Future<void> _wipeLocalKeys() async {
     _poll?.cancel();
+    _unshownRecoveryWords.remove(arg);
     // Close the store before its files go (Windows refuses to delete an open
     // file); invalidating alone would only close it at Riverpod's leisure.
     (await _engine()).dispose();
