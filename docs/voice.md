@@ -68,6 +68,16 @@ The audio itself is DTLS-SRTP to the LiveKit server, over UDP 7882 or the TCP 78
   - failure tolerance −1: failures never switch encryption off
 
   It passes that provider as `RoomOptions.encryption`, and moves senders onto the key's slot.
+
+  The provider is `_SharedKeyProvider`, a subclass that **remembers the shared key's slot**. LiveKit
+  starts every frame cryptor (one per track, created when the track is published) on
+  `getLatestIndex`. In shared-key mode, the stock `BaseKeyProvider` never records the slot
+  `setSharedKey` was given, so it always answers 0. `E2EEManager.setKeyIndex` only reaches cryptors
+  that already exist. As a result, a camera or screen share started after joining was encrypting
+  with an empty slot: `kMissingKey`, every frame dropped, zero bytes sent. LiveKit announces a
+  track only once its media arrives, so nobody else ever saw it, while the sender's own preview
+  looked fine. Symptom to recognise: the sender's `TrackE2EEStateEvent` reads `kMissingKey` and its
+  sender stats show frames encoded but `bytesSent` 0. Re-check this on any `livekit_client` bump.
 - **Key changes.** `ChannelGroups.epochChanges` fires whenever the group's epoch moves. The controller
   then exports the new key and calls `engine.setMediaKey`, which sets the key and switches this
   participant's senders to its slot; receivers keep the older slots for frames in flight. The key is
@@ -165,6 +175,22 @@ If the grant does not come, it **takes the claim back**, rather than leaving a
 camera the server thinks is on and nobody can see. Turning the camera off is the
 reverse order — stop publishing, *then* tell the server — so the grant is never
 withdrawn from under a live track.
+
+**Publishing is single-flight.** The grant arriving wakes two parties at once:
+the engine's `ParticipantPermissionsUpdatedEvent` handler and the controller
+waiting on `publishRights`. Two overlapping `setCameraEnabled(true)` calls can
+leave this device showing a camera track that nobody else receives. So
+`LiveKitVoiceEngine._applyCamera` joins a publish already in flight instead of
+starting a second one. The handler also publishes only a camera that was wanted
+*before* it announced the new rights (a reconnect, or a grant given back), and
+leaves a fresh turn-on to the controller.
+
+**Receiving it.** A remote camera becomes a feed once it is subscribed. A
+`TrackSubscriptionExceptionEvent` is retried once with `subscribe()`, then shown
+as a warning, so it is never silently dropped. Every event that can make a
+missed feed appear later (subscription permission, stream state, mute/unmute)
+rebuilds the feed list. A camera publication that arrives unsubscribed (not
+hidden, not untrusted) is subscribed explicitly as a backstop for auto-subscribe.
 
 `VoiceCallState.cameraBusy` covers that round trip: the button shows a spinner
 and refuses a second tap, and the state it owns is not overwritten by the
