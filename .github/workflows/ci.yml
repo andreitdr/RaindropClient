@@ -87,6 +87,26 @@ jobs:
           # with pipefail, so that alone failed the job. Only sdkmanager's own result counts.
           (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
 
+      # The Android build compiles the Rust core three times (one per ABI), each a release build with
+      # fat LTO and one codegen unit, with OpenSSL and SQLCipher from source — next to the NDK, Gradle
+      # and Flutter's own AOT builds. On a stock runner that ran out of room partway through the first
+      # ABI and the runner was shut down. So: delete the big toolchains this job never uses (never the
+      # Android SDK or Java), and add swap on the runner's spare /mnt disk. Both are best-effort.
+      - name: Make room for the Android build
+        if: matrix.name == 'android'
+        run: |
+          echo "Before:"; df -h / /mnt 2>/dev/null; free -h
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost \
+            /opt/hostedtoolcache/CodeQL /usr/share/swift /usr/local/share/powershell || true
+          sudo docker image prune --all --force > /dev/null 2>&1 || true
+          if sudo fallocate -l 8G /mnt/raindrop.swap 2>/dev/null; then
+            sudo chmod 600 /mnt/raindrop.swap
+            sudo mkswap /mnt/raindrop.swap > /dev/null && sudo swapon /mnt/raindrop.swap || echo "Could not enable the extra swap."
+          else
+            echo "No room on /mnt for extra swap; going on without it."
+          fi
+          echo "After:"; df -h / /mnt 2>/dev/null; free -h
+
       - uses: actions/setup-java@v4
         if: matrix.name == 'android'
         with:
@@ -153,7 +173,13 @@ jobs:
       # debug keys without android/key.properties, which CI has no business holding.
       - name: Compile (Android)
         if: matrix.name == 'android'
-        run: flutter build apk --release
+        run: |
+          # Disk and memory once a minute, into this log: if the runner is shut down again, the
+          # last lines before it say which one ran out.
+          ( while true; do echo "[resources] $(df -h / | awk 'NR==2{print "disk used " $3 " of " $2 ", free " $4}'), $(free -m | awk '/^Mem/{print "mem used " $3 " of " $2 " MB"} /^Swap/{print "swap used " $3 " of " $2 " MB"}' | paste -sd ', ')"; sleep 60; done ) &
+          monitor=$!
+          flutter build apk --release
+          kill "$monitor" 2>/dev/null || true
 
       # No signing identity on a runner, so this builds unsigned — which still compiles the
       # Rust core for arm64 and links every pod, the parts that actually break.
