@@ -37,6 +37,13 @@ nothing in the repository had changed. To move CI forward, upgrade Flutter local
 `pipefail`, and `yes` fails with "Broken pipe" once `sdkmanager` stops reading, which on its own failed
 the job before anything was built.
 
+**Android needs room.** It builds the Rust core three times (one per ABI), each in release with fat
+LTO and one codegen unit, with OpenSSL and SQLCipher from source, next to the NDK and Gradle. On a
+stock runner the runner was shut down partway through the first ABI. So the job first deletes large
+toolchains it never uses (.NET, GHC, Boost, CodeQL, Swift, PowerShell, cached Docker images) and adds
+8 GB of swap on `/mnt`. While it builds, it logs disk and memory use once a minute (`[resources]`
+lines), so if it is shut down again, the log shows which one ran out.
+
 Three workarounds in the build. The first two are runner-only and undone with the checkout:
 
 - **macOS signing.** The project signs with the developer's own Apple Development certificate, which
