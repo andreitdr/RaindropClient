@@ -9,7 +9,9 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/network/e2ee_api.dart';
 import '../../../core/network/event_stream.dart';
 import '../../../core/network/voice_api.dart';
+import '../../../core/voice/call_session_host.dart';
 import '../../../core/voice/voice_engine.dart';
+import '../../channels/controllers/channels_controller.dart';
 import '../../security/controllers/channel_groups.dart';
 import '../../servers/controllers/server_events.dart';
 import '../../servers/controllers/session_controller.dart';
@@ -47,6 +49,7 @@ class VoiceCallState {
     this.screenShares = const {},
     this.untrustedScreenShares = const {},
     this.watching = const {},
+    this.microphoneFailed = false,
   });
 
   final String? serverId;
@@ -61,6 +64,13 @@ class VoiceCallState {
 
   /// This member may only listen in this call: they lack `speak`.
   final bool suppressed;
+
+  /// The microphone would not open, so nobody can hear this member — for a
+  /// reason that is nothing to do with the server: something else has it, or
+  /// there is no input device. Unlike [serverMuted] and [suppressed] this is
+  /// worth trying again, which is what the mute button does while it is set
+  /// ([retryMicrophone]). Cleared as soon as the microphone opens.
+  final bool microphoneFailed;
 
   /// Why the last call ended, when it was not this client's own choice —
   /// shown once, then cleared with [VoiceCallController.dismissNotice].
@@ -172,6 +182,7 @@ class VoiceCallState {
     Set<String>? screenShares,
     Set<String>? untrustedScreenShares,
     Set<String>? watching,
+    bool? microphoneFailed,
   }) => VoiceCallState(
     serverId: serverId,
     channelId: channelId,
@@ -196,6 +207,7 @@ class VoiceCallState {
     screenShares: screenShares ?? this.screenShares,
     untrustedScreenShares: untrustedScreenShares ?? this.untrustedScreenShares,
     watching: watching ?? this.watching,
+    microphoneFailed: microphoneFailed ?? this.microphoneFailed,
   );
 }
 
@@ -249,6 +261,26 @@ const _rekeyInterval = Duration(minutes: 10);
 /// a slow connection, short enough that a user does not sit watching a dead
 /// button.
 const _cameraGrantTimeout = Duration(seconds: 5);
+/// How long to wait before each try at putting a dropped call back together,
+/// and — by its length — how many tries there are. Short at first, because a
+/// phone that has just changed network is usually reachable again within a
+/// second or two; then longer, and then the call is genuinely over. About
+/// half a minute in total, which is long enough to walk through a tunnel and
+/// short enough not to leave somebody talking to a call that is not there.
+const _rejoinBackoff = [
+  Duration(seconds: 1),
+  Duration(seconds: 3),
+  Duration(seconds: 6),
+  Duration(seconds: 10),
+  Duration(seconds: 10),
+];
+
+/// What tells the operating system a call is in progress, so a phone keeps
+/// it running while the app is not on screen. Overridden in tests, and by
+/// anything that wants a call announced its own way.
+final callSessionHostProvider = Provider<CallSessionHost>(
+  (_) => createCallSessionHost(),
+);
 
 final voiceCallProvider = NotifierProvider<VoiceCallController, VoiceCallState>(
   VoiceCallController.new,
@@ -285,6 +317,11 @@ class VoiceCallController extends Notifier<VoiceCallState> {
   /// What this client last told the server about its screen share, for the
   /// same reason as [_cameraClaimed].
   ScreenShareClaim _shareClaim = noScreenShare;
+  /// The rejoin in progress, if any ([_rejoinOrEnd]). It survives across the
+  /// tries it makes — each of which takes a generation of its own — so it
+  /// cannot be tracked by [_generation]; anything that settles the call for
+  /// good clears it, and that is how the rejoin knows to stop.
+  Object? _rejoin;
 
   @override
   VoiceCallState build() {
@@ -316,8 +353,21 @@ class VoiceCallController extends Notifier<VoiceCallState> {
   /// caller to show.
   Future<void> join(String serverId, String channelId) async {
     if (state.isIn(serverId, channelId)) return;
+    _rejoin = null;
     await leave();
+    await _connect(serverId, channelId, VoiceCallStatus.joining);
+  }
 
+  /// The join itself, from a member asking for it ([VoiceCallStatus.joining])
+  /// or from this client picking a dropped call back up
+  /// ([VoiceCallStatus.reconnecting]) — see [_rejoinOrEnd]. The two differ
+  /// only in what the call controls say while it happens.
+  Future<void> _connect(
+    String serverId,
+    String channelId,
+    VoiceCallStatus status,
+  ) async {
+    final rejoining = status == VoiceCallStatus.reconnecting;
     final generation = ++_generation;
     _cameraClaimed = false;
     _shareClaim = noScreenShare;
@@ -328,7 +378,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     state = VoiceCallState(
       serverId: serverId,
       channelId: channelId,
-      status: VoiceCallStatus.joining,
+      status: status,
     );
 
     // The media key comes first, before the server lists this device in the
@@ -403,9 +453,11 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     _follow(serverId, session, engine);
 
     // Set before connecting, so the first audio to arrive already plays at
-    // the right volume, and a camera hidden earlier is never received at all.
+    // the right volume, a camera hidden earlier is never received at all, and
+    // out of the right speaker.
     _applyVolumes();
     _applyVideoVisibility();
+    unawaited(engine.setSpeakerphone(settings.speakerphone));
 
     try {
       await engine.connect(
@@ -422,14 +474,24 @@ class VoiceCallController extends Notifier<VoiceCallState> {
       );
     } on Object {
       if (generation == _generation) {
-        await _end(notice: 'Could not connect to the call.');
+        // A rejoin's failed try is neither news nor the end of the call:
+        // [_rejoinOrEnd] tries again, and speaks for the call once it has
+        // stopped trying.
+        await _end(
+          notice: rejoining ? null : 'Could not connect to the call.',
+          settles: !rejoining,
+        );
       }
       rethrow;
     }
 
-    if (generation == _generation && state.status == VoiceCallStatus.joining) {
+    if (generation == _generation && state.status != VoiceCallStatus.connected) {
       state = state.copyWith(status: VoiceCallStatus.connected);
     }
+
+    // Only now: a call the OS is told about is one that is actually up, so a
+    // join that failed never leaves a notification behind.
+    if (generation == _generation) _describeSession(serverId, channelId);
 
     // The group may have moved on while connecting; make sure the call
     // starts on the current key.
@@ -797,6 +859,18 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     }
   }
 
+  /// Asks for the microphone again after it would not open. Whatever was
+  /// holding it may have let go; if it has not, the engine reports another
+  /// failure and nothing else changes. Muting is not the answer here —
+  /// nobody can hear this member either way — so this is what the mute
+  /// button does while [VoiceCallState.microphoneFailed].
+  Future<void> retryMicrophone() async {
+    final engine = _engine;
+    if (engine == null || !state.microphoneFailed) return;
+    state = state.copyWith(microphoneFailed: false);
+    await engine.setMicEnabled(ref.read(voiceSettingsProvider).micOn);
+  }
+
   void dismissNotice() {
     if (!state.inCall && state.notice != null) state = const VoiceCallState();
   }
@@ -828,6 +902,11 @@ class VoiceCallController extends Notifier<VoiceCallState> {
         }),
       )
       ..add(engine.disconnects.listen(_onEngineDisconnected))
+      ..add(
+        engine.microphoneFailures.listen(
+          (_) => state = state.copyWith(microphoneFailed: true),
+        ),
+      )
       ..add(
         engine.encryptionChanges.listen(
           (encryption) => state = state.copyWith(encryption: encryption),
@@ -1024,9 +1103,85 @@ class VoiceCallController extends Notifier<VoiceCallState> {
         unawaited(_end(notice: 'The call ended.', reportLeave: false));
       case VoiceDisconnectReason.networkFailure:
       case VoiceDisconnectReason.unknown:
-        unawaited(_end(notice: 'Lost the connection to the call.'));
+        // Nobody decided the call was over — the network did. The media
+        // library has already exhausted its own reconnects by the time this
+        // arrives, so picking it up again means joining afresh.
+        unawaited(_rejoinOrEnd());
     }
   }
+
+  /// Puts a call back together after it dropped on its own, and ends it for
+  /// good if it cannot be.
+  ///
+  /// This is what makes a call survive a phone changing network — Wi-Fi to
+  /// cellular, or a tunnel — which is far more common than a desktop losing
+  /// its connection. The call stays on screen as
+  /// [VoiceCallStatus.reconnecting] throughout, so a member who is talking
+  /// sees it working rather than a call that vanished.
+  ///
+  /// Each try is a fresh join: a new token from the server, and on an
+  /// end-to-end encrypted server a fresh media key, since the group may have
+  /// moved on while this device was away. Anything the server refuses on the
+  /// way (the channel is gone, this member may no longer connect) ends the
+  /// call rather than being retried — those will refuse again.
+  Future<void> _rejoinOrEnd() async {
+    final serverId = state.serverId;
+    final channelId = state.channelId;
+    final session = _session;
+    if (serverId == null || channelId == null) return;
+
+    final token = Object();
+    _rejoin = token;
+
+    // The engine is finished; the call is not. Everything this call was
+    // following goes with it, and [_connect] sets it all up again.
+    _teardown();
+    state = state.copyWith(status: VoiceCallStatus.reconnecting);
+
+    // Tell the server this device is out, so the roster does not show it in
+    // the call twice while it comes back. Its own reconciler would get there
+    // eventually; saying so is faster and quieter.
+    if (session != null) await _leaveQuietly(session, channelId);
+
+    for (final wait in _rejoinBackoff) {
+      await Future<void>.delayed(wait);
+      // Hung up, signed out, or joined somewhere else while waiting: whatever
+      // did that cleared the token, and it outranks this.
+      if (!identical(_rejoin, token)) return;
+
+      try {
+        await _connect(serverId, channelId, VoiceCallStatus.reconnecting);
+        // Back in the call — unless something replaced this rejoin while it
+        // was connecting, in which case that is the call now.
+        if (identical(_rejoin, token)) _rejoin = null;
+        return;
+      } on ApiException catch (e) {
+        // The server said no, and will say no again: the channel is gone,
+        // the call is full, or this member may not connect any more.
+        if (!identical(_rejoin, token)) return;
+        await _end(notice: _rejoinRefusal(e), reportLeave: false);
+        return;
+      } on Object {
+        // Still unreachable, or the media connection failed again. [_connect]
+        // cleared the call on its way out, so put it back — quietly — and
+        // wait out the next interval.
+        if (!identical(_rejoin, token)) return;
+        state = VoiceCallState(
+          serverId: serverId,
+          channelId: channelId,
+          status: VoiceCallStatus.reconnecting,
+        );
+      }
+    }
+
+    await _end(notice: 'Lost the connection to the call.', reportLeave: false);
+  }
+
+  static String _rejoinRefusal(ApiException e) => switch (e.code) {
+    'channel_full' => 'The call filled up while you were reconnecting.',
+    'missing_permission' => 'You can no longer join that call.',
+    _ => 'Lost the connection to the call.',
+  };
 
   static String? _noticeFor(String reason) => switch (reason) {
     VoiceLeaveReasons.left => null,
@@ -1048,6 +1203,9 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     if (engine == null || session == null || previous == null) return;
 
     if (previous.micOn != next.micOn) {
+      // Turning it back on is a retry: assume it works, and let the engine
+      // say otherwise again if it does not.
+      if (next.micOn) state = state.copyWith(microphoneFailed: false);
       unawaited(engine.setMicEnabled(next.micOn));
     }
 
@@ -1073,6 +1231,10 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     if (next.outputDeviceId case final output?
         when output != previous.outputDeviceId) {
       unawaited(engine.setOutputDevice(output));
+    }
+
+    if (previous.speakerphone != next.speakerphone) {
+      unawaited(engine.setSpeakerphone(next.speakerphone));
     }
   }
 
@@ -1136,12 +1298,46 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     }
   }
 
+  // ── Telling the OS about the call ──────────────────────────────────────────
+
+  /// Asks the platform to keep this call running while the app is not on
+  /// screen, described by where it is: the channel, on the server. Does
+  /// nothing on platforms that need no telling — see [CallSessionHost].
+  void _describeSession(String serverId, String channelId) {
+    final channel = ref
+        .read(channelsProvider(serverId))
+        .valueOrNull
+        ?.where((c) => c.id == channelId)
+        .firstOrNull;
+
+    unawaited(
+      ref
+          .read(callSessionHostProvider)
+          .begin(
+            CallSessionDescription(
+              // Before the channel list has loaded there is still a call to
+              // announce; it is named as plainly as it can be.
+              title: channel == null ? 'In a voice call' : 'In ${channel.name}',
+              body: _session?.profile.displayName ?? '',
+            ),
+          ),
+    );
+  }
+
   // ── Ending ─────────────────────────────────────────────────────────────────
 
-  Future<void> _end({String? notice, bool reportLeave = true}) async {
+  /// Ends the call and tears everything down. [settles] says whether that is
+  /// the *call* ending — which cancels any rejoin under way — or only one
+  /// failed try inside a rejoin, which the rejoin itself goes on from.
+  Future<void> _end({
+    String? notice,
+    bool reportLeave = true,
+    bool settles = true,
+  }) async {
     _generation++;
     _cameraClaimed = false;
     _shareClaim = noScreenShare;
+    if (settles) _rejoin = null;
     final session = _session;
     final channelId = state.channelId;
 
@@ -1166,6 +1362,10 @@ class VoiceCallController extends Notifier<VoiceCallState> {
   }
 
   void _teardown() {
+    // Before anything else: whatever went wrong with the call, the OS must
+    // not be left believing one is still running.
+    unawaited(ref.read(callSessionHostProvider).end());
+
     for (final subscription in _subscriptions) {
       unawaited(subscription.cancel());
     }

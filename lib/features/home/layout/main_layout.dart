@@ -19,6 +19,10 @@ const mainDefaultLayout = LayoutConfig(
   ],
   slots: {
     MainSlots.railFooter: [MainButtons.addServer, MainButtons.settings],
+    // Not the speaker button, though it is in the registry for anybody who
+    // wants it here: at this pane's width a fourth button leaves no room for
+    // the name beside it. On a phone it rides in the call bar instead, which
+    // is where it is wanted anyway — see VoiceSelfControls.
     MainSlots.userPanel: [
       MainButtons.mute,
       MainButtons.deafen,
@@ -119,6 +123,12 @@ final mainLayoutButtons = <String, LayoutButtonSpec>{
     label: 'Share screen',
     icon: Icons.screen_share,
     build: (context, style) => VoiceScreenShareButton(style: style),
+  ),
+  MainButtons.speakerphone: LayoutButtonSpec(
+    id: MainButtons.speakerphone,
+    label: 'Speaker',
+    icon: Icons.volume_up,
+    build: (context, style) => VoiceSpeakerphoneButton(style: style),
   ),
   MainButtons.members: LayoutButtonSpec(
     id: MainButtons.members,

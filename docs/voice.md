@@ -436,13 +436,31 @@ sees you unmuted for a moment. It then creates the engine and connects.
 - **It follows the session with `ref.listen`, not `watch`.** Renaming a server rebuilds its session,
   and a watch would tear the call down. It only ends the call when the session is really gone or its
   token changed, and otherwise switches to the rebuilt session's live client.
-- **It never rejoins automatically.** It ends the call with a notice when:
+- **It rejoins after a network drop, and only after a network drop.** A call the network took away
+  — Wi-Fi to cellular, a tunnel, a phone that went to sleep — is put back together by
+  `_rejoinOrEnd`: five tries over about half a minute (`_rejoinBackoff`), the call staying on screen
+  as `reconnecting` the whole time. Each try is a fresh join, so it gets a new token and, on an
+  end-to-end encrypted server, a fresh media key; LiveKit has already used up its own reconnects by
+  the time this runs. A try that fails is silent — the rejoin speaks for the call once, when it gives
+  up.
+
+  It does **not** rejoin after anything somebody decided, because those will decide the same way
+  again. It ends the call with a notice when:
   - the engine reports the same account joining from another device;
   - the server removed this participant, or the call itself ended;
   - `voice.left` arrives for this client, with its reason (`permission_lost`, `channel_deleted`,
-    `session_ended`, …).
+    `session_ended`, …);
+  - the server refuses a rejoin (`channel_full`, `missing_permission`).
 
-  A network failure also ends the call with a notice. The shell shows each notice once, as a snackbar.
+  The shell shows each notice once, as a snackbar.
+- **A microphone that will not open does not end the call.** Capture can fail for reasons that have
+  nothing to do with the call — another app holding the microphone (on a phone, usually a cellular
+  call), or no input device at all — and it is reached from the connect, a settings change and a
+  permissions event alike. So `_applyMic` never throws: it reports on `VoiceEngine.microphoneFailures`,
+  the call carries on, `VoiceCallState.microphoneFailed` is set, and the mute button shows muted,
+  explains why, and **retries** when tapped (`retryMicrophone`) — muting would change nothing anybody
+  can hear. Hanging up does not throw either: a `Room.disconnect` waits for an acknowledgement that a
+  dead connection will never send.
 - **Moderator mutes come from `voice.state`.** A mute for everyone, or losing `speak`, arrives as
   `voice.state` for you: the controls show you as muted and explain why. When `canPublish` comes back,
   the engine republishes your microphone if you had it on.
@@ -537,7 +555,8 @@ units mistake, and why the cap is 2.
   The menu entry is a custom `PopupMenuEntry` rather than a `PopupMenuItem`, so dragging the slider
   does not close the menu.
 - **Settings → Voice & audio** (`voice_settings_section.dart`):
-  - microphone and speakers (desktop only; on phones the OS routes audio);
+  - microphone and speakers (desktop only; on phones the OS routes audio, and the earpiece/
+    loudspeaker choice is a button in the call bar instead — see [Android and iOS](mobile.md));
   - output volume;
   - echo cancellation, noise suppression and automatic gain.
 
@@ -551,8 +570,8 @@ Speaking and "connected" colours reuse `AppSurfaces.onlineIndicator`, so no them
 | Platform | What voice needed |
 |---|---|
 | macOS | `com.apple.security.device.audio-input`, `com.apple.security.network.client` **and `com.apple.security.network.server`** in *both* entitlements files; `NSMicrophoneUsageDescription` in `Info.plist`. Screen sharing needs no entitlement or usage string: the system asks for Screen Recording itself |
-| iOS | `NSMicrophoneUsageDescription`. **No** background audio mode: calls are foreground-only for now |
-| Android | `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `BLUETOOTH_CONNECT` (+ legacy `BLUETOOTH` ≤ API 30), and `INTERNET`/`ACCESS_NETWORK_STATE` in the **main** manifest (release builds had no network access before). No foreground service yet |
+| iOS | `NSMicrophoneUsageDescription`, and the `audio` background mode so a call survives leaving the screen |
+| Android | `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `BLUETOOTH_CONNECT` (+ legacy `BLUETOOTH` ≤ API 30), and `INTERNET`/`ACCESS_NETWORK_STATE` in the **main** manifest (release builds had no network access before). Plus `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE` and `POST_NOTIFICATIONS` for the ongoing-call service |
 | Windows, Linux | nothing. Sharing a window's sound needs Windows 11 |
 
 flutter_webrtc and livekit_client ship Swift Package Manager manifests, so the Apple builds stay on
@@ -574,17 +593,24 @@ removed again without a connection, and the client retries the whole join in a l
 carried `network.client` alone until this was found, so voice worked from `flutter run` and failed
 in release builds only — the same trap the Android manifest fell into.
 
+**Calls keep running on a phone that is not on screen**, which needs opposite things on the two
+platforms and so goes through `CallSessionHost` (`core/voice/call_session_host.dart`) rather than
+being branched on at the call site: iOS needs only the background mode above, Android a foreground
+service of type `microphone`. The media stack is also initialized once at startup
+(`initializeVoice()` from `main`), because on a phone the kind of audio session a call needs is fixed
+when the media library first initializes, not when a call starts. Full detail:
+[Android and iOS](mobile.md).
+
 ## Not yet
 
-- Background audio on phones (iOS background mode, Android microphone foreground service).
 - Push-to-talk.
-- Rejoining automatically after a network drop (the call ends with a notice; you join again).
-- **Sharing from a phone** — needs background calls first; phones can watch.
+- **Sharing from a phone** — background calls exist now, but nothing captures a phone's screen; phones can watch.
 - **A window's sound on macOS and Linux** ([why](#screen-sharing)).
 - **Camera effects on Windows and Linux.** They run on macOS, iOS and Android; see
   [Camera effects](#camera-effects). Those two have no chain between the capturer and the video
   source to put a processor into, so `canUseCameraEffects` is false there and the sheet says so.
 - Microphone volume (no API for it; see above).
+- CallKit / ConnectionService: a call never rings, and does not show in the phone's own call UI.
 
 ## Related
 
@@ -592,4 +618,5 @@ in release builds only — the same trap the Android manifest fell into.
   the Voice API.
 - [Channels](channels.md): the sidebar the calls are listed in.
 - [Live updates](live-updates.md): how `voice.*` events arrive.
+- [Android and iOS](mobile.md): background calls, the speaker, and what phones still cannot do.
 - [Settings](settings.md) and [Storage](storage.md): where voice preferences live.

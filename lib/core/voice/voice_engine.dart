@@ -487,6 +487,11 @@ abstract class VoiceEngine {
 
   Future<void> setOutputDevice(String deviceId);
 
+  /// Phones only: plays the call out of the loudspeaker rather than the
+  /// earpiece. A no-op where there is only one of them — see
+  /// `canUseSpeakerphone`.
+  Future<void> setSpeakerphone(bool enabled);
+
   /// Re-opens the microphone with different processing.
   Future<void> applyProcessing(VoiceAudioProcessing processing);
 
@@ -591,6 +596,16 @@ abstract class VoiceEngine {
   /// goes on without whatever was refused.
   Stream<String> get warnings;
 
+  /// Fires when the microphone could not be opened, having been asked for.
+  ///
+  /// This is a *device* problem, not a permission or a moderator's decision:
+  /// something else holds the microphone (on a phone, a cellular call is the
+  /// usual culprit), or the OS took it away. It is deliberately not an error
+  /// from [connect] or [setMicEnabled], because a call you can hear is worth
+  /// keeping — this participant is simply not heard until it works. Trying
+  /// again is [setMicEnabled].
+  Stream<void> get microphoneFailures;
+
   Future<void> dispose();
 }
 
@@ -631,6 +646,11 @@ bool isBlockedVideoCodec(String codec) {
   final name = codec.toLowerCase().split('/').last.trim();
   return blockedVideoCodecs.contains(name);
 }
+/// Prepares the media stack before the first call, which `main` does at
+/// startup. On phones this has to happen before any call: the audio session a
+/// call needs is decided when the media library first initializes, not when a
+/// call starts. Everywhere else it is a no-op.
+Future<void> initializeVoice() => LiveKitVoiceEngine.initialize();
 
 /// The engine for a transport the server named, or null when this build does
 /// not speak it.

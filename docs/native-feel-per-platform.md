@@ -32,6 +32,10 @@ re-deriving the check:
   `isWindowStillOpen` answer the share picker. The Windows half of these is
   `core/platform/windows_processes.dart` (`dart:ffi`; it never branches on the platform itself, and
   loads nothing until called). See [Voice](voice.md#screen-sharing).
+- `canUseSpeakerphone` — phones only: whether a call can be moved between the earpiece and the
+  loudspeaker. Deliberately never offered alongside `canChooseAudioDevices`; they are each platform's
+  answer to the same question. See [Android and iOS](mobile.md).
+- `canScanCodes` — whether the camera can read another device's link code.
 - `isRunningOnWeb`, `operatingSystemName`
 
 Keeping every check in one file means a new target only needs updating here.
@@ -66,8 +70,24 @@ member list shows by itself is derived from those widths: it shows while the cha
 **440px** (`kMinContentWidth`) beside it — a 1000px window at the default widths — and otherwise folds
 behind the **Members** button, wherever the layout put it. See [Members & presence](members-presence.md).
 
+## What is *not* shared
+
+Three things a phone does that a desktop does not could not be papered over by a responsive layout,
+so each sits behind its own seam rather than a branch at the call site:
+
+| | Seam | Why |
+|---|---|---|
+| Keeping a call alive off screen | `CallSessionHost` (`core/voice/`) | iOS needs static configuration, Android a foreground service, desktop nothing |
+| Re-reading everything after suspension | `AppLifecycleListener` → `EventStream.resubscribe()` | A suspended phone may have missed any amount of events; a fresh `ready` makes every controller re-read |
+| Earpiece vs. loudspeaker | `VoiceEngine.setSpeakerphone` | Desktop picks a device instead; phones have no picker |
+
+Each is inert off the platform that needs it — `InactiveCallSessionHost`, a lifecycle state that never
+leaves `resumed`, a button that draws nothing — so the desktop builds are unchanged by their
+existence. Full detail: [Android and iOS](mobile.md).
+
 ## Related
 
+- [Android and iOS](mobile.md) — the mobile half of "native feel", in full.
 - [Theming](theming.md) — the other major cross-platform-consistency mechanism (colors, not controls).
 - [Architecture overview](architecture-overview.md) — where `core/platform/` and `core/widgets/` sit in
   the overall folder layout.

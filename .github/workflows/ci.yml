@@ -35,6 +35,11 @@ jobs:
           - { name: linux, os: ubuntu-latest }
           - { name: macos, os: macos-latest }
           - { name: windows, os: windows-latest }
+          # The mobile targets. Android builds on Linux (the runner image ships the SDK);
+          # iOS needs a Mac. Neither is set up on the reference dev machine, so CI is where
+          # these two are actually proven — see RaindropClient/docs/mobile.md.
+          - { name: android, os: ubuntu-latest }
+          - { name: ios, os: macos-latest }
     runs-on: ${{ matrix.os }}
     # The workspace mirrors the local layout: <workspace>/RaindropClient next to <workspace>/RaindropCrypto.
     defaults:
@@ -60,6 +65,25 @@ jobs:
       - name: Linux desktop build dependencies
         if: matrix.name == 'linux'
         run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsecret-1-dev libmpv-dev libpulse-dev
+
+      # Android builds the Rust crypto core once per ABI with the NDK, so the toolchain needs
+      # the matching Rust targets and the NDK version Flutter pins (flutter.ndkVersion, which
+      # android/app/build.gradle.kts uses). The runner image has the SDK and a JDK already.
+      - name: Android build dependencies
+        if: matrix.name == 'android'
+        run: |
+          # One Rust target per ABI in android/app/build.gradle.kts's abiFilters.
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+          # Accepting the licences lets the Android Gradle Plugin fetch the NDK version
+          # Flutter pins by itself, rather than this file having to name a version that
+          # would then have to be kept in step with the SDK.
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+
+      - uses: actions/setup-java@v4
+        if: matrix.name == 'android'
+        with:
+          distribution: temurin
+          java-version: '17'
 
       # The project signs with the developer's own Apple Development certificate, which CI doesn't have.
       # Switch to ad-hoc signing on this runner only (the checkout is discarded afterwards).
@@ -115,9 +139,23 @@ jobs:
         run: flutter analyze
 
       - name: Compile
+        if: matrix.name != 'android' && matrix.name != 'ios'
         run: |
           if [ -n "${STRAWBERRY_PERL_BIN:-}" ]; then export PATH="$STRAWBERRY_PERL_BIN:$PATH"; fi
           flutter build ${{ matrix.name }} --release
+
+      # An APK rather than an app bundle: it is the artefact a person can actually install,
+      # and it fails on the same things a bundle would. Release signing falls back to the
+      # debug keys without android/key.properties, which CI has no business holding.
+      - name: Compile (Android)
+        if: matrix.name == 'android'
+        run: flutter build apk --release
+
+      # No signing identity on a runner, so this builds unsigned — which still compiles the
+      # Rust core for arm64 and links every pod, the parts that actually break.
+      - name: Compile (iOS)
+        if: matrix.name == 'ios'
+        run: flutter build ios --release --no-codesign
 
   test:
     name: Test
