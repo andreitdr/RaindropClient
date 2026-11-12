@@ -27,6 +27,20 @@ function(apply_cargokit target manifest_dir lib_name any_symbol_name)
     endif()
     set(CARGOKIT_TEMP_DIR "${CMAKE_CURRENT_BINARY_DIR}/cargokit_build")
 
+    # Raindrop: the crypto core's SQLCipher builds a vendored OpenSSL, and OpenSSL's build tree is
+    # deep. Under the folder above (inside build\windows\x64\plugins\...) its longest paths pass
+    # Windows' 260-character limit, and OpenSSL's Perl Configure fails with "No such file or
+    # directory". So on Windows, Rust builds in a short folder instead. RAINDROP_CARGO_BUILD_DIR
+    # chooses it (CI uses C:/ck); otherwise it is %LOCALAPPDATA%\rdcargo. See
+    # docs/building-on-windows.md.
+    if (WIN32)
+        if (DEFINED ENV{RAINDROP_CARGO_BUILD_DIR} AND NOT "$ENV{RAINDROP_CARGO_BUILD_DIR}" STREQUAL "")
+            file(TO_CMAKE_PATH "$ENV{RAINDROP_CARGO_BUILD_DIR}" CARGOKIT_TEMP_DIR)
+        elseif (DEFINED ENV{LOCALAPPDATA})
+            file(TO_CMAKE_PATH "$ENV{LOCALAPPDATA}/rdcargo" CARGOKIT_TEMP_DIR)
+        endif()
+    endif()
+
     if (FLUTTER_TARGET_PLATFORM)
         set(CARGOKIT_TARGET_PLATFORM "${FLUTTER_TARGET_PLATFORM}")
     else()

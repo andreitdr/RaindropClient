@@ -1,3 +1,42 @@
+# ─── Building Raindrop on Windows ──────────────────────────────────────────────────────────────────
+# Full guide: docs/building-on-windows.md. What a Windows 10/11 x64 machine needs before
+# `flutter build windows` (or `flutter run -d windows`) works:
+#
+# 1. Visual Studio 2022 (Community is fine), with the "Desktop development with C++" workload: the
+#    MSVC v143 compiler, a Windows 10/11 SDK and CMake. Not VS Code — the full Visual Studio.
+#      https://visualstudio.microsoft.com/downloads/
+# 2. Git for Windows.
+#      https://git-scm.com/downloads/win
+# 3. The Flutter SDK (stable channel, with Dart 3.13.2 or newer), on PATH. Check with `flutter doctor`.
+#      https://docs.flutter.dev/get-started/install/windows/desktop
+# 4. Rust, through rustup, with the default MSVC toolchain (x86_64-pc-windows-msvc). The end-to-end
+#    encryption core in ../RaindropCrypto is Rust, compiled during the Flutter build by cargokit.
+#      https://rustup.rs/
+# 5. Strawberry Perl, ahead of any other Perl on PATH. The crypto core's SQLCipher builds a vendored
+#    OpenSSL from source, and OpenSSL's Configure needs a full Perl (Git's cut-down one fails).
+#      https://strawberryperl.com/
+# 6. NASM, with its folder (C:\Program Files\NASM) added to PATH by hand — its installer does not.
+#    OpenSSL's assembly is built with it.
+#      https://www.nasm.us/pub/nasm/releasebuilds/
+# 7. Developer Mode switched on (Settings → System → For developers), which Flutter needs for the
+#    symlinks it makes to plugins. `start ms-settings:developers` opens the page.
+#      https://learn.microsoft.com/windows/apps/get-started/enable-your-device-for-development
+#
+# The repositories must sit side by side, because the crypto plugin builds ../RaindropCrypto:
+#   <any folder>\RaindropClient
+#   <any folder>\RaindropCrypto
+# The first build also downloads prebuilt WebRTC (flutter_webrtc) and libmpv (media_kit), so it needs
+# internet access, and it takes several minutes while OpenSSL, SQLCipher and OpenMLS compile.
+#
+# Rust builds in %LOCALAPPDATA%\rdcargo rather than under build\, because OpenSSL's deep build tree
+# otherwise passes Windows' 260-character path limit. Set RAINDROP_CARGO_BUILD_DIR to use another
+# (short) folder. See native/raindrop_crypto_builder/cargokit/cmake/cargokit.cmake.
+#
+# To run the built app on another PC, that PC needs the Visual C++ Redistributable (x64), or the
+# runtime DLLs copied next to raindrop_client.exe, as the release workflow does.
+#   https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist
+# ────────────────────────────────────────────────────────────────────────────────────────────────────
+
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
 project(raindrop_client LANGUAGES CXX)

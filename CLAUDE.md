@@ -78,7 +78,12 @@ RAINDROP_TEST_SERVER=localhost:5001 flutter test test/integration/transport_test
 ```
 
 The web toolchain is not set up on the reference dev machine (`flutter doctor` will show Chrome
-missing, and the web is not a target); macOS, iOS, Android, Windows and Linux build as-is. The
+missing, and the web is not a target); macOS, iOS, Android, Windows and Linux build as-is.
+**Windows** needs more than the other desktops — Visual Studio's C++ workload, rustup's MSVC toolchain,
+Strawberry Perl and NASM (the vendored OpenSSL under SQLCipher), Developer Mode, and a short Rust build
+folder (`cargokit.cmake` uses `%LOCALAPPDATA%\rdcargo`, `RAINDROP_CARGO_BUILD_DIR` overrides it) to stay
+under the 260-character path limit. The full list with links is `docs/building-on-windows.md` and the
+top of `windows/CMakeLists.txt`. The
 Android SDK and NDK are installed — cargokit cross-compiles the Rust core for Android itself, so a
 `flutter build apk` needs no extra step, but the first one is slow for the same reason the first
 desktop build is.
