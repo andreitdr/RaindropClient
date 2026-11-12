@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -261,6 +262,7 @@ const _rekeyInterval = Duration(minutes: 10);
 /// a slow connection, short enough that a user does not sit watching a dead
 /// button.
 const _cameraGrantTimeout = Duration(seconds: 5);
+
 /// How long to wait before each try at putting a dropped call back together,
 /// and — by its length — how many tries there are. Short at first, because a
 /// phone that has just changed network is usually reachable again within a
@@ -317,11 +319,15 @@ class VoiceCallController extends Notifier<VoiceCallState> {
   /// What this client last told the server about its screen share, for the
   /// same reason as [_cameraClaimed].
   ScreenShareClaim _shareClaim = noScreenShare;
+
   /// The rejoin in progress, if any ([_rejoinOrEnd]). It survives across the
   /// tries it makes — each of which takes a generation of its own — so it
   /// cannot be tracked by [_generation]; anything that settles the call for
   /// good clears it, and that is how the rejoin knows to stop.
   Object? _rejoin;
+
+  /// The last call's media still being released, if it is.
+  Future<void>? _disposing;
 
   @override
   VoiceCallState build() {
@@ -342,6 +348,20 @@ class VoiceCallController extends Notifier<VoiceCallState> {
       );
       ref.onDispose(lifecycle.dispose);
     }
+
+    // Quitting the app leaves the call first, so everybody else sees this
+    // member go at once instead of when the server gives up on them, and the
+    // microphone and camera are let go before the process is. Bounded, so a
+    // server that cannot be reached never holds up the quit. A detach (the OS
+    // tearing the app down) cannot be waited for, so it is a best try.
+    final exit = AppLifecycleListener(
+      onExitRequested: () async {
+        await leaveNow();
+        return AppExitResponse.exit;
+      },
+      onDetach: () => unawaited(leaveNow()),
+    );
+    ref.onDispose(exit.dispose);
 
     ref.onDispose(_teardown);
     return const VoiceCallState();
@@ -485,7 +505,8 @@ class VoiceCallController extends Notifier<VoiceCallState> {
       rethrow;
     }
 
-    if (generation == _generation && state.status != VoiceCallStatus.connected) {
+    if (generation == _generation &&
+        state.status != VoiceCallStatus.connected) {
       state = state.copyWith(status: VoiceCallStatus.connected);
     }
 
@@ -540,6 +561,23 @@ class VoiceCallController extends Notifier<VoiceCallState> {
   Future<void> leave() async {
     if (!state.inCall) return;
     await _end();
+  }
+
+  /// Leaves the call and waits — for at most [limit] — until the server has
+  /// been told and the call's devices are released. For quitting the app,
+  /// where nothing runs afterwards to finish the job. Never throws.
+  Future<void> leaveNow({
+    Duration limit = const Duration(milliseconds: 1500),
+  }) async {
+    // `_end` tears the engine down before its first await, so the release it
+    // starts is already in [_disposing] here.
+    final leaving = state.inCall ? _end() : Future<void>.value();
+    final disposing = _disposing;
+    try {
+      await Future.wait([leaving, ?disposing]).timeout(limit);
+    } on Object catch (e) {
+      debugPrint('voice: leaving on exit did not finish: $e');
+    }
   }
 
   /// Turns the camera on with the options the sheet returned, or off.
@@ -744,6 +782,22 @@ class VoiceCallController extends Notifier<VoiceCallState> {
           : ({...state.watching}..remove(userId)),
     );
     await engine.setScreenShareWatched(userId, watched);
+  }
+
+  /// Forgets watching [userId]'s share because they left the call: the share
+  /// ended with them, and a later one is offered as a Watch card again rather
+  /// than streamed unasked.
+  void _stopWatchingLeaver(String? userId) {
+    if (userId == null || !state.watching.contains(userId)) return;
+    state = state.copyWith(watching: {...state.watching}..remove(userId));
+    final engine = _engine;
+    if (engine != null) {
+      unawaited(
+        engine.setScreenShareWatched(userId, false).catchError((Object _) {
+          // They are already gone from the room; nothing left to stop.
+        }),
+      );
+    }
   }
 
   /// Waits for the media server to accept this client's share — its sound
@@ -1045,9 +1099,16 @@ class VoiceCallController extends Notifier<VoiceCallState> {
 
   void _onServerEvent(ServerEvent event) {
     final me = _session?.currentUser.userId;
-    if (me == null ||
-        event.userId != me ||
-        event.channelId != state.channelId) {
+    if (me == null || event.channelId != state.channelId) return;
+
+    // Somebody else left this call. Raindrop says so before (or instead of)
+    // the media server noticing, so their share stops being watched here
+    // straight away — the stage and the full view close rather than waiting
+    // on a stream that has ended.
+    if (event.userId != me) {
+      if (event.type == ServerEventTypes.voiceLeft) {
+        _stopWatchingLeaver(event.userId);
+      }
       return;
     }
 
@@ -1381,6 +1442,18 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     final engine = _engine;
     _engine = null;
     _session = null;
-    if (engine != null) unawaited(engine.dispose());
+    if (engine != null) {
+      // Kept, so that quitting the app can wait for the devices to be let go
+      // ([leaveNow]); everything else lets it finish on its own.
+      final disposing = engine.dispose().catchError((Object e) {
+        debugPrint('voice: the call did not close cleanly: $e');
+      });
+      _disposing = disposing;
+      unawaited(
+        disposing.whenComplete(() {
+          if (identical(_disposing, disposing)) _disposing = null;
+        }),
+      );
+    }
   }
 }

@@ -439,6 +439,11 @@ camera and moderate; the media goes over the transport it names on join (`liveki
   iOS a background mode in `Info.plist`, Android a `microphone` foreground service — so both go
   through `core/voice/CallSessionHost`, and `InactiveCallSessionHost` covers everywhere that needs
   nothing. See `docs/mobile.md`.
+- **Hanging up lets go of every device at once.** The microphone, camera and share stop immediately,
+  without `Room.disconnect()`, which waits 10 s for an acknowledgement before stopping the tracks.
+  **Quitting the app leaves the call first** (`leaveNow`, bounded to 1.5 s), and the server drops a
+  crashed client after 5 s without a signalling connection. Watchers forget a share when its sharer
+  leaves the call, and the full view closes itself. See `docs/voice.md`.
 
 ### What's still missing
 

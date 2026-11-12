@@ -269,7 +269,8 @@ class VoiceScreenShareTile extends ConsumerWidget {
 }
 
 /// Shows [userId]'s share on its own, filling the window, until Escape or the
-/// close button — or until the share ends, when it says so instead.
+/// close button — or until the share ends (they stopped it, left the call, or
+/// this client left it), when it closes itself.
 Future<void> showScreenShareFullView(
   BuildContext context, {
   required String userId,
@@ -282,17 +283,53 @@ Future<void> showScreenShareFullView(
   ),
 );
 
-class _ScreenShareFullView extends ConsumerWidget {
+class _ScreenShareFullView extends ConsumerStatefulWidget {
   const _ScreenShareFullView({required this.userId, required this.displayName});
 
   final String userId;
   final String displayName;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ScreenShareFullView> createState() =>
+      _ScreenShareFullViewState();
+}
+
+class _ScreenShareFullViewState extends ConsumerState<_ScreenShareFullView> {
+  /// Whether a picture has been shown yet. Until then a missing feed is the
+  /// share still arriving, not the share having ended.
+  bool _shown = false;
+  bool _closing = false;
+
+  String get userId => widget.userId;
+  String get displayName => widget.displayName;
+
+  /// Closes once, after the frame: never mid-build, and never twice when the
+  /// share and the call end in the same moment.
+  void _closeWhenEnded() {
+    if (_closing) return;
+    _closing = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).maybePop();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final feed = ref.watch(
       voiceCallProvider.select((call) => call.screenFeedFor(userId)),
     );
+    final ended = ref.watch(
+      voiceCallProvider.select(
+        (call) =>
+            !call.inCall ||
+            !call.watching.contains(userId) ||
+            !(call.screenShares.contains(userId) ||
+                call.untrustedScreenShares.contains(userId)),
+      ),
+    );
+    if (feed != null) _shown = true;
+    if (ended || (_shown && feed == null)) _closeWhenEnded();
+
     void close() => Navigator.of(context).maybePop();
 
     return CallbackShortcuts(
@@ -304,10 +341,14 @@ class _ScreenShareFullView extends ConsumerWidget {
           body: Stack(
             children: [
               Positioned.fill(
+                // No picture: either it has not arrived yet, or the share just
+                // ended and this view is about to close.
                 child: feed == null
                     ? Center(
                         child: Text(
-                          '$displayName stopped sharing.',
+                          _shown
+                              ? '$displayName stopped sharing.'
+                              : "Waiting for $displayName's screen…",
                           style: const TextStyle(color: Colors.white70),
                         ),
                       )

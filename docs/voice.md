@@ -427,7 +427,11 @@ capturing.
 
 **Receiving.** Nobody's share is received until it is watched (`setScreenShareWatched`): it is
 `disable()`d the moment it is published, picture and sound, so the media server forwards nothing from
-it, and the wish outlives the share like a hidden camera does. `screenShares` names everybody sharing
+it, and the wish outlives the share like a hidden camera does — but not the sharer leaving the call:
+`voice.left` for them drops them from `watching` (`_stopWatchingLeaver`), so a share they start after
+coming back is a Watch card again, not a stream that resumes unasked. LiveKit reporting them gone is
+not enough on its own, because it also does that while they are rejoining after a network drop, and a
+share that comes straight back should keep playing. `screenShares` names everybody sharing
 something this client trusts, watched or not, so a share can be offered before it is received; an
 untrusted one (`untrustedScreenShares`) is never drawn or played. A share's sound has its own volume
 (`setScreenShareVolume`), separate from the member's voice, and follows the default volume — so it
@@ -485,8 +489,22 @@ sees you unmuted for a moment. It then creates the engine and connects.
   permissions event alike. So `_applyMic` never throws: it reports on `VoiceEngine.microphoneFailures`,
   the call carries on, `VoiceCallState.microphoneFailed` is set, and the mute button shows muted,
   explains why, and **retries** when tapped (`retryMicrophone`) — muting would change nothing anybody
-  can hear. Hanging up does not throw either: a `Room.disconnect` waits for an acknowledgement that a
-  dead connection will never send.
+  can hear.
+- **Hanging up lets go of every device at once.** The engine does not use `Room.disconnect()`:
+  livekit_client 2.13 sends the leave and then waits up to a fixed 10 s for LiveKit to answer with a
+  leave of its own, which a client-initiated leave does not reliably get, and stops the local tracks
+  only after that. That kept the microphone (and any camera or shared screen) capturing for ten
+  seconds after the call had ended on screen, and then threw a `TimeoutException`. Instead,
+  `_closeRoom` stops every local track (microphone, camera, the shared screen and its sound), sends
+  the leave through the room's engine without waiting, and disposes the room, which closes both peer
+  connections and the signalling socket. Raindrop's own `LeaveVoice` is what removes the member for
+  everybody else. Nothing about hanging up waits on the network, and nothing throws.
+- **Quitting the app leaves the call first.** The controller's `AppLifecycleListener` answers
+  `onExitRequested` (Cmd+Q, closing the last window on macOS, closing the window on Windows and Linux)
+  with `leaveNow()`, which sends `LeaveVoice` and waits for the media to be released, for at most
+  1.5 s so an unreachable server never holds up the quit. `onDetach` tries the same without waiting.
+  A client that crashes or is killed cannot do this. The server notices its signalling connection
+  close and drops it after `SignalLossGrace` (5 s); see the server's `docs/voice.md`.
 - **Moderator mutes come from `voice.state`.** A mute for everyone, or losing `speak`, arrives as
   `voice.state` for you: the controls show you as muted and explain why. When `canPublish` comes back,
   the engine republishes your microphone if you had it on.
@@ -543,7 +561,7 @@ units mistake, and why the cap is 2.
     watched share, the cards and the participants; tapping another share in the strip brings it
     forward. Its bar has the sharer's name and what they share, a **volume** slider when it carries
     sound (its own, apart from their voice), **Full view** (a full-window route, Esc to close, which
-    says so when the share ends) and **Stop watching**.
+    closes itself once the share ends — stopped, the sharer left, or this client left the call) and **Stop watching**.
   - **while you share**, `VoiceOwnShareBar` above the participants: "You're sharing “Notes”, with its
     sound", a small preview of exactly what everybody sees (foldable, and not drawn at all when folded
     — a local preview of a large screen costs a texture upload every frame), and **Stop sharing**.
