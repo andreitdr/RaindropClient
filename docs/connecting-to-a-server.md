@@ -47,9 +47,11 @@ On success, `flow.persist(ref, session: ..., displayName: ...)`:
    is what later lets the client follow a replaced certificate. See
    [Network layer](network-layer.md#servertrust--following-a-certificate-change).
 2. Saves the session token to `SecureStore`.
-3. Registers the server with `ServersController` and makes it the active server.
-4. Adopts the new `ServerSession` immediately via `serverSessionProvider(guid).notifier.adopt(...)`,
-   so the shell doesn't have to re-fetch anything to pick it up.
+3. Hands the new `ServerSession` over via `serverSessionProvider(guid).notifier.adopt(...)`, so the
+   shell doesn't have to re-fetch anything to pick it up. This comes before the next step, so the
+   session provider's first build with the profile takes this session rather than restoring a second
+   one from the saved token (see [Servers & sessions](servers-and-sessions.md)).
+4. Registers the server with `ServersController` and makes it the active server.
 
 ## Reconnecting: `ConnectServerFlow.forExisting`
 

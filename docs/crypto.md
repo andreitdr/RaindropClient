@@ -104,7 +104,18 @@ with it, because the server forgets session bindings when sessions end. The serv
   `build` reruns whenever the session does, so overlapping runs share one in-flight setup per server
   (`_firstDeviceSetups`) instead of each calling `createIdentity` — the second would fail with "this
   store already holds a device identity". The recovery words are kept (`_unshownRecoveryWords`) until
-  `acknowledgeRecoveryWords`, so whichever run ends up live still shows them.
+  `acknowledgeRecoveryWords`, so whichever run ends up live still shows them. A run that finds keys
+  in the store while that setup is still in flight joins it too, rather than activating on its heels
+  and returning without the words.
+- **Activating** (register, then bind with a signed challenge) runs **one at a time per session
+  token** (`_activations`). The server keeps one outstanding challenge per session, so two
+  activations interleaving would replace each other's nonce and both binds would fail
+  (`invalid_signature`, then `no_challenge`). That is what used to leave a first launch on Windows
+  stuck: two runs bound the same token at once, and the setup failed after creating the keys.
+- **A device with keys and no backup on the server** (a first-device setup that stopped after
+  `createIdentity`) seals one under a new recovery key when it next activates, and shows the words
+  as above (`_ensureBackup`, best-effort, retried on the next build). Every activation of a device
+  with keys therefore costs one `GetKeyBackup`.
 - **Linking.** The new device shows `DeviceLinkCode` (`RDL1-<link id>-<commitment>`) as text and as a
   QR code (`qr_flutter`). The user enters or scans it under Settings → Encryption → *Link a new device*
   on a device that has keys. Scanning (`mobile_scanner`, `link_code_scanner.dart`) is offered where

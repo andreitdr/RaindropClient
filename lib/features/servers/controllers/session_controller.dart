@@ -72,6 +72,16 @@ class ServerSessionController
     }
     if (profile == null) return null;
 
+    // A session onboarding just opened ([adopt]) is the session: restoring
+    // another from the same token would hand everything that follows the
+    // session (device setup, the event stream, channel groups) a second one
+    // while the first is still in use.
+    final handedOver = _handedOver.remove(serverId);
+    if (handedOver != null) {
+      ref.onDispose(handedOver.client.close);
+      return handedOver;
+    }
+
     final token = await _secureStore.sessionToken(serverId);
     if (token == null) return null;
 
@@ -147,8 +157,17 @@ class ServerSessionController
     );
   }
 
+  /// Sessions [adopt] handed over, waiting for [build] to take them.
+  static final _handedOver = <String, ServerSession>{};
+
   /// Called once onboarding (register/login/rejoin) hands back a fresh
   /// token, so the shell picks the new session up immediately.
+  ///
+  /// The session goes through [build] rather than straight into `state`:
+  /// a build already in flight (one restoring from the token onboarding just
+  /// saved) would otherwise land afterwards and replace it with a second
+  /// session on the same token. Rebuilding drops that build's result, and the
+  /// new one returns this session without touching the network.
   void adopt(ServerSession session) {
     // A first connection pinned the certificate it just saw; nothing has
     // told the process-wide registry yet.
@@ -161,7 +180,8 @@ class ServerSessionController
         fingerprint,
       );
     }
-    state = AsyncData(session);
+    _handedOver[arg] = session;
+    ref.invalidateSelf();
   }
 
   Future<void> logout() async {

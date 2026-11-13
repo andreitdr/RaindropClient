@@ -166,8 +166,9 @@ class ConnectServerFlow {
       port: port,
       displayName: displayName,
     );
-    ref.read(serversControllerProvider.notifier).add(profile);
-    ref.read(activeServerIdProvider.notifier).select(guid);
+    // Handed over before the server is listed, so the session provider's
+    // first build with this profile takes this session instead of restoring
+    // a second one from the token just saved.
     ref
         .read(serverSessionProvider(guid).notifier)
         .adopt(
@@ -178,6 +179,8 @@ class ConnectServerFlow {
             currentUser: session.user,
           ),
         );
+    ref.read(serversControllerProvider.notifier).add(profile);
+    ref.read(activeServerIdProvider.notifier).select(guid);
   }
 
   void dispose() => client.close();
