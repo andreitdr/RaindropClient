@@ -53,7 +53,13 @@ in the chat pane, next to the server rail (`HomeShell`'s `_SignedOutLayout`) —
 Two mutating methods:
 
 - `.adopt(session)` — called once [`ConnectServerFlow.persist`](connecting-to-a-server.md) hands back
-  a fresh session, so the shell picks it up immediately without waiting for `build` to re-run.
+  a fresh session, so the shell picks it up without another `GetMe`. It does not set `state`: it
+  stashes the session and invalidates the provider, and the next `build` returns it (and closes its
+  channel when it is rebuilt). Setting `state` directly would leave any build already in flight
+  (restoring from the token `persist` just saved) to land afterwards and replace it with a second
+  session on the same token — and everything that follows the session (device setup, the event
+  stream, channel groups) would start twice, racing each other. `persist` adopts **before** adding the
+  profile for the same reason, so no restoring build starts at all.
 - `.logout()` — best-effort `UserService.Logout` (a failure there is ignored — the token is being
   discarded locally regardless), then clears the stored token and sets state to `null`.
 - `.leave({password, preserveData})` — `UserService.LeaveServer`, then clears the stored token and

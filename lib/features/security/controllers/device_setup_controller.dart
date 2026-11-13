@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -106,7 +106,18 @@ class DeviceSetupController
 
     final engine = await ref.watch(cryptoEngineProvider(serverId).future);
     final device = await engine.device();
-    if (device != null) return _activate(session, engine, device);
+    // Keys in the store while a first-device setup is still running mean that
+    // setup made them a moment ago and has yet to seal the backup: join it
+    // below rather than activating on its heels.
+    if (device != null && !_firstDeviceSetups.containsKey(serverId)) {
+      final ready = await _activate(session, engine, device);
+      if (ready is! DeviceSetupReady) return ready;
+      await _ensureBackup(session, engine);
+      return DeviceSetupReady(
+        device,
+        recoveryWords: _unshownRecoveryWords[serverId],
+      );
+    }
 
     // build() reruns whenever the session does, and this path awaits the
     // network before creating keys, so two runs can overlap. Share one
@@ -164,8 +175,37 @@ class DeviceSetupController
     return DeviceSetupReady(created);
   }
 
+  /// In-flight activations, by session token: each one waits for the one
+  /// before it.
+  static final _activations = <String, Future<void>>{};
+
   /// Registers [device] (a no-op when it already is) and binds the session.
+  ///
+  /// One at a time per session token. The server keeps a single outstanding
+  /// challenge per session, so a second activation asking for one while the
+  /// first is still signing replaces the first's nonce: the first bind then
+  /// fails (`invalid_signature`), and having used the challenge up, so does
+  /// the second (`no_challenge`).
   Future<DeviceSetupState> _activate(
+    ServerSession session,
+    CryptoEngine engine,
+    DeviceKeys device,
+  ) {
+    final token = session.token;
+    final run = (_activations[token] ?? Future<void>.value()).then(
+      (_) => _registerAndBind(session, engine, device),
+    );
+    final tail = run.then<void>((_) {}, onError: (Object _) {});
+    _activations[token] = tail;
+    unawaited(
+      tail.whenComplete(() {
+        if (identical(_activations[token], tail)) _activations.remove(token);
+      }),
+    );
+    return run;
+  }
+
+  Future<DeviceSetupState> _registerAndBind(
     ServerSession session,
     CryptoEngine engine,
     DeviceKeys device,
@@ -190,6 +230,39 @@ class DeviceSetupController
       signature: await engine.signSessionChallenge(nonce),
     );
     return DeviceSetupReady(device);
+  }
+
+  /// In-flight backup checks, by server id.
+  static final _backupChecks = <String, Future<void>>{};
+
+  /// Seals a backup under a new recovery key if the account has none — when
+  /// the first-device setup that should have made one stopped after creating
+  /// the keys. Its words go to [_unshownRecoveryWords] to be shown.
+  /// Best-effort: on failure the next build tries again.
+  Future<void> _ensureBackup(ServerSession session, CryptoEngine engine) {
+    final serverId = arg;
+    return _backupChecks[serverId] ??= _sealMissingBackup(
+      serverId,
+      session,
+      engine,
+    ).whenComplete(() => _backupChecks.remove(serverId));
+  }
+
+  Future<void> _sealMissingBackup(
+    String serverId,
+    ServerSession session,
+    CryptoEngine engine,
+  ) async {
+    try {
+      if (await session.e2eeApi.getBackup(session.token) != null) return;
+      final backup = await engine.sealBackupWithRecoveryKey();
+      await session.e2eeApi.putBackup(session.token, backup.blob);
+      _unshownRecoveryWords[serverId] = backup.recoveryWords!;
+    } on ApiException catch (e) {
+      debugPrint('device setup: could not check the key backup: $e');
+    } on CryptoException catch (e) {
+      debugPrint('device setup: could not seal a key backup: $e');
+    }
   }
 
   ServerSession _session() {
