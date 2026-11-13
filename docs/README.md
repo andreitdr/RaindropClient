@@ -46,6 +46,7 @@ The sibling checkouts are not optional: `native/raindrop_crypto_builder` builds
 | [End-to-end encryption](crypto.md) | The Rust MLS core in [`../RaindropCrypto`](../../RaindropCrypto/docs/README.md), the bridge and its build glue, `CryptoEngine`, the encrypted store |
 | [Routing](routing.md) | The `go_router` route table |
 | [Wire format](wire-format.md) | Protobuf over gRPC, and the protobuf payload inside encrypted messages (v1 MessagePack still read) |
+| [App icon](app-icon.md) | The icon's one source (`tool/icons/`), what each platform gets (Liquid Glass, adaptive Android, themed and tinted variants), and regenerating it |
 | [CI & releases](ci-and-releases.md) | The GitHub Actions workflows, the two-repository checkout they need, and the desktop packaging |
 | [Roadmap](roadmap.md) | Everything implemented today, everything that is not, and what is deliberately not planned |
 

@@ -58,6 +58,14 @@ any change to RaindropProto, regenerate it and commit the result (needs `brew in
 tool/gen_protos.sh
 ```
 
+The app icon is generated too, for every platform, from one definition in `tool/icons/make_svgs.py`;
+its outputs are committed. After changing it, rerun (macOS only) and commit what it changed — see
+`docs/app-icon.md`:
+
+```bash
+tool/icons/gen_icons.sh
+```
+
 Integration tests against a live server (the real Rust core, the real server) are under
 `test/integration/` and skip themselves unless `RAINDROP_TEST_SERVER=host:port` names a server with a
 fresh database; see `docs/crypto.md#tests`.
