@@ -32,9 +32,12 @@ jobs:
         include:
           # Linux is built on the oldest supported Ubuntu on purpose: a bundle links against the
           # glibc it was built with and runs on that version or newer, so older = more distributions.
-          - { name: linux, os: ubuntu-22.04, bundle: build/linux/x64/release/bundle }
-          - { name: macos, os: macos-latest, bundle: build/macos/Build/Products/Release/raindrop_client.app }
-          - { name: windows, os: windows-latest, bundle: build/windows/x64/runner/Release }
+          # `target` is what `flutter build` is asked for; `bundle` is where that build lands.
+          - { name: linux, os: ubuntu-22.04, target: linux, bundle: build/linux/x64/release/bundle }
+          - { name: macos, os: macos-latest, target: macos, bundle: build/macos/Build/Products/Release/raindrop_client.app }
+          - { name: windows, os: windows-latest, target: windows, bundle: build/windows/x64/runner/Release }
+          # One universal APK (arm64-v8a, armeabi-v7a, x86_64), the file a person can sideload.
+          - { name: android, os: ubuntu-latest, target: apk, bundle: build/app/outputs/flutter-apk/app-release.apk }
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -66,6 +69,54 @@ jobs:
           sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsecret-1-dev \
             libmpv-dev libpulse-dev patchelf rpm
           sudo gem install --no-document fpm
+
+      # Same Android setup as ci.yml (see the comments there): the Rust targets per ABI, the SDK
+      # licences so Gradle can fetch the pinned NDK, room on the runner for three Rust builds, JDK 17.
+      - name: Android build dependencies
+        if: matrix.name == 'android'
+        run: |
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+          (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+      - name: Make room for the Android build
+        if: matrix.name == 'android'
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost \
+            /opt/hostedtoolcache/CodeQL /usr/share/swift /usr/local/share/powershell || true
+          sudo docker image prune --all --force > /dev/null 2>&1 || true
+          if sudo fallocate -l 8G /mnt/raindrop.swap 2>/dev/null; then
+            sudo chmod 600 /mnt/raindrop.swap
+            sudo mkswap /mnt/raindrop.swap > /dev/null && sudo swapon /mnt/raindrop.swap || echo "Could not enable the extra swap."
+          fi
+          df -h / /mnt 2>/dev/null; free -h
+      - uses: actions/setup-java@v4
+        if: matrix.name == 'android'
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Release signing for the APK. With the four ANDROID_* secrets set, the APK is signed with the
+      # project's own release key, so every release installs as an update over the previous one.
+      # Without them build.gradle.kts falls back to the runner's throwaway debug key: the APK still
+      # installs, but each release has a different key, so updating means uninstalling first.
+      - name: Android release signing
+        if: matrix.name == 'android'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret: the APK is signed with a throwaway debug key."
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/release.jks"
+            echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+            echo "keyPassword=$ANDROID_KEY_PASSWORD"
+          } > android/key.properties
 
       # The project signs with the developer's own Apple Development certificate, which CI doesn't have.
       # Switch to ad-hoc signing on this runner only (the checkout is discarded afterwards).
@@ -114,7 +165,12 @@ jobs:
       - name: Build release
         run: |
           if [ -n "${STRAWBERRY_PERL_BIN:-}" ]; then export PATH="$STRAWBERRY_PERL_BIN:$PATH"; fi
-          flutter build ${{ matrix.name }} --release --build-name "${GITHUB_REF_NAME#v}"
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Android only installs an update whose versionCode is higher than the installed one's, so
+          # derive it from the tag (1.2.3 -> 10203) rather than pubspec's fixed build number.
+          IFS=. read -r major minor patch <<< "$VERSION"
+          flutter build ${{ matrix.target }} --release --build-name "$VERSION" \
+            --build-number "$((major * 10000 + minor * 100 + patch))"
 
       # Windows and macOS builds already carry libmpv (media_kit_libs_video). Linux does not, so it
       # is copied in here, then wrapped as AppImage + .deb + .rpm.
@@ -148,6 +204,13 @@ jobs:
           cp "$crt"/*.dll "${{ matrix.bundle }}/"
           mkdir -p dist
           (cd "${{ matrix.bundle }}" && 7z a -tzip "$GITHUB_WORKSPACE/RaindropClient/dist/RaindropClient-$VERSION-windows.zip" .)
+
+      - name: Package (android)
+        if: matrix.name == 'android'
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          cp "${{ matrix.bundle }}" "dist/RaindropClient-$VERSION-android.apk"
 
       - uses: actions/upload-artifact@v4
         with:
