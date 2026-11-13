@@ -119,6 +119,11 @@ rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-and
 - **Release signing** reads `android/key.properties` (`storeFile`, `storePassword`, `keyAlias`,
   `keyPassword`), which is not in the repository. Without it a release build falls back to the debug
   keys, so `flutter build apk --release` still works for testing; such a build cannot be published.
+- **Releases** attach `RaindropClient-<version>-android.apk` (built by `.github/workflows/release.yml`).
+  It is signed with the release key when the repository has the secrets `ANDROID_KEYSTORE_BASE64`
+  (the `.jks`, base64-encoded), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and
+  `ANDROID_KEY_PASSWORD`; without them it carries the runner's throwaway debug key, so a newer release
+  only installs after the old one is uninstalled. The `versionCode` comes from the tag (1.2.3 → 10203).
 
 ### iOS
 
