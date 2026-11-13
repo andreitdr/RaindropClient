@@ -125,10 +125,12 @@ class DeviceSetupController
     // store fails ("already holds a device identity"), and a superseded run
     // would carry off the only copy of the recovery words.
     final joined = _firstDeviceSetups.containsKey(serverId);
-    final result = await (_firstDeviceSetups[serverId] ??= _setUpFirstDevice(
-      session,
-      engine,
-    ).whenComplete(() => _firstDeviceSetups.remove(serverId)));
+    final result = await (_firstDeviceSetups[serverId] ??=
+        _setUpFirstDevice(session, engine).whenComplete(() {
+          // A block body: `=> map.remove(..)` would return this very future, and
+          // whenComplete would then wait on itself forever.
+          _firstDeviceSetups.remove(serverId);
+        }));
     if (result is! DeviceSetupReady) return result;
 
     final words = _unshownRecoveryWords[serverId];
@@ -241,11 +243,11 @@ class DeviceSetupController
   /// Best-effort: on failure the next build tries again.
   Future<void> _ensureBackup(ServerSession session, CryptoEngine engine) {
     final serverId = arg;
-    return _backupChecks[serverId] ??= _sealMissingBackup(
-      serverId,
-      session,
-      engine,
-    ).whenComplete(() => _backupChecks.remove(serverId));
+    return _backupChecks[serverId] ??=
+        _sealMissingBackup(serverId, session, engine).whenComplete(() {
+          // Not `=>`: remove() returns this future, which would await itself.
+          _backupChecks.remove(serverId);
+        });
   }
 
   Future<void> _sealMissingBackup(
