@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs><linearGradient id="drop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E3E9FF"/><stop offset="1" stop-color="#94A8FF"/></linearGradient></defs>
+<path fill="url(#drop)" d="M512 150 C452 250 276 420 276 600 C276 730 381 836 512 836 C548 836 582 828 612 814 L728 862 L702 748 C731 707 748 656 748 600 C748 420 572 250 512 150 Z"/><circle cx="420" cy="610" r="40" fill="#2F45C8"/><circle cx="512" cy="610" r="40" fill="#2F45C8"/><circle cx="604" cy="610" r="40" fill="#2F45C8"/>
+</svg>
