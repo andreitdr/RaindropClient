@@ -116,6 +116,11 @@ with it, because the server forgets session bindings when sessions end. The serv
   `createIdentity`) seals one under a new recovery key when it next activates, and shows the words
   as above (`_ensureBackup`, best-effort, retried on the next build). Every activation of a device
   with keys therefore costs one `GetKeyBackup`.
+- **Clearing the in-flight maps** (`_firstDeviceSetups`, `_backupChecks`) happens in a
+  `whenComplete` with a block body, never `() => map.remove(id)`: `remove` returns the stored
+  future — the `whenComplete` future itself — and `whenComplete` waits on a returned future, so it
+  would wait on itself forever. That was the endless encryption spinner in v2.0.1: setup finished
+  every step and then never reported back.
 - **Linking.** The new device shows `DeviceLinkCode` (`RDL1-<link id>-<commitment>`) as text and as a
   QR code (`qr_flutter`). The user enters or scans it under Settings → Encryption → *Link a new device*
   on a device that has keys. Scanning (`mobile_scanner`, `link_code_scanner.dart`) is offered where
