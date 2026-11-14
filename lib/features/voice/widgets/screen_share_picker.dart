@@ -1,45 +1,162 @@
 /// Choosing what to share: a whole screen, or one window — and, for a window,
-/// whether its own sound goes with it.
+/// whether its own sound goes with it — and how good to send it.
 library;
 
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/platform/platform_info.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/voice/voice_engine.dart';
 import '../../../core/widgets/adaptive.dart';
+import '../controllers/voice_call_controller.dart';
+import '../controllers/voice_settings_controller.dart';
+import 'share_quality_selector.dart';
 
 /// Lets the user pick a screen or a window to share, and returns what to share
 /// — or null when they cancel. Nothing is captured until this returns.
 ///
-/// Desktop only, so always a dialog: sharing is not offered on phones (see
-/// `canShareScreen`).
+/// A dialog on the desktops, which have screens and windows to choose
+/// between. A sheet on a phone or a tablet, which has one thing to share and
+/// so nothing to pick: what the sheet is for there is saying what *will* be
+/// seen, before the system's own consent sheet asks (see
+/// `sharesWholeDeviceOnly`).
 ///
 /// **The sound checkbox is the sharer's agreement.** It starts unticked every
 /// time, and again whenever another window is chosen, because agreeing to send
 /// one app's sound is not agreeing to send another's. A whole screen never
 /// offers it: the host's sound is never sent.
+///
+/// The quality is the opposite: remembered (`VoiceSettings.shareQuality`),
+/// because it is a preference about this device and its connection, not an
+/// agreement about what is on screen.
 Future<VoiceScreenShareOptions?> showScreenSharePicker(BuildContext context) =>
-    showDialog<VoiceScreenShareOptions>(
-      context: context,
-      builder: (_) => Dialog(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760, maxHeight: 640),
-          child: const _ScreenSharePicker(),
+    sharesWholeDeviceOnly
+    ? showModalBottomSheet<VoiceScreenShareOptions>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (_) => const _DeviceSharePicker(),
+      )
+    : showDialog<VoiceScreenShareOptions>(
+        context: context,
+        builder: (_) => Dialog(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760, maxHeight: 680),
+            child: const _ScreenSharePicker(),
+          ),
+        ),
+      );
+
+/// The phone's version: no list, because there is one thing to share. It says
+/// what that is — everything — and what happens next, which on both systems
+/// is a sheet of the system's own that this app cannot word.
+class _DeviceSharePicker extends ConsumerStatefulWidget {
+  const _DeviceSharePicker();
+
+  @override
+  ConsumerState<_DeviceSharePicker> createState() => _DeviceSharePickerState();
+}
+
+class _DeviceSharePickerState extends ConsumerState<_DeviceSharePicker> {
+  late VoiceShareQuality _quality = ref
+      .read(voiceSettingsProvider)
+      .shareQuality;
+
+  void _share() {
+    ref
+        .read(voiceSettingsProvider.notifier)
+        .update((settings) => settings.copyWith(shareQuality: _quality));
+    Navigator.of(context).pop(
+      VoiceScreenShareOptions(source: deviceScreenSource, quality: _quality),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final limit = ref.watch(voiceShareLimitProvider);
+    final faded = theme.textTheme.bodyMedium?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Share your screen', style: theme.textTheme.titleLarge),
+            const SizedBox(height: 12),
+            Text(
+              currentPlatform == RaindropPlatform.ios
+                  ? 'Everybody in the call who chooses to watch will see '
+                        'everything on your screen — other apps, '
+                        'notifications, and anything you type that is not '
+                        'hidden as you type it. Sound is not shared.'
+                  : 'Everybody in the call who chooses to watch will see '
+                        'what you share. Sharing your whole screen shows '
+                        'everything on it — other apps, notifications, and '
+                        'anything you type that is not hidden as you type '
+                        'it. Sound is not shared.',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              currentPlatform == RaindropPlatform.ios
+                  ? 'Next, choose Raindrop and tap Start Broadcast. To stop, '
+                        'come back here or tap the red indicator at the top '
+                        'of the screen.'
+                  : 'Next, Android asks what to share — one app, where it '
+                        'offers that, or your whole screen. To stop, come '
+                        'back here or use the notification.',
+              style: faded,
+            ),
+            const SizedBox(height: 16),
+            ShareQualityField(
+              quality: _quality,
+              limit: limit,
+              onChanged: (quality) => setState(() => _quality = quality),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: _share,
+                  icon: const Icon(Icons.screen_share),
+                  label: const Text('Continue'),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
+  }
+}
 
-class _ScreenSharePicker extends StatefulWidget {
+class _ScreenSharePicker extends ConsumerStatefulWidget {
   const _ScreenSharePicker();
 
   @override
-  State<_ScreenSharePicker> createState() => _ScreenSharePickerState();
+  ConsumerState<_ScreenSharePicker> createState() => _ScreenSharePickerState();
 }
 
-class _ScreenSharePickerState extends State<_ScreenSharePicker> {
+class _ScreenSharePickerState extends ConsumerState<_ScreenSharePicker> {
+  /// How good to send it: what was picked last time, until changed here.
+  late VoiceShareQuality _quality = ref
+      .read(voiceSettingsProvider)
+      .shareQuality;
+
   VoiceScreenSources? _sources;
   StreamSubscription<List<VoiceScreenSource>>? _subscription;
   List<VoiceScreenSource> _listed = const [];
@@ -134,10 +251,14 @@ class _ScreenSharePickerState extends State<_ScreenSharePicker> {
       return;
     }
 
+    ref
+        .read(voiceSettingsProvider.notifier)
+        .update((settings) => settings.copyWith(shareQuality: _quality));
     Navigator.of(context).pop(
       VoiceScreenShareOptions(
         source: chosen,
         withAudio: _withAudio && _audioRefusal == null,
+        quality: _quality,
       ),
     );
   }
@@ -217,16 +338,15 @@ class _ScreenSharePickerState extends State<_ScreenSharePicker> {
               ),
             ),
           const SizedBox(height: 8),
+          ShareQualityField(
+            quality: _quality,
+            limit: ref.watch(voiceShareLimitProvider),
+            onChanged: (quality) => setState(() => _quality = quality),
+          ),
+          const SizedBox(height: 8),
           Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Expanded(
-                child: Text(
-                  'Up to 1080p, $screenShareFrameRate frames a second',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
                 child: const Text('Cancel'),

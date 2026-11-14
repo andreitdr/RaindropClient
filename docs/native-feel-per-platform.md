@@ -25,8 +25,10 @@ re-deriving the check:
   (`core/video/camera_effects_engine.dart`) adds whether the build carries a segmentation model, and
   that is what the camera sheet reads, so a build without one offers no effect rather than one that
   would blur the wrong shape. See [Voice](voice.md#camera-effects).
-- `canShareScreen` — the desktops: a phone can watch a share but not send one, since showing another
-  app backgrounds Raindrop. `needsScreenCapturePermission` — macOS, which asks for Screen Recording.
+- `canShareScreen` — every platform Raindrop runs on. `sharesWholeDeviceOnly` — phones and tablets,
+  which share everything on the screen and have nothing to pick between, so the picker is a sheet
+  there. `maximumShareFrameRate` — 30 on iOS, whose screen comes through a broadcast extension; no
+  limit elsewhere. `needsScreenCapturePermission` — macOS, which asks for Screen Recording.
 - `windowAudioUnavailableReason(windowId)` — why a window's own sound cannot be shared, or null: only
   on Windows 11, and not for a window whose process tree contains Raindrop. `isThisAppsWindow` and
   `isWindowStillOpen` answer the share picker. The Windows half of these is

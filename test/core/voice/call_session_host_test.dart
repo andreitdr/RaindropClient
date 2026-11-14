@@ -13,9 +13,19 @@ class _FakeActivity {
         throw PlatformException(code: 'error', message: 'refused');
       }
       calls.add(call);
-      return null;
+      return answer;
     });
   }
+
+  /// What the platform answers a call with. Only `capture` has an answer.
+  Object? answer;
+
+  /// The service telling Dart something, the way `MainActivity` relays it.
+  Future<void> say(String method) => messenger.handlePlatformMessage(
+    _channel.name,
+    _channel.codec.encodeMethodCall(MethodCall(method)),
+    (_) {},
+  );
 
   static const _channel = MethodChannel('raindrop/call_session');
 
@@ -88,6 +98,49 @@ void main() {
       await expectLater(host.update(call), completes);
       await expectLater(host.end(), completes);
     });
+
+    // The capture starts the moment this answers, so the answer is the
+    // platform's own: a service that could not take the type must stop it.
+    test('asks before capturing the screen, and passes the answer on', () async {
+      activity.answer = true;
+      expect(await host.setScreenCapture(true), isTrue);
+      expect(activity.methods, ['capture']);
+      expect(activity.calls.single.arguments, {'capturing': true});
+
+      activity.answer = false;
+      expect(await host.setScreenCapture(true), isFalse);
+    });
+
+    test('says when the capture has stopped', () async {
+      activity.answer = true;
+      await host.setScreenCapture(false);
+
+      expect(activity.calls.single.arguments, {'capturing': false});
+    });
+
+    test('a capture the platform refuses or cannot answer does not start', () async {
+      activity.refuse = true;
+      expect(await host.setScreenCapture(true), isFalse);
+
+      // No answer at all — an older build of the activity — is not a yes.
+      activity
+        ..refuse = false
+        ..answer = null;
+      expect(await host.setScreenCapture(true), isFalse);
+    });
+
+    // The notification's Stop sharing, or the system closing the capture:
+    // neither comes through the media library.
+    test('hears a capture ended from outside the app', () async {
+      var ended = 0;
+      final subscription = host.screenCaptureEnded.listen((_) => ended++);
+      addTearDown(subscription.cancel);
+
+      await activity.say('captureEnded');
+      await activity.say('somethingElse');
+
+      expect(ended, 1);
+    });
   });
 
   group('InactiveCallSessionHost', () {
@@ -101,6 +154,16 @@ void main() {
       await host.end();
       await host.end();
 
+      expect(activity.calls, isEmpty);
+    });
+
+    // Nothing to arrange is a yes: a desktop shares without asking anybody.
+    test('lets a capture go ahead, having nothing to arrange for it', () async {
+      const host = InactiveCallSessionHost();
+
+      expect(await host.setScreenCapture(true), isTrue);
+      expect(await host.setScreenCapture(false), isTrue);
+      expect(await host.screenCaptureEnded.isEmpty, isTrue);
       expect(activity.calls, isEmpty);
     });
   });

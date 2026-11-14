@@ -193,9 +193,10 @@ class VoiceCameraButton extends ConsumerWidget {
 ///
 /// Call state, like the camera: there is nothing to pre-arm, and starting goes
 /// through the share picker, where the user chooses what everybody will see —
-/// and, for a window, whether they hear it too. Not shown at all where sharing
-/// is not possible (`canShareScreen`): a phone can watch a share but not send
-/// one.
+/// and, for a window, whether they hear it too. On a phone the "picker" is a
+/// sheet saying what will be seen, since the only thing to share there is the
+/// whole screen. Not shown at all where sharing is not possible
+/// (`canShareScreen`).
 class VoiceScreenShareButton extends ConsumerWidget {
   const VoiceScreenShareButton({
     super.key,

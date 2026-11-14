@@ -44,8 +44,12 @@ the **app**; the other two projects keep their own, and a gap here is often a ga
   source to put a processor into, so `canUseCameraEffects` is false there and the sheet says so. The
   effects themselves are already built and tested for every target in
   [RaindropCrypto](../../RaindropCrypto/docs/video-effects.md).
-- **Sharing from a phone.** Background calls now exist ([Android and iOS](mobile.md)), so this is
-  unblocked, but nothing captures a phone's screen yet.
+- **Sixty frames a second from an iPhone or iPad's screen.** Phones share their screen now
+  ([Android and iOS](mobile.md#sharing-the-screen)), but iOS's comes through a broadcast extension —
+  a 50 MB process that hands each frame to the app as a JPEG — and that hop tops out around thirty.
+- **A hardware codec for screen shares.** 1080p at 60 is software VP8 on most machines. H.264 would be
+  cheap, but the codec is pinned for encryption's sake and the frame cryptor would have to be re-read
+  for it first. [Voice](voice.md#codecs-and-the-frame-cryptor)
 - **A window's sound on macOS and Linux.** macOS has no custom audio source in its WebRTC build short
   of a fork; Linux's capture records everything Raindrop plays too and needs a change in
   flutter_webrtc. [Voice](voice.md#screen-sharing)

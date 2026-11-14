@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The one folder the app and this extension share: where the app opens
+	     the socket a shared screen is handed over through. The same group as
+	     Runner/Runner.entitlements; neither can reach it without the other
+	     naming it too. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.raindrop.raindropClient</string>
+	</array>
+</dict>
+</plist>

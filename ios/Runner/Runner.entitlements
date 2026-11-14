@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Sharing this device's screen into a call. iOS hands the screen to a
+	     broadcast extension (RaindropBroadcast), a separate process, and the
+	     only way a frame gets from there to the app is through a folder both
+	     are entitled to: this App Group. The app opens a socket in it; the
+	     extension writes each picture down it. Nothing else is kept there. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.raindrop.raindropClient</string>
+	</array>
+</dict>
+</plist>

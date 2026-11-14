@@ -129,7 +129,8 @@ core/
                 LiveKitVoiceEngine, the only code that imports livekit_client / flutter_webrtc, and
                 VoiceVideoView (draws a feed, which builds its own surface — so no widget outside
                 core/voice/ ever names a track type), and CallSessionHost (keeping a call running
-                while the app is off screen: a no-op except on Android)
+                while the app is off screen, and telling Android a call is capturing the screen:
+                a no-op except on Android)
   video/      — VoiceCameraEffect (what the user chose to do to their camera's background) and
                 CameraEffects, the handle on the running native effects — the only file outside
                 crypto/ that imports the generated bridge, because the effects ride in the same Rust
@@ -415,16 +416,36 @@ camera and moderate; the media goes over the transport it names on join (`liveki
   until the server adds the camera. A grant that never comes takes the claim back, so the roster never
   shows a camera nobody can see. Turning it off reverses the order, so the grant is never withdrawn
   from under a live track.
-- **Screen sharing** (`voice.screen.v1`): a screen or a window, desktop only, with the camera's
-  handshake (`startScreenShare`). **The 1080p cap is ours to enforce** — livekit_client sizes a desktop
-  share from what it asked for, not what it got — so `_ScreenSizeGuard` reads the captured size from
-  the sender's stats and scales every layer by `screenShareScale`. A screen never carries sound; a
+- **Screen sharing** (`voice.screen.v1`): a screen or a window on the desktops, the whole screen on a
+  phone or tablet, with the camera's handshake (`startScreenShare`). A screen never carries sound; a
   window's sound only on Windows 11, through flutter_webrtc's process-tree loopback, refused for any
   window whose tree contains Raindrop (`windowAudioUnavailableReason`). **Nobody's share is received
   until it is watched** (`disable()` on publish): a card with **Watch**, then the large stage. The
   picker's "Also share this window's sound" checkbox is the sharer's consent — unticked every time.
   Adaptive stream and dynacast are on, which is why the feed list never reads `publication.enabled`.
   See `docs/voice.md#screen-sharing`.
+- **A share's quality is a ceiling, and "automatic" is three versions sent at once.** The sharer picks
+  Auto (up to 1080p at 30) or a maximum — 480p/720p/1080p at 15/24/30/60 (`VoiceShareQuality`,
+  remembered). A share always goes out as a three-version VP8 simulcast ladder (`shareLadder`); the
+  media server sends each viewer the largest version *their* connection carries, and the sharer's own
+  upload simply stops filling the top one. Nothing in the app measures a connection. **Always three
+  versions**, because the count is fixed at publish — that is what lets `setScreenShareQuality` re-aim
+  a running share without recapturing. `_ShareSendGuard` owns every encoder's scale, frame rate and
+  bitrate outright, from the size really being captured (livekit_client sizes a desktop share from
+  what it asked for, not what it got), and reports what is really going out
+  (`voiceShareSendStatsProvider`), including *why* it is below the ceiling. Three ceilings apply, lowest
+  wins (`voiceShareLimitProvider`): the sharer's, the server owner's (`VoiceRoster.shareLimit` —
+  **honoured by this client, not enforced by the server**, which never sees encrypted media) and the
+  platform's (iOS: 30 fps). A viewer can also pin a share to a smaller version, for themselves only.
+- **On a phone the system's consent comes before the server is told** (`prepareScreenCapture`), and is
+  handed back if the share does not start. Android: MediaProjection consent before *every* share, and
+  the call's foreground service takes the `mediaProjection` type only while a share runs
+  (`CallSessionHost.setScreenCapture`); a capture the system ended is noticed by watching the capture's
+  virtual display, since nothing reports it. iOS: a Broadcast Upload Extension (`ios/RaindropBroadcast`)
+  hands each frame to the app through an App Group socket — the app encodes and encrypts, the extension
+  never touches the network — and `BroadcastManager().shouldPublishTrack` must stay false or LiveKit
+  publishes a share of its own around the handshake. See `docs/voice.md#on-a-phone` and
+  `docs/mobile.md#sharing-the-screen`.
 - **Hiding somebody's camera really stops the stream** (`publication.disable()`, not a hidden widget),
   saving the bandwidth as well as the screen space, and it is re-applied on every republish so it does
   not leak when they turn their camera off and on. `unsubscribe()` is kept for the untrusted case.
@@ -460,8 +481,9 @@ camera and moderate; the media goes over the transport it names on join (`liveki
 
 ### What's still missing
 
-- Push-to-talk, **camera effects on Windows and Linux** (they run on macOS, iOS and Android), sharing
-  a screen from a phone, a window's sound on macOS and Linux, microphone gain; changing your username or
+- Push-to-talk, **camera effects on Windows and Linux** (they run on macOS, iOS and Android), a
+  window's sound on macOS and Linux, sixty frames a second from an iOS screen share, a hardware codec
+  for shares, microphone gain; changing your username or
   password from the app; any role-editing or report-moderation UI.
 - **Notifications**, including for messages that arrive while the app is closed. Raindrop is self-hosted
   with no push infrastructure; `docs/roadmap.md` lays out what closing that would cost.

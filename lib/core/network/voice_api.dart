@@ -148,6 +148,8 @@ class VoiceStatus {
     required this.participants,
     this.maximumCameraPublishers = 0,
     this.maximumScreenShares = 0,
+    this.maximumScreenShareHeight = 0,
+    this.maximumScreenShareFrameRate = 0,
   });
 
   final bool available;
@@ -165,6 +167,14 @@ class VoiceStatus {
   /// advertise `voice.screen.v1`.
   final int maximumScreenShares;
 
+  /// The most lines (480, 720 or 1080) and frames a second (15, 24, 30 or 60)
+  /// this server's owner lets a shared screen be sent at. 0 for either means
+  /// the server states none — an older one — and a share is held only to
+  /// what it always was. Honoured here rather than enforced there: the media
+  /// is end-to-end encrypted, and the server never sees a frame.
+  final int maximumScreenShareHeight;
+  final int maximumScreenShareFrameRate;
+
   factory VoiceStatus.fromProto(pb.GetVoiceStatusResponse m) => VoiceStatus(
     available: m.available,
     transport: m.transport.isEmpty ? 'none' : m.transport,
@@ -174,6 +184,8 @@ class VoiceStatus {
     ],
     maximumCameraPublishers: m.maximumCameraPublishers,
     maximumScreenShares: m.maximumScreenShares,
+    maximumScreenShareHeight: m.maximumScreenShareHeight,
+    maximumScreenShareFrameRate: m.maximumScreenShareFrameRate,
   );
 }
 

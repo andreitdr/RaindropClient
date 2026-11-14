@@ -19,6 +19,8 @@
 /// not a branch at the call site.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 
 import '../platform/platform_info.dart';
@@ -63,6 +65,26 @@ abstract class CallSessionHost {
 
   /// The call is over.
   Future<void> end();
+
+  /// The call is about to start capturing the screen, or has stopped.
+  ///
+  /// Android will not hand an app the screen unless a foreground service that
+  /// says it is for *media projection* is already running — and will not let
+  /// that service start until the user has agreed to the capture. So this
+  /// comes after the consent and before the capture, and the service a call
+  /// already has is told to say so too. The notification changes with it, and
+  /// gains a way to stop sharing without coming back to the app.
+  ///
+  /// Answers whether the capture may go ahead. A platform with nothing to
+  /// arrange says yes; Android says no when the service could not take the
+  /// type, since a capture started anyway would be refused by the system.
+  Future<bool> setScreenCapture(bool capturing);
+
+  /// Fires when the capture was ended from outside the app: the notification's
+  /// **Stop sharing**, or the system closing the capture itself (its own stop
+  /// control, or the screen locking). The media library reports neither, so
+  /// without this a share would go on being announced with nothing behind it.
+  Stream<void> get screenCaptureEnded;
 }
 
 /// The host for platforms that keep a backgrounded app running on their own
@@ -78,6 +100,12 @@ class InactiveCallSessionHost implements CallSessionHost {
 
   @override
   Future<void> end() async {}
+
+  @override
+  Future<bool> setScreenCapture(bool capturing) async => true;
+
+  @override
+  Stream<void> get screenCaptureEnded => const Stream.empty();
 }
 
 /// Android's foreground service, over the channel `MainActivity` answers.
@@ -85,6 +113,43 @@ class AndroidCallSessionHost implements CallSessionHost {
   const AndroidCallSessionHost();
 
   static const _channel = MethodChannel('raindrop/call_session');
+
+  /// What the service says back. One listener for the process, set the first
+  /// time anybody asks: the channel has a single handler, and hosts are
+  /// `const` and interchangeable.
+  static final _captureEnded = StreamController<void>.broadcast();
+  static bool _listening = false;
+
+  static void _listen() {
+    if (_listening) return;
+    _listening = true;
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'captureEnded') _captureEnded.add(null);
+    });
+  }
+
+  @override
+  Stream<void> get screenCaptureEnded {
+    _listen();
+    return _captureEnded.stream;
+  }
+
+  @override
+  Future<bool> setScreenCapture(bool capturing) async {
+    _listen();
+    try {
+      return await _channel.invokeMethod<bool>('capture', {
+            'capturing': capturing,
+          }) ??
+          false;
+    } on PlatformException {
+      // The service is not running (no call), or the system refused it the
+      // type — which it does when the user has not agreed to a capture.
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
 
   @override
   Future<void> begin(CallSessionDescription description) =>

@@ -7,6 +7,13 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 import 'package:livekit_client/livekit_client.dart';
+// iOS's screen broadcast: whether one is running, and asking for it to start
+// and stop. The class is documented as public and is what LiveKit's own
+// `setScreenShareEnabled` uses, but 2.13.0 does not export it from the
+// library, so it is reached by path. If an upgrade moves it, this is the one
+// line to follow — and phones are the only thing it takes with it.
+// ignore: implementation_imports
+import 'package:livekit_client/src/managers/broadcast_manager.dart';
 import 'package:raindrop_camera_effects/raindrop_camera_effects.dart';
 
 import '../platform/platform_info.dart';
@@ -28,6 +35,13 @@ class LiveKitVoiceEngine implements VoiceEngine {
   /// Desktop initializes itself lazily and is left alone.
   static Future<void> initialize() async {
     if (!isMobilePlatform) return;
+    // A screen broadcast can be started from Control Centre as well as from
+    // here, and LiveKit would answer either by publishing a share of its own
+    // — before the server has been asked, and with none of this file's
+    // settings. A share is only ever published by [_startScreenShare].
+    if (currentPlatform == RaindropPlatform.ios) {
+      BroadcastManager().shouldPublishTrack = false;
+    }
     await LiveKitClient.initialize(
       // LiveKit marks the audio-session API experimental. Passing nothing
       // leaves Android's playout attributes on media defaults, which puts a
@@ -111,9 +125,30 @@ class LiveKitVoiceEngine implements VoiceEngine {
   /// capture cannot publish after it was stopped or replaced.
   int _shareGeneration = 0;
 
-  /// Keeps the running share inside the 1080p box, and notices it ending.
-  _ScreenSizeGuard? _sizeGuard;
+  /// Keeps the running share inside its box and to its ladder, measures what
+  /// is really going out, and notices it ending.
+  _ShareSendGuard? _sendGuard;
   _ShareEndWatch? _endWatch;
+
+  /// What the running share was started with: what to reopen if its frame
+  /// rate has to rise above what the capture was opened at.
+  VoiceScreenShareOptions? _shareOptions;
+
+  /// The frame rate the capture was opened at. Only a desktop capture has one
+  /// to speak of; see [setScreenShareQuality].
+  int _shareCaptureRate = 0;
+
+  final _shareSendStats = StreamController<VoiceShareSendStats>.broadcast();
+
+  /// Which version of each participant's share this device asks for. A wish
+  /// about a person, like [_watching]; absent means automatic.
+  final Map<String, VoiceShareReceiveQuality> _receiveQuality = {};
+
+  /// iOS only: whoever is waiting for the system's broadcast to start, and
+  /// the listener that tells them — and that ends a share whose broadcast the
+  /// user stopped from the status bar.
+  Completer<bool>? _broadcastWaiter;
+  VoidCallback? _broadcastListener;
 
   /// Set when the call is end-to-end encrypted.
   BaseKeyProvider? _keyProvider;
@@ -181,6 +216,10 @@ class LiveKitVoiceEngine implements VoiceEngine {
 
   @override
   VoiceScreenShareState get currentScreenShare => _share;
+
+  @override
+  Stream<VoiceShareSendStats> get screenShareSendStats =>
+      _shareSendStats.stream;
 
   @override
   Stream<Set<String>> get screenShares => _screenShares.stream;
@@ -436,6 +475,132 @@ class LiveKitVoiceEngine implements VoiceEngine {
     return true;
   }
 
+  /// How long the system's broadcast sheet may sit there before the share is
+  /// given up on. iOS reports nothing when the sheet is dismissed, so a wait
+  /// with no end would leave the share button spinning for good.
+  static const _broadcastStartTimeout = Duration(seconds: 45);
+
+  @override
+  Future<bool> prepareScreenCapture() async {
+    switch (currentPlatform) {
+      case RaindropPlatform.android:
+        // The system's "start recording or casting?" sheet. Its answer is
+        // kept by flutter_webrtc and spent by the capture that follows; since
+        // Android 14 an answer is good for one capture only, so this is asked
+        // before every share, never remembered.
+        try {
+          return await rtc.Helper.requestCapturePermission();
+        } on Object catch (e) {
+          debugPrint('voice: screen capture consent could not be asked: $e');
+          return false;
+        }
+      case RaindropPlatform.ios:
+        return _startBroadcast();
+      case _:
+        return true;
+    }
+  }
+
+  @override
+  Future<void> cancelScreenCapture() async {
+    if (currentPlatform != RaindropPlatform.ios) return;
+
+    final waiter = _broadcastWaiter;
+    if (waiter != null && !waiter.isCompleted) waiter.complete(false);
+    // A broadcast with no share behind it is a recording indicator for
+    // nothing. One that *is* the running share is not this method's to stop.
+    if (!_share.on && BroadcastManager().isBroadcasting) {
+      await _requestBroadcastStop();
+    }
+  }
+
+  /// Shows iOS's broadcast sheet and waits for the broadcast to really start.
+  ///
+  /// The sheet is the system's and says nothing back: not that it was shown,
+  /// not that it was dismissed. The only word is the extension reporting that
+  /// it is running, so that — or [_broadcastStartTimeout], or
+  /// [cancelScreenCapture] — is what this waits for.
+  Future<bool> _startBroadcast() async {
+    final manager = BroadcastManager();
+    // Ours to publish, after the server has agreed. Left on, LiveKit would
+    // publish a share of its own the moment the broadcast started — around
+    // the handshake, and with none of this file's settings.
+    manager.shouldPublishTrack = false;
+    if (manager.isBroadcasting) return true;
+
+    final previous = _broadcastWaiter;
+    if (previous != null && !previous.isCompleted) previous.complete(false);
+    final waiter = Completer<bool>();
+    _broadcastWaiter = waiter;
+
+    void onChange() {
+      if (manager.isBroadcasting && !waiter.isCompleted) waiter.complete(true);
+    }
+
+    manager.addListener(onChange);
+    try {
+      await manager.requestActivation();
+      return await waiter.future.timeout(
+        _broadcastStartTimeout,
+        onTimeout: () => false,
+      );
+    } on Object catch (e) {
+      debugPrint('voice: the broadcast sheet could not be shown: $e');
+      return false;
+    } finally {
+      manager.removeListener(onChange);
+      if (identical(_broadcastWaiter, waiter)) _broadcastWaiter = null;
+    }
+  }
+
+  static Future<void> _requestBroadcastStop() async {
+    try {
+      await BroadcastManager().requestStop();
+    } on Object catch (e) {
+      debugPrint('voice: the broadcast could not be asked to stop: $e');
+    }
+  }
+
+  @override
+  Future<void> setScreenShareQuality(
+    VoiceShareQuality quality, {
+    VoiceShareLimit limit = VoiceShareLimit.none,
+  }) async {
+    final running = _shareOptions;
+    final source = _share.source;
+    if (running == null || source == null) return;
+
+    final options = VoiceScreenShareOptions(
+      source: source,
+      withAudio: _share.withAudio,
+      quality: quality,
+      limit: limit,
+    );
+    final resolved = resolveShareQuality(quality, limit: limit);
+
+    // The one thing that cannot be changed under a running share: a desktop
+    // capture delivers frames at the rate it was opened with, so asking the
+    // encoder for more than that would be asking it for frames that do not
+    // exist. Reopened with the same source, which nobody has to choose again.
+    if (isDesktopPlatform && resolved.frameRate.fps > _shareCaptureRate) {
+      await _startScreenShare(options);
+      return;
+    }
+
+    _shareOptions = options;
+    final guard = _sendGuard;
+    if (guard != null) {
+      await guard.aim(resolved);
+    }
+    _setShare(
+      VoiceScreenShareState.sharing(
+        source,
+        withAudio: _share.withAudio,
+        quality: quality,
+      ),
+    );
+  }
+
   @override
   Future<void> setScreenShareWatched(String identity, bool watched) async {
     // Recorded whether or not they are sharing yet, like a hidden camera.
@@ -450,11 +615,59 @@ class LiveKitVoiceEngine implements VoiceEngine {
       for (final publication in participant.trackPublications.values) {
         if (_isScreen(publication)) {
           await _applyVisibility(publication, watched);
+          if (watched) await _applyReceiveQuality(identity, publication);
         }
       }
     }
 
     _reportFeeds();
+  }
+
+  @override
+  Future<void> setScreenShareReceiveQuality(
+    String identity,
+    VoiceShareReceiveQuality quality,
+  ) async {
+    if (quality == VoiceShareReceiveQuality.auto) {
+      _receiveQuality.remove(identity);
+    } else {
+      _receiveQuality[identity] = quality;
+    }
+
+    final participant = _room?.remoteParticipants[identity];
+    if (participant == null) return;
+    for (final publication in participant.videoTrackPublications) {
+      await _applyReceiveQuality(identity, publication);
+    }
+  }
+
+  /// Asks the media server for the version of [identity]'s share this device
+  /// wants. A ceiling on top of what the server would choose anyway: LiveKit
+  /// takes the smaller of this and what the connection and the drawn size
+  /// call for, so pinning it low saves data and pinning it high costs none.
+  Future<void> _applyReceiveQuality(
+    String identity,
+    TrackPublication publication,
+  ) async {
+    if (publication is! RemoteTrackPublication ||
+        publication.source != TrackSource.screenShareVideo) {
+      return;
+    }
+    // LiveKit only takes a preference for a track it is receiving; the wish
+    // is kept and applied again when the subscription arrives.
+    if (!publication.subscribed) return;
+    final wanted = switch (_receiveQuality[identity]) {
+      VoiceShareReceiveQuality.low => VideoQuality.LOW,
+      VoiceShareReceiveQuality.medium => VideoQuality.MEDIUM,
+      // Automatic is "the best there is, if it fits" — which is what asking
+      // for the top version means once the server has taken the minimum.
+      _ => VideoQuality.HIGH,
+    };
+    try {
+      await publication.setVideoQuality(wanted);
+    } on Object catch (e) {
+      debugPrint('voice: could not ask for a share at $wanted: $e');
+    }
   }
 
   @override
@@ -506,10 +719,20 @@ class LiveKitVoiceEngine implements VoiceEngine {
     // Nothing still starting may publish after this, and nothing is wanted
     // any more: a call that is over has no camera and no share to restore.
     _shareGeneration++;
-    _sizeGuard?.stop();
-    _sizeGuard = null;
+    _sendGuard?.stop();
+    _sendGuard = null;
     _endWatch?.stop();
     _endWatch = null;
+    _shareOptions = null;
+    _unwatchBroadcast();
+    // A phone's broadcast outlives the room unless it is told to stop, and
+    // would leave the recording indicator up over a call that has ended.
+    final waiter = _broadcastWaiter;
+    if (waiter != null && !waiter.isCompleted) waiter.complete(false);
+    if (currentPlatform == RaindropPlatform.ios &&
+        (_share.on || BroadcastManager().isBroadcasting)) {
+      await _requestBroadcastStop();
+    }
     _share = const VoiceScreenShareState.off();
     _cameraWanted = false;
     _micWanted = false;
@@ -527,6 +750,7 @@ class LiveKitVoiceEngine implements VoiceEngine {
     await _videoFeeds.close();
     await _untrustedVideo.close();
     await _screenShareStates.close();
+    await _shareSendStats.close();
     await _screenShares.close();
     await _untrustedScreenShares.close();
   }
@@ -759,6 +983,10 @@ class LiveKitVoiceEngine implements VoiceEngine {
                 (publication.source == TrackSource.camera &&
                     _videoHidden.contains(identity))) {
               await _applyVisibility(publication, false);
+            } else {
+              // A watched share, arriving: at the version this device asked
+              // for, if it asked for one.
+              await _applyReceiveQuality(identity, publication);
             }
             _reportFeeds();
           case _:
@@ -835,7 +1063,11 @@ class LiveKitVoiceEngine implements VoiceEngine {
               unawaited(_stopScreenShare());
             case TrackSource.screenShareAudio when _share.withAudio:
               _setShare(
-                VoiceScreenShareState.sharing(_share.source!, withAudio: false),
+                VoiceScreenShareState.sharing(
+                  _share.source!,
+                  withAudio: false,
+                  quality: _share.quality,
+                ),
               );
             case _:
           }
@@ -995,25 +1227,55 @@ class LiveKitVoiceEngine implements VoiceEngine {
 
   /// How a share is sent. Stated in full rather than inherited, for the same
   /// reason as the room's camera options — the codec is a security setting
-  /// here — plus what makes a share a share: its own bitrate and frame rate,
-  /// and keeping the resolution when bandwidth runs short, because text that
-  /// goes soft is unreadable while text that updates a little less often is
-  /// not.
-  static const _screenPublish = VideoPublishOptions(
-    name: VideoPublishOptions.defaultScreenShareName,
-    videoCodec: _videoCodec,
-    simulcast: true,
-    backupVideoCodec: BackupVideoCodec(
-      enabled: true,
-      codec: _videoCodec,
+  /// here — plus what makes a share a share: every version in [shareLadder],
+  /// so each viewer is sent the one their own connection carries, and a rule
+  /// for what to give up first when the sharer's runs short.
+  ///
+  /// The lower versions are named outright rather than left to LiveKit's
+  /// default of one half-size layer, because their *number* is what
+  /// [_ShareSendGuard] relies on: two of them is what makes LiveKit open
+  /// three encoders, and three is what a running share can be re-aimed
+  /// across. Their sizes and rates here are only the opening bid — the guard
+  /// sets every encoder's from the size really being captured.
+  static VideoPublishOptions _screenPublishFor(ResolvedShareQuality quality) {
+    final ladder = shareLadder(quality);
+    final top = ladder.last;
+    return VideoPublishOptions(
+      name: VideoPublishOptions.defaultScreenShareName,
+      videoCodec: _videoCodec,
       simulcast: true,
-    ),
-    screenShareEncoding: VideoEncoding(
-      maxBitrate: screenShareMaxBitrate,
-      maxFramerate: screenShareFrameRate,
-    ),
-    degradationPreference: DegradationPreference.maintainResolution,
-  );
+      backupVideoCodec: const BackupVideoCodec(
+        enabled: true,
+        codec: _videoCodec,
+        simulcast: true,
+      ),
+      screenShareEncoding: VideoEncoding(
+        maxBitrate: top.maxBitrate,
+        maxFramerate: top.frameRate,
+      ),
+      screenShareSimulcastLayers: [
+        for (final layer in ladder.take(ladder.length - 1))
+          VideoParameters(
+            dimensions: VideoDimensions(
+              layer.resolution.width,
+              layer.resolution.height,
+            ),
+            encoding: VideoEncoding(
+              maxBitrate: layer.maxBitrate,
+              maxFramerate: layer.frameRate,
+            ),
+          ),
+      ],
+      degradationPreference: _degradationFor(quality),
+    );
+  }
+
+  /// What a share gives up first when its sharer's connection or processor
+  /// runs short: see [shareKeepsResolution].
+  static DegradationPreference _degradationFor(ResolvedShareQuality quality) =>
+      shareKeepsResolution(quality)
+      ? DegradationPreference.maintainResolution
+      : DegradationPreference.balanced;
 
   /// How a shared window's sound is sent: as music, not speech. The room's
   /// microphone options are tuned for a voice — a low bitrate, and nothing
@@ -1028,14 +1290,33 @@ class LiveKitVoiceEngine implements VoiceEngine {
     final local = _room?.localParticipant;
     if (local == null) return;
 
-    // One share at a time: a new source replaces the old one.
-    await _stopScreenShare();
+    // One share at a time: a new source replaces the old one. A phone's
+    // broadcast is left running through it: it is the capture this start is
+    // about to use, whether it is a first start or a reopening.
+    await _stopScreenShare(keepBroadcast: true);
     final generation = ++_shareGeneration;
 
+    final quality = resolveShareQuality(options.quality, limit: options.limit);
+    final top = shareLadder(quality).last;
+
     final capture = ScreenShareCaptureOptions(
-      sourceId: options.source.id,
-      maxFrameRate: screenShareFrameRate.toDouble(),
-      params: VideoParametersPresets.screenShareH1080FPS15,
+      // A phone has one thing to share and no id for it.
+      sourceId: isDesktopPlatform ? options.source.id : null,
+      // Everything on the device, through the broadcast extension: the only
+      // capture iOS has that carries on when another app is in front.
+      useiOSBroadcastExtension: currentPlatform == RaindropPlatform.ios,
+      maxFrameRate: top.frameRate.toDouble(),
+      // Always the 1080p box, whatever the ceiling. No capturer honours a
+      // size — the guard is what scales — and LiveKit opens a third encoder
+      // only for a source it believes is at least 960 across, which a 480p
+      // box would not be. Only the rate here is real.
+      params: VideoParameters(
+        dimensions: const VideoDimensions(1920, 1080),
+        encoding: VideoEncoding(
+          maxBitrate: top.maxBitrate,
+          maxFramerate: top.frameRate,
+        ),
+      ),
     );
 
     final List<LocalTrack> tracks;
@@ -1050,6 +1331,11 @@ class LiveKitVoiceEngine implements VoiceEngine {
         _warnings.add('Your screen could not be captured ($e).');
       }
       _setShare(const VoiceScreenShareState.off());
+      // A broadcast nothing came of is still a recording indicator.
+      if (currentPlatform == RaindropPlatform.ios &&
+          BroadcastManager().isBroadcasting) {
+        await _requestBroadcastStop();
+      }
       return;
     }
 
@@ -1081,7 +1367,7 @@ class LiveKitVoiceEngine implements VoiceEngine {
       published.add(
         (await local.publishVideoTrack(
           video,
-          publishOptions: _screenPublish,
+          publishOptions: _screenPublishFor(quality),
         )).sid,
       );
       if (generation != _shareGeneration) {
@@ -1090,8 +1376,14 @@ class LiveKitVoiceEngine implements VoiceEngine {
       }
 
       // Before the first frames go far: the guard is what keeps a 4K screen
-      // from going out at 4K.
-      _sizeGuard = _ScreenSizeGuard(video)..start();
+      // from going out at 4K, and what puts each encoder on its version.
+      _shareOptions = options;
+      _shareCaptureRate = top.frameRate;
+      _sendGuard = _ShareSendGuard(video, quality, (stats) {
+        if (generation != _shareGeneration) return;
+        if (!_shareSendStats.isClosed) _shareSendStats.add(stats);
+      })..start();
+      _watchBroadcast(generation);
 
       var withAudio = false;
       if (audio != null) {
@@ -1130,7 +1422,11 @@ class LiveKitVoiceEngine implements VoiceEngine {
       }
 
       _setShare(
-        VoiceScreenShareState.sharing(options.source, withAudio: withAudio),
+        VoiceScreenShareState.sharing(
+          options.source,
+          withAudio: withAudio,
+          quality: options.quality,
+        ),
       );
     } on Object catch (e) {
       if (generation == _shareGeneration) {
@@ -1150,12 +1446,18 @@ class LiveKitVoiceEngine implements VoiceEngine {
   /// Stops the share, picture and sound. Safe at any point: the state goes to
   /// off *before* anything is unpublished, so the unpublish events this causes
   /// are not mistaken for the media server withdrawing it.
-  Future<void> _stopScreenShare() async {
+  ///
+  /// [keepBroadcast] is for a share that is being replaced by another on a
+  /// phone: the system's broadcast is the capture both of them use, and
+  /// stopping it would mean asking the user to start it again.
+  Future<void> _stopScreenShare({bool keepBroadcast = false}) async {
     _shareGeneration++;
-    _sizeGuard?.stop();
-    _sizeGuard = null;
+    _sendGuard?.stop();
+    _sendGuard = null;
     _endWatch?.stop();
     _endWatch = null;
+    _shareOptions = null;
+    _unwatchBroadcast();
 
     final wasOn = _share.on;
     _setShare(const VoiceScreenShareState.off());
@@ -1171,14 +1473,51 @@ class LiveKitVoiceEngine implements VoiceEngine {
       }
     }
 
+    // The broadcast is the system's, not the track's: unpublishing leaves it
+    // running, with its indicator in the status bar, until it is told.
+    if (!keepBroadcast &&
+        currentPlatform == RaindropPlatform.ios &&
+        BroadcastManager().isBroadcasting) {
+      await _requestBroadcastStop();
+    }
+
     if (wasOn) _reportFeeds();
+  }
+
+  /// iOS only: ends the share when the broadcast behind it ends — stopped
+  /// from the status bar, from Control Centre, or by the system. Nothing else
+  /// says so; the track simply stops receiving frames.
+  void _watchBroadcast(int generation) {
+    if (currentPlatform != RaindropPlatform.ios) return;
+    _unwatchBroadcast();
+
+    final manager = BroadcastManager();
+    void onChange() {
+      if (manager.isBroadcasting || generation != _shareGeneration) return;
+      unawaited(_stopScreenShare());
+    }
+
+    _broadcastListener = onChange;
+    manager.addListener(onChange);
+  }
+
+  void _unwatchBroadcast() {
+    final listener = _broadcastListener;
+    _broadcastListener = null;
+    if (listener != null) BroadcastManager().removeListener(listener);
   }
 
   /// Stops only a share's sound, leaving its picture going.
   Future<void> _stopShareAudio() async {
     final source = _share.source;
     if (source == null) return;
-    _setShare(VoiceScreenShareState.sharing(source, withAudio: false));
+    _setShare(
+      VoiceScreenShareState.sharing(
+        source,
+        withAudio: false,
+        quality: _share.quality,
+      ),
+    );
 
     final local = _room?.localParticipant;
     final publication = local?.getTrackPublicationBySource(
@@ -1818,39 +2157,66 @@ class _LiveKitScreenSources implements VoiceScreenSources {
   }
 }
 
-/// Keeps a running share inside the 1080p box.
+/// Keeps a running share to its ladder, and reports what is really going out.
 ///
-/// The only thing that actually enforces the cap. livekit_client cannot: on
-/// desktop it works out a share's encodings from the size it *asked* the
-/// capturer for, not the size it got (`getSettings()` is read on web and
-/// mobile only — `participant/local.dart` in 2.13.0), and it never scales the
-/// top layer below the source anyway. The desktop capturers ignore size
-/// constraints too. Left alone, a 4K screen goes out at 4K.
+/// **It owns every encoder's settings outright** — how much each scales the
+/// picture down, its frame rate and its bitrate — rather than adjusting what
+/// LiveKit chose. LiveKit cannot be left to it: on desktop it works out a
+/// share's encodings from the size it *asked* the capturer for, not the size
+/// it got (`getSettings()` is read on web and mobile only —
+/// `participant/local.dart` in 2.13.0), and the desktop capturers ignore size
+/// constraints, so left alone a 4K screen goes out at 4K. On a phone it does
+/// read the real size, and scales the lower versions from that — which
+/// multiplied by a correction of ours would scale them twice. Setting each
+/// encoder from the size actually being captured is right on both.
 ///
-/// So this reads the size actually being captured from the sender's own
-/// statistics and scales every layer down by [screenShareScale] — and again
-/// whenever that size changes, since windows are resized and displays change
-/// mode. For the first quarter of a second or so the source can go out
-/// unscaled; [screenShareMaxBitrate] bounds the bandwidth even then.
-class _ScreenSizeGuard {
-  _ScreenSizeGuard(this._track);
+/// The size comes from the sender's own statistics, and is read again every
+/// couple of seconds, since windows are resized, displays change mode and a
+/// phone is turned on its side. For the first quarter of a second or so the
+/// source can go out unscaled; the top version's bitrate bounds the bandwidth
+/// even then.
+///
+/// Owning the settings is also what lets a share's ceiling be changed while
+/// it runs ([aim]): the encoders that exist are pointed at a different
+/// ladder, and nothing is unpublished or captured again.
+class _ShareSendGuard {
+  _ShareSendGuard(this._track, this._quality, this._onStats);
 
   final LocalVideoTrack _track;
+  final void Function(VoiceShareSendStats stats) _onStats;
+
+  /// The ceiling the encoders should be on.
+  ResolvedShareQuality _quality;
+
   Timer? _timer;
   bool _stopped = false;
   bool _busy = false;
 
-  /// Each layer's own scale as LiveKit set it, by rid, read once — so what is
-  /// applied is always LiveKit's layer times the cap, never compounded.
-  Map<String?, double>? _layers;
+  /// What was last applied, and to a source of what size; null until the
+  /// first.
+  ResolvedShareQuality? _appliedQuality;
+  ({int width, int height})? _appliedSize;
 
-  /// The cap last applied; 0 until the first.
-  double _applied = 0;
+  /// Each encoder's scale as last applied, by rid — what turns an encoded
+  /// size back into the source's when the capturer's own figure is missing.
+  Map<String?, double> _scales = const {};
+
+  /// The last reading of bytes sent, for a bitrate.
+  int? _bytesBefore;
+  DateTime? _readAt;
+
+  /// When the first frames were seen, and how long after that a share is
+  /// still finding its feet: see [_limitOf].
+  DateTime? _sendingSince;
+  static const _rampUp = Duration(seconds: 8);
 
   /// Quickly at first, to catch the first frames; once the size is known,
   /// only a change matters, and that can wait a little.
   static const _searching = Duration(milliseconds: 250);
   static const _watching = Duration(seconds: 2);
+
+  /// LiveKit's names for a track's encoders, smallest first.
+  static const _rids = ['q', 'h', 'f'];
 
   void start() {
     _timer = Timer.periodic(_searching, (_) => unawaited(_tick()));
@@ -1862,36 +2228,42 @@ class _ScreenSizeGuard {
     _timer = null;
   }
 
+  /// Points the running share at another ceiling. Applied on the spot when
+  /// the guard is idle, and on its next look otherwise.
+  Future<void> aim(ResolvedShareQuality quality) async {
+    if (_stopped) return;
+    _quality = quality;
+    try {
+      // The sender's, so it is set on the sender: what to give up first is
+      // different for a document and for motion.
+      await _track.setDegradationPreference(
+        LiveKitVoiceEngine._degradationFor(quality),
+      );
+    } on Object catch (e) {
+      debugPrint('voice: a share could not change what it gives up first: $e');
+    }
+    await _tick();
+  }
+
   Future<void> _tick() async {
     final sender = _track.sender;
     if (_stopped || _busy || sender == null) return;
 
     _busy = true;
     try {
-      final size = _sourceSize(await sender.getStats());
-      if (size == null || _stopped) return;
+      final reports = await sender.getStats();
+      if (_stopped) return;
 
-      if (_applied == 0) {
-        _timer?.cancel();
-        _timer = Timer.periodic(_watching, (_) => unawaited(_tick()));
+      final size = _sourceSize(reports);
+      if (size != null) {
+        if (_appliedSize == null) {
+          _timer?.cancel();
+          _timer = Timer.periodic(_watching, (_) => unawaited(_tick()));
+        }
+        await _apply(sender, size);
       }
 
-      final scale = screenShareScale(width: size.width, height: size.height);
-      if (_applied != 0 && (scale - _applied).abs() / _applied < 0.01) return;
-
-      final parameters = sender.parameters;
-      final encodings = parameters.encodings;
-      if (encodings == null || encodings.isEmpty) return;
-
-      final layers = _layers ??= {
-        for (final encoding in encodings)
-          encoding.rid: encoding.scaleResolutionDownBy ?? 1.0,
-      };
-      for (final encoding in encodings) {
-        encoding.scaleResolutionDownBy = (layers[encoding.rid] ?? 1.0) * scale;
-      }
-
-      if (await sender.setParameters(parameters)) _applied = scale;
+      if (!_stopped) _report(reports, sender);
     } on Object {
       // Statistics or parameters not ready yet: the next tick tries again.
     } finally {
@@ -1899,9 +2271,64 @@ class _ScreenSizeGuard {
     }
   }
 
+  /// Puts every encoder on its version of the ladder, for a source of [size].
+  /// A no-op while neither the ceiling nor the source has changed.
+  Future<void> _apply(
+    rtc.RTCRtpSender sender,
+    ({int width, int height}) size,
+  ) async {
+    final quality = _quality;
+    final before = _appliedSize;
+    if (_appliedQuality == quality &&
+        before != null &&
+        (size.width - before.width).abs() <= before.width * 0.01 &&
+        (size.height - before.height).abs() <= before.height * 0.01) {
+      return;
+    }
+
+    final parameters = sender.parameters;
+    final encodings = _ordered(parameters.encodings);
+    if (encodings.isEmpty) return;
+
+    final layers = shareLayersFor(shareLadder(quality), encodings.length);
+    final scales = shareLayerScales(
+      layers,
+      width: size.width,
+      height: size.height,
+    );
+
+    final applied = <String?, double>{};
+    for (var i = 0; i < encodings.length; i++) {
+      encodings[i]
+        ..scaleResolutionDownBy = scales[i]
+        ..maxFramerate = layers[i].frameRate
+        ..maxBitrate = layers[i].maxBitrate;
+      applied[encodings[i].rid] = scales[i];
+    }
+
+    if (await sender.setParameters(parameters)) {
+      _appliedQuality = quality;
+      _appliedSize = size;
+      _scales = applied;
+    }
+  }
+
+  /// A sender's encoders, smallest version first — by LiveKit's rids, which
+  /// is the order it publishes them in but not one this should lean on.
+  static List<rtc.RTCRtpEncoding> _ordered(List<rtc.RTCRtpEncoding>? all) {
+    if (all == null) return const [];
+    int rank(rtc.RTCRtpEncoding encoding) {
+      final at = _rids.indexOf(encoding.rid ?? '');
+      // An encoder with no rid is the only one there is.
+      return at < 0 ? _rids.length : at;
+    }
+
+    return [...all]..sort((a, b) => rank(a).compareTo(rank(b)));
+  }
+
   /// The size being captured: the `media-source` statistic, which is the
-  /// capturer's own output. Failing that, the largest layer being encoded,
-  /// scaled back up by what has been applied to it.
+  /// capturer's own output. Failing that, the largest version being encoded,
+  /// scaled back up by what was applied to it.
   ({int width, int height})? _sourceSize(List<rtc.StatsReport> reports) {
     for (final report in reports) {
       if (report.type != 'media-source') continue;
@@ -1924,9 +2351,7 @@ class _ScreenSizeGuard {
       }
       largest = (width: width, height: height);
       final rid = report.values['rid'];
-      scaledBy =
-          (_layers?[rid is String ? rid : null] ?? 1.0) *
-          (_applied == 0 ? 1.0 : _applied);
+      scaledBy = _scales[rid is String ? rid : null] ?? 1.0;
     }
 
     if (largest == null) return null;
@@ -1934,6 +2359,101 @@ class _ScreenSizeGuard {
       width: (largest.width * scaledBy).round(),
       height: (largest.height * scaledBy).round(),
     );
+  }
+
+  /// Tells the sharer what is going out: the largest version being sent right
+  /// now, how many bits all of them cost together, and — when that is less
+  /// than they asked for — what is holding it back.
+  void _report(List<rtc.StatsReport> reports, rtc.RTCRtpSender sender) {
+    var bytes = 0;
+    ({int width, int height, int frameRate, String? rid, String? reason})? best;
+
+    for (final report in reports) {
+      if (report.type != 'outbound-rtp') continue;
+      bytes += _whole(report.values['bytesSent']) ?? 0;
+
+      final width = _whole(report.values['frameWidth']);
+      final height = _whole(report.values['frameHeight']);
+      final rate = report.values['framesPerSecond'];
+      // A version that is not being sent keeps its last size in the
+      // statistics, but produces no frames.
+      if (width == null || height == null || rate is! num || rate <= 0) {
+        continue;
+      }
+      if (best != null && width * height <= best.width * best.height) continue;
+
+      final rid = report.values['rid'];
+      final reason = report.values['qualityLimitationReason'];
+      best = (
+        width: width,
+        height: height,
+        frameRate: rate.round(),
+        rid: rid is String ? rid : null,
+        reason: reason is String ? reason : null,
+      );
+    }
+
+    final now = DateTime.now();
+    final before = _bytesBefore;
+    final readAt = _readAt;
+    _bytesBefore = bytes;
+    _readAt = now;
+
+    var bitrate = 0;
+    if (before != null && readAt != null && bytes >= before) {
+      final elapsed = now.difference(readAt).inMilliseconds;
+      if (elapsed > 0) bitrate = ((bytes - before) * 8000 / elapsed).round();
+    }
+
+    if (best == null) {
+      // Before the first frames there is nothing to say yet; after them,
+      // nothing going out means nobody is watching.
+      if (_appliedSize != null) _onStats(const VoiceShareSendStats.idle());
+      return;
+    }
+
+    _onStats(
+      VoiceShareSendStats(
+        width: best.width,
+        height: best.height,
+        frameRate: best.frameRate,
+        bitrate: bitrate,
+        limitedBy: _limitOf(best.rid, best.reason, sender),
+      ),
+    );
+  }
+
+  /// Why the largest version going out is not the ceiling, if it is not.
+  VoiceShareLimitedBy _limitOf(
+    String? rid,
+    String? reason,
+    rtc.RTCRtpSender sender,
+  ) {
+    // The encoder's own word comes first: it is the one that knows.
+    if (reason == 'cpu') return VoiceShareLimitedBy.device;
+
+    // Every share starts on its smallest version and works up as the
+    // connection is measured, which the encoder also calls being limited by
+    // bandwidth. For the first few seconds that is not a verdict on anybody's
+    // connection, and saying so would send a sharer looking for a fault.
+    final since = _sendingSince ??= DateTime.now();
+    final settled = DateTime.now().difference(since) >= _rampUp;
+    if (reason == 'bandwidth') {
+      return settled
+          ? VoiceShareLimitedBy.network
+          : VoiceShareLimitedBy.nothing;
+    }
+
+    final encodings = _ordered(sender.parameters.encodings);
+    if (encodings.length < 2 || rid == null) return VoiceShareLimitedBy.nothing;
+    final top = encodings.last;
+    if (rid == top.rid) return VoiceShareLimitedBy.nothing;
+
+    // The top version is not going out. Either the media server switched it
+    // off because nobody is receiving it — which is nothing wrong — or it is
+    // on and the connection has no room for it.
+    if (!top.active) return VoiceShareLimitedBy.viewers;
+    return settled ? VoiceShareLimitedBy.network : VoiceShareLimitedBy.nothing;
   }
 
   static int? _whole(Object? value) =>

@@ -50,6 +50,7 @@ class VoiceCallState {
     this.screenShares = const {},
     this.untrustedScreenShares = const {},
     this.watching = const {},
+    this.shareReceiveQuality = const {},
     this.microphoneFailed = false,
   });
 
@@ -144,6 +145,14 @@ class VoiceCallState {
   /// Members whose share this client has chosen to watch.
   final Set<String> watching;
 
+  /// Which version of a member's share this client asked for, for those it
+  /// did not leave on automatic. Local only, like [watching].
+  final Map<String, VoiceShareReceiveQuality> shareReceiveQuality;
+
+  /// The version of [userId]'s share this client asks for.
+  VoiceShareReceiveQuality receiveQualityFor(String userId) =>
+      shareReceiveQuality[userId] ?? VoiceShareReceiveQuality.auto;
+
   /// One member's camera, or null when they are not sending a camera this
   /// client is receiving — because they have it off, it is hidden here, or it
   /// is not trusted. Never their screen share, which is not a camera.
@@ -183,6 +192,7 @@ class VoiceCallState {
     Set<String>? screenShares,
     Set<String>? untrustedScreenShares,
     Set<String>? watching,
+    Map<String, VoiceShareReceiveQuality>? shareReceiveQuality,
     bool? microphoneFailed,
   }) => VoiceCallState(
     serverId: serverId,
@@ -208,6 +218,7 @@ class VoiceCallState {
     screenShares: screenShares ?? this.screenShares,
     untrustedScreenShares: untrustedScreenShares ?? this.untrustedScreenShares,
     watching: watching ?? this.watching,
+    shareReceiveQuality: shareReceiveQuality ?? this.shareReceiveQuality,
     microphoneFailed: microphoneFailed ?? this.microphoneFailed,
   );
 }
@@ -287,6 +298,50 @@ final callSessionHostProvider = Provider<CallSessionHost>(
 final voiceCallProvider = NotifierProvider<VoiceCallController, VoiceCallState>(
   VoiceCallController.new,
 );
+
+/// The most a screen share from this device may be sent at on a server whose
+/// roster is [roster]: its owner's ceiling and this platform's own, whichever
+/// is lower. A server not heard from yet states no ceiling of its own.
+VoiceShareLimit shareLimitFor(VoiceRoster? roster) =>
+    (roster?.shareLimit ?? VoiceShareLimit.none).and(
+      VoiceShareLimit.of(frameRate: maximumShareFrameRate),
+    );
+
+/// [shareLimitFor] the call this client is in — what the share picker offers.
+///
+/// For widgets only. The call controller holds a share to the same ceiling
+/// but works it out itself ([VoiceCallController._shareLimit]): this provider
+/// watches the call, so the call reading it back would be a circle.
+final voiceShareLimitProvider = Provider<VoiceShareLimit>((ref) {
+  final serverId = ref.watch(voiceCallProvider.select((call) => call.serverId));
+  if (serverId == null) return shareLimitFor(null);
+  return shareLimitFor(ref.watch(voiceRosterProvider(serverId)).valueOrNull);
+});
+
+/// What this client's share is really going out at, or null when it is not
+/// sharing or nothing has been measured yet.
+///
+/// Its own provider rather than a field of [VoiceCallState]: it changes every
+/// couple of seconds for as long as a share runs, and nearly everything on
+/// screen watches the call state.
+final voiceShareSendStatsProvider =
+    NotifierProvider<VoiceShareSendStatsController, VoiceShareSendStats?>(
+      VoiceShareSendStatsController.new,
+    );
+
+class VoiceShareSendStatsController extends Notifier<VoiceShareSendStats?> {
+  @override
+  VoiceShareSendStats? build() => null;
+
+  void set(VoiceShareSendStats? stats) {
+    if (state != stats) state = stats;
+  }
+}
+
+/// A bitrate rounded to the nearest tenth of a megabit, so a readout of it
+/// does not redraw for every kilobit of difference between two readings.
+int roundedShareBitrate(int bitsPerSecond) =>
+    (bitsPerSecond / 100000).round() * 100000;
 
 /// Joins, runs and leaves the call, and keeps its audio in step with the
 /// settings: mute, deafen, output volume, per-member volume and devices.
@@ -669,6 +724,11 @@ class VoiceCallController extends Notifier<VoiceCallState> {
   /// for a share the server refused. If the grant never comes, the claim is
   /// taken back, so the roster never shows a share nobody can watch.
   ///
+  /// On a phone one step comes before all of that: the system's own consent
+  /// ([VoiceEngine.prepareScreenCapture]). It is first so that somebody who
+  /// backs out of the system's sheet was never announced as sharing, and
+  /// whatever it obtained is handed back if the share then does not start.
+  ///
   /// Refusals surface as the server's own words through
   /// [VoiceCallState.warning], like the camera's.
   Future<void> startScreenShare(VoiceScreenShareOptions options) async {
@@ -677,9 +737,31 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     if (engine == null || session == null || !state.inCall) return;
     if (state.screenShareBusy) return;
 
+    // Held to the ceiling here rather than trusted to the caller, so nothing
+    // that starts a share can start one the server's owner ruled out.
+    options = VoiceScreenShareOptions(
+      source: options.source,
+      withAudio: options.withAudio,
+      quality: options.quality,
+      limit: _shareLimit(),
+    );
+
     final generation = _generation;
     final claim = screenShareClaimOf(options);
+    final host = ref.read(callSessionHostProvider);
     state = state.copyWith(screenShareBusy: true, warning: () => null);
+    // Whatever the last share was being sent at says nothing about this one.
+    ref.read(voiceShareSendStatsProvider.notifier).set(null);
+
+    // Whether the system has been asked for the screen and said yes, so that
+    // every way out of here from then on gives it back.
+    var prepared = false;
+    Future<void> release() async {
+      if (!prepared) return;
+      prepared = false;
+      await host.setScreenCapture(false);
+      await engine.cancelScreenCapture();
+    }
 
     try {
       // Switching: the old share stops before the new one is claimed. A new
@@ -691,14 +773,36 @@ class VoiceCallController extends Notifier<VoiceCallState> {
         if (generation != _generation) return;
       }
 
+      if (!await engine.prepareScreenCapture()) {
+        // Declined at the system's own sheet, which is an answer and not a
+        // failure: nothing was claimed, and there is nothing to say.
+        if (generation == _generation) {
+          state = state.copyWith(screenShareBusy: false);
+        }
+        return;
+      }
+      prepared = true;
+      if (generation != _generation) {
+        await release();
+        return;
+      }
+
       await _sendSelfState(session, share: claim);
-      if (generation != _generation) return;
+      if (generation != _generation) {
+        await release();
+        return;
+      }
 
       final granted = await _awaitShareGrant(engine, withAudio: claim.audio);
-      if (generation != _generation) return;
+      if (generation != _generation) {
+        await release();
+        return;
+      }
 
       if (!granted ||
+          !await host.setScreenCapture(true) ||
           !await engine.setScreenShareEnabled(true, options: options)) {
+        await release();
         await _sendSelfState(session, share: noScreenShare);
         if (generation == _generation) {
           state = state.copyWith(
@@ -716,6 +820,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
       // the window's could not be captured. The server is told the truth.
       final sharing = engine.currentScreenShare;
       if (!sharing.on) {
+        await release();
         await _sendSelfState(session, share: noScreenShare);
       } else if (claim.audio && !sharing.withAudio) {
         await _sendSelfState(
@@ -728,6 +833,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
         state = state.copyWith(screenShare: sharing, screenShareBusy: false);
       }
     } on ApiException catch (e) {
+      await release();
       if (generation == _generation) {
         state = state.copyWith(
           screenShareBusy: false,
@@ -735,6 +841,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
         );
       }
     } on Object {
+      await release();
       if (generation == _generation) {
         state = state.copyWith(
           screenShareBusy: false,
@@ -742,6 +849,82 @@ class VoiceCallController extends Notifier<VoiceCallState> {
         );
       }
     }
+  }
+
+  /// Changes how good this client's share is sent, now and from now on.
+  ///
+  /// The choice is remembered either way — it is what the next share starts
+  /// at. A running share is moved to it without being stopped where that is
+  /// possible; see [VoiceEngine.setScreenShareQuality] for the one case it is
+  /// not. The ceiling ([shareLimitFor]) still applies.
+  Future<void> setScreenShareQuality(VoiceShareQuality quality) async {
+    ref
+        .read(voiceSettingsProvider.notifier)
+        .update((settings) => settings.copyWith(shareQuality: quality));
+
+    final engine = _engine;
+    if (engine == null || !state.screenShare.on || state.screenShareBusy) {
+      return;
+    }
+
+    // Busy for the length of it: the one case that reopens the capture has
+    // the engine report the share off and on again, and that "off" must not
+    // be read as the share ending and reported to the server as such.
+    final generation = _generation;
+    state = state.copyWith(screenShareBusy: true);
+    try {
+      await engine.setScreenShareQuality(quality, limit: _shareLimit());
+    } on Object catch (e) {
+      debugPrint('voice: could not change the share quality: $e');
+    }
+    if (generation != _generation) return;
+
+    final sharing = engine.currentScreenShare;
+    state = state.copyWith(screenShare: sharing, screenShareBusy: false);
+    // Reopening can fail like any capture can. The engine has said why; the
+    // server is told the share is over.
+    if (!sharing.on) {
+      _shareEnded();
+      await _reportQuietly(share: noScreenShare);
+    }
+  }
+
+  /// Which version of [userId]'s share this client asks for. Local only: they
+  /// are never told, and nobody else is affected.
+  Future<void> setScreenShareReceiveQuality(
+    String userId,
+    VoiceShareReceiveQuality quality,
+  ) async {
+    final engine = _engine;
+    if (engine == null) return;
+
+    final chosen = {...state.shareReceiveQuality};
+    if (quality == VoiceShareReceiveQuality.auto) {
+      chosen.remove(userId);
+    } else {
+      chosen[userId] = quality;
+    }
+    state = state.copyWith(shareReceiveQuality: chosen);
+    await engine.setScreenShareReceiveQuality(userId, quality);
+  }
+
+  /// The ceiling on a share from this device in this call. The same answer as
+  /// [voiceShareLimitProvider], reached without it — see there for why.
+  VoiceShareLimit _shareLimit() {
+    final serverId = state.serverId;
+    return shareLimitFor(
+      serverId == null
+          ? null
+          : ref.read(voiceRosterProvider(serverId)).valueOrNull,
+    );
+  }
+
+  /// What every way of a share ending has in common, whoever ended it: the
+  /// system stops being told the screen is being captured, and the readout
+  /// of what was being sent goes with it.
+  void _shareEnded() {
+    ref.read(voiceShareSendStatsProvider.notifier).set(null);
+    unawaited(ref.read(callSessionHostProvider).setScreenCapture(false));
   }
 
   /// Stops sharing. The engine first, then the server — never the other way
@@ -758,6 +941,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     state = state.copyWith(screenShareBusy: true);
     try {
       await engine.setScreenShareEnabled(false);
+      _shareEnded();
       await _sendSelfState(session, share: noScreenShare);
     } on ApiException {
       // Not in the call any more, or unreachable: the engine has stopped, and
@@ -788,9 +972,29 @@ class VoiceCallController extends Notifier<VoiceCallState> {
   /// ended with them, and a later one is offered as a Watch card again rather
   /// than streamed unasked.
   void _stopWatchingLeaver(String? userId) {
-    if (userId == null || !state.watching.contains(userId)) return;
-    state = state.copyWith(watching: {...state.watching}..remove(userId));
+    if (userId == null) return;
     final engine = _engine;
+
+    // The version asked for goes with them too: it was a choice about a share
+    // that has ended, and their next one starts on automatic like anybody's.
+    if (state.shareReceiveQuality.containsKey(userId)) {
+      state = state.copyWith(
+        shareReceiveQuality: {...state.shareReceiveQuality}..remove(userId),
+      );
+      if (engine != null) {
+        unawaited(
+          engine
+              .setScreenShareReceiveQuality(
+                userId,
+                VoiceShareReceiveQuality.auto,
+              )
+              .catchError((Object _) {}),
+        );
+      }
+    }
+
+    if (!state.watching.contains(userId)) return;
+    state = state.copyWith(watching: {...state.watching}..remove(userId));
     if (engine != null) {
       unawaited(
         engine.setScreenShareWatched(userId, false).catchError((Object _) {
@@ -995,6 +1199,33 @@ class VoiceCallController extends Notifier<VoiceCallState> {
       )
       ..add(engine.screenShareStates.listen(_onEngineShare))
       ..add(
+        engine.screenShareSendStats.listen((stats) {
+          // Only while a share is up: a reading can arrive just after one
+          // ended, and would put the readout back for a share that is gone.
+          if (!state.screenShare.on && !state.screenShareBusy) return;
+          ref
+              .read(voiceShareSendStatsProvider.notifier)
+              .set(
+                stats.idle
+                    ? stats
+                    : VoiceShareSendStats(
+                        width: stats.width,
+                        height: stats.height,
+                        frameRate: stats.frameRate,
+                        bitrate: roundedShareBitrate(stats.bitrate),
+                        limitedBy: stats.limitedBy,
+                      ),
+              );
+        }),
+      )
+      ..add(
+        // Stopped from the notification, or by the system itself: neither
+        // reaches the engine, so the share is ended here as if from the app.
+        ref.read(callSessionHostProvider).screenCaptureEnded.listen((_) {
+          if (state.screenShare.on) unawaited(stopScreenShare());
+        }),
+      )
+      ..add(
         engine.screenShares.listen(
           (sharing) => state = state.copyWith(screenShares: sharing),
         ),
@@ -1070,6 +1301,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
   void _onEngineShare(VoiceScreenShareState share) {
     if (state.screenShareBusy) return;
     state = state.copyWith(screenShare: share);
+    if (!share.on) _shareEnded();
 
     final claim = _shareClaim;
     if (!claim.on) return;

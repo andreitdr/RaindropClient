@@ -17,6 +17,12 @@
          it is for, and a call is "microphone". See CallForegroundService. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Sharing the screen into a call. Android only hands over the screen to an app with a
+         foreground service of this type running, and (from Android 14) only lets the service
+         take the type once the user has agreed to the capture. The call's own service takes it
+         for as long as a share runs, and drops it afterwards. No runtime permission goes with
+         it: the system's capture sheet, shown before every share, is the consent. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <!-- The notification that service is required to show. Denying it does not stop a call;
          Android 13+ just shows nothing, and the service still runs. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -52,7 +58,7 @@
         <service
             android:name=".CallForegroundService"
             android:exported="false"
-            android:foregroundServiceType="microphone" />
+            android:foregroundServiceType="microphone|mediaProjection" />
 
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

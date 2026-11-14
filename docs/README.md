@@ -73,8 +73,8 @@ The sibling checkouts are not optional: `native/raindrop_crypto_builder` builds
 - **End-to-end encryption is on by default** wherever the server offers it: this app drives each
   channel's MLS group through the server's delivery service, so text, files and call media are all
   encrypted for real. See [Crypto](crypto.md).
-- **What's not implemented yet:** push-to-talk, camera effects on Windows and Linux, sharing a screen
-  from a phone, changing your username or password from the app, any role-editing UI, and notifications. See
+- **What's not implemented yet:** push-to-talk, camera effects on Windows and Linux, changing your
+  username or password from the app, any role-editing UI, and notifications. See
   [Roadmap](roadmap.md).
 
 ## Keeping this wiki current

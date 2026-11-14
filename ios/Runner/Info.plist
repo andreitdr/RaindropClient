@@ -12,6 +12,16 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<!-- Sharing this device's screen into a call. iOS hands the screen to a
+	     broadcast extension, never to the app: the first key is the folder the
+	     two share (an App Group, see Runner.entitlements), where the app opens
+	     the socket the pictures arrive through; the second is which extension
+	     the system's broadcast sheet should offer. Both keys are read by the
+	     media libraries, which is why they carry their names. -->
+	<key>RTCAppGroupIdentifier</key>
+	<string>group.com.raindrop.raindropClient</string>
+	<key>RTCScreenSharingExtension</key>
+	<string>com.raindrop.raindropClient.RaindropBroadcast</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Raindrop uses the camera to scan the code another of your devices shows, to link it securely.</string>
 	<key>NSMicrophoneUsageDescription</key>

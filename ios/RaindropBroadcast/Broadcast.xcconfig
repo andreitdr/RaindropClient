@@ -1,0 +1,11 @@
+// The broadcast extension's build settings.
+//
+// Only Flutter's generated variables are taken, for the two version numbers:
+// an extension has to carry the same version as the app it ships inside.
+// Deliberately NOT Flutter/Debug.xcconfig or Release.xcconfig, which also pull
+// in the CocoaPods settings for Runner — those would link every plugin's
+// framework into a process that uses none of them and has 50 MB to live in.
+#include? "../Flutter/Generated.xcconfig"
+
+MARKETING_VERSION = $(FLUTTER_BUILD_NAME)
+CURRENT_PROJECT_VERSION = $(FLUTTER_BUILD_NUMBER)

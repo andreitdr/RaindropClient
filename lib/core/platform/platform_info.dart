@@ -67,10 +67,28 @@ bool get canUseCameraEffects =>
     currentPlatform == RaindropPlatform.ios ||
     currentPlatform == RaindropPlatform.android;
 
-/// Whether this platform can share its screen into a call. The desktops only:
-/// on a phone, showing another app sends Raindrop to the background, and
-/// until calls keep running there a share would stop the moment it started.
-bool get canShareScreen => isDesktopPlatform;
+/// Whether this platform can share its screen into a call: the desktops, and
+/// phones and tablets now that a call keeps running while another app is in
+/// front (`CallSessionHost`). Not the web, which is not a target.
+bool get canShareScreen => isDesktopPlatform || isMobilePlatform;
+
+/// Whether sharing here means *everything on the screen*, with nothing to
+/// choose between. True on phones and tablets: the system captures the whole
+/// device or nothing, and its own consent sheet is the picker. The desktops
+/// list their displays and windows instead.
+bool get sharesWholeDeviceOnly => isMobilePlatform;
+
+/// The most frames a second a shared screen can be sent at from this
+/// platform, or 0 for no limit of the platform's own.
+///
+/// iOS is the one with a limit. Its screen comes through a broadcast
+/// extension — a separate process the system holds to 50 MB of memory, which
+/// has to hand each frame across to the app as a compressed picture — and
+/// that hop does not keep up with sixty frames a second on any device worth
+/// planning for. So thirty is the most it is offered, rather than sixty being
+/// offered and never delivered.
+int get maximumShareFrameRate =>
+    currentPlatform == RaindropPlatform.ios ? 30 : 0;
 
 /// Whether the system has to be asked before the screen can be recorded — the
 /// Screen Recording permission on macOS. Elsewhere sharing just works, or the
@@ -150,6 +168,7 @@ bool isWindowStillOpen(String windowId) {
   final hwnd = int.tryParse(windowId);
   return hwnd != null && windows.windowExists(hwnd);
 }
+
 /// Whether a call can be moved between the earpiece and the loudspeaker.
 /// Only phones have both; on desktop the output device picker
 /// ([canChooseAudioDevices]) is the equivalent, and the two are deliberately

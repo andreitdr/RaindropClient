@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/event_stream.dart';
 import '../../../core/network/voice_api.dart';
+import '../../../core/voice/voice_engine.dart';
 import '../../servers/controllers/live_sync.dart';
 import '../../servers/controllers/session_controller.dart';
 
@@ -17,6 +18,7 @@ class VoiceRoster {
     required this.byChannel,
     this.maximumCameraPublishers = 0,
     this.maximumScreenShares = 0,
+    this.shareLimit = VoiceShareLimit.none,
   });
 
   static const empty = VoiceRoster(
@@ -38,6 +40,10 @@ class VoiceRoster {
   /// server carries no screen sharing.
   final int maximumScreenShares;
 
+  /// The most this server's owner lets a shared screen be sent at. A share
+  /// from this client is held to it — see `voiceShareLimitProvider`.
+  final VoiceShareLimit shareLimit;
+
   /// Each call's participants, in the order they joined.
   final Map<String, List<VoiceParticipant>> byChannel;
 
@@ -55,6 +61,10 @@ class VoiceRoster {
       maximumParticipants: status.maximumParticipants,
       maximumCameraPublishers: status.maximumCameraPublishers,
       maximumScreenShares: status.maximumScreenShares,
+      shareLimit: VoiceShareLimit.of(
+        height: status.maximumScreenShareHeight,
+        frameRate: status.maximumScreenShareFrameRate,
+      ),
       byChannel: byChannel,
     );
   }
@@ -101,6 +111,7 @@ class VoiceRoster {
         maximumParticipants: maximumParticipants,
         maximumCameraPublishers: maximumCameraPublishers,
         maximumScreenShares: maximumScreenShares,
+        shareLimit: shareLimit,
         byChannel: byChannel,
       );
 }

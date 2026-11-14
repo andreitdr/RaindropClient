@@ -7,12 +7,13 @@ second widget tree and no "mobile mode": the shell is
 shared. What this page covers is the part that *could not* be shared — the handful of places where a
 phone genuinely behaves differently from a window on a desk.
 
-There are three of them:
+There are four of them:
 
 1. **A phone stops an app that leaves the screen.** A call has to ask not to be, and a connection has
    to be rebuilt on the way back.
 2. **A phone has two speakers**, an earpiece and a loudspeaker, and no device picker.
-3. **A phone is built differently** — a different toolchain, permissions declared up front and asked
+3. **A phone shares its whole screen or nothing**, and each system has its own ceremony for it.
+4. **A phone is built differently** — a different toolchain, permissions declared up front and asked
    for at runtime, and a store's worth of packaging.
 
 ## Background voice
@@ -42,6 +43,12 @@ Two rules the Android side follows, both because the call's real state lives in 
 **The notification cannot be dismissed** to end a call (`setOngoing`); hanging up is done in the app,
 and tapping the notification comes back to it. Denying the notification permission does not stop a
 call — Android 13+ just shows nothing and the service still runs.
+
+**The permission is asked the first time a call begins** (`MainActivity.askForNotifications`, on the
+session's `begin`), which is the moment the notification means something. Until this was added it was
+declared and never requested, so on Android 13+ no call ever showed one. A notification posted before
+the answer is dropped by the system, so a yes re-issues it (`CallForegroundService.refresh`). Android
+stops asking by itself after two refusals.
 
 ## Coming back from the background
 
@@ -89,6 +96,52 @@ thin strip above the chat whenever a call is up — the moment the choice matter
 deliberately *not* in the shipped layout: the sidebar's user panel is 240px wide and a fourth button
 there leaves no room for the name beside it. The button draws nothing off a phone — the same trick the
 members toggle uses — so placing it costs desktop nothing.
+
+## Sharing the screen
+
+A phone or a tablet can share its screen into a call. What that means, the order things happen in and
+why are in [Voice](voice.md#on-a-phone); this is what each platform needed.
+
+| | What it takes | Where |
+|---|---|---|
+| **Android** | The system's capture consent before every share; the call's foreground service taking the `mediaProjection` type for as long as the share runs; a watch on the capture's virtual display, because nothing reports the system ending a capture. | `CallForegroundService.kt`, `MainActivity.kt`, the manifest |
+| **iOS, iPadOS** | A Broadcast Upload Extension — a second target — and an App Group both it and the app are entitled to, through which each picture is handed to the app. | `ios/RaindropBroadcast/`, `ios/Runner/Runner.entitlements`, `Info.plist` |
+| **Desktop** | Nothing here: see [Voice](voice.md#screen-sharing). | — |
+
+Both go through seams that already existed: the consent is `VoiceEngine.prepareScreenCapture`, and
+Android's service is told through `CallSessionHost` (`setScreenCapture`, `screenCaptureEnded`), which
+is inert everywhere else.
+
+### The iOS extension
+
+`ios/RaindropBroadcast` is its own target, embedded in the app (`Runner.app/PlugIns`):
+
+- `SampleHandler.swift` — the whole of it. It receives the screen from ReplayKit and writes each frame
+  to the app over a Unix socket, in the format flutter_webrtc reads on the other side. It never
+  touches the network: the app encodes, encrypts and sends.
+- `Info.plist` — the extension point (`com.apple.broadcast-services-upload`), and
+  `RTCAppGroupIdentifier`, the same value as in the app's.
+- `RaindropBroadcast.entitlements` and `Runner/Runner.entitlements` — the App Group
+  `group.com.raindrop.raindropClient`. Neither process can reach the shared folder unless both name it.
+- `Broadcast.xcconfig` — only Flutter's generated variables, for the two version numbers (an extension
+  must carry the same version as its app). Deliberately *not* Flutter's `Debug`/`Release.xcconfig`,
+  which also pull in the CocoaPods settings and would link every plugin into a process with 50 MB to
+  live in.
+
+The target was added to `Runner.xcodeproj` by `tool/ios/add_broadcast_extension.rb`, which is kept as
+the record of what it needed and to run again if the project is ever regenerated. Its *Embed
+Foundation Extensions* phase sits **before** Flutter's *Thin Binary*: after it, Xcode reports a cycle
+in Runner's build.
+
+**Signing.** The extension is `com.raindrop.raindropClient.RaindropBroadcast`, under the app's own id
+and the same team. On the Apple Developer account it needs its own App ID, and both App IDs need the
+App Groups capability with `group.com.raindrop.raindropClient`. Xcode's automatic signing registers
+all three the first time the app is built for a device with the team signed in; a release pipeline that
+signs with explicit profiles needs a second profile for the extension. CI builds `--no-codesign`,
+which compiles and embeds the extension without any of that.
+
+**It does not run in the Simulator.** ReplayKit broadcasts need a real device, so this is one part of
+the app that can only be tried on one.
 
 ## Building
 
@@ -144,6 +197,7 @@ Declared up front, asked for when first used, and every one of them optional exc
 | Camera | Scanning another device's [link code](crypto.md) | Type the code instead |
 | Photos (iOS) | Attaching a photo to a message | Attach from Files instead |
 | Notifications (Android 13+) | The ongoing-call notification | The call still runs, unshown |
+| Screen capture (asked by the system, every share) | Sharing your screen into a call | You can watch shares, not start one |
 | Bluetooth (Android) | A Bluetooth headset in a call | The phone's own speakers |
 
 iOS usage strings live in `ios/Runner/Info.plist` and are written to say what Raindrop does with each
@@ -157,7 +211,9 @@ one, not to recite the API.
   is that it is yours — or a socket the OS will not let an app keep. See
   [the roadmap](roadmap.md).
 - **No CallKit or ConnectionService**: a call is started from inside the app, and never rings.
-- **Push-to-talk, camera and screen sharing** are missing on every platform, not only here.
+- **Sixty frames a second from an iPhone or iPad's screen**, and **the sound of a shared screen** on
+  either system. See [Voice](voice.md#on-a-phone).
+- **Push-to-talk** is missing on every platform, not only here.
 
 ## Related
 

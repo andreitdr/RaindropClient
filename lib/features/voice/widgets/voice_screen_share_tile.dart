@@ -11,12 +11,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/voice_api.dart';
+import '../../../core/platform/platform_info.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/voice/voice_engine.dart';
 import '../../../core/voice/voice_video_view.dart';
 import '../../../core/widgets/adaptive.dart';
 import '../controllers/member_media_controller.dart';
 import '../controllers/voice_call_controller.dart';
+import 'share_quality_selector.dart';
 import 'voice_video_tile.dart';
 
 /// What somebody is sharing, in words: "a window, with its sound".
@@ -246,6 +248,7 @@ class VoiceScreenShareTile extends ConsumerWidget {
                 ),
               ),
             ],
+            _ReceiveQualityMenu(userId: participant.userId),
             IconButton(
               tooltip: 'Full view',
               icon: const Icon(Icons.fullscreen),
@@ -391,7 +394,11 @@ class _VoiceOwnShareBarState extends ConsumerState<VoiceOwnShareBar> {
   /// Whether the preview is shown. It can be folded away, and is then not
   /// drawn at all: a local preview of a large screen costs a texture upload
   /// every frame, for a picture its sharer can already see.
-  bool _preview = true;
+  ///
+  /// Folded to begin with on a phone, where the preview is not only redundant
+  /// but a picture of the screen it is on: a share of Raindrop showing a
+  /// share of Raindrop, all the way down.
+  bool _preview = !sharesWholeDeviceOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -402,9 +409,15 @@ class _VoiceOwnShareBarState extends ConsumerState<VoiceOwnShareBar> {
     if (source == null) return const SizedBox.shrink();
 
     final feed = call.screenFeedFor(widget.userId);
-    final what = source.kind == VoiceScreenSourceKind.window
+    final what = source == deviceScreenSource
+        ? 'your screen'
+        : source.kind == VoiceScreenSourceKind.window
         ? '“${source.name}”'
         : source.name;
+    final sending = ref.watch(voiceShareSendStatsProvider);
+    final faded = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
 
     return Material(
       color: context.surfaces.raised,
@@ -422,14 +435,30 @@ class _VoiceOwnShareBarState extends ConsumerState<VoiceOwnShareBar> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    share.withAudio
-                        ? "You're sharing $what, with its sound"
-                        : "You're sharing $what",
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        share.withAudio
+                            ? "You're sharing $what, with its sound"
+                            : "You're sharing $what",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                      Text(
+                        shareSendingDescription(sending, share.quality),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: faded,
+                      ),
+                    ],
                   ),
+                ),
+                _SendQualityMenu(
+                  quality: share.quality,
+                  enabled: !call.screenShareBusy,
                 ),
                 IconButton(
                   tooltip: _preview ? 'Hide preview' : 'Show preview',
@@ -465,6 +494,133 @@ class _VoiceOwnShareBarState extends ConsumerState<VoiceOwnShareBar> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// What a share is really going out at, in words for the person sharing it.
+///
+/// Measured, not asked for: the ceiling a sharer picks is only the most that
+/// may be sent, and what a connection, a processor or the people watching
+/// make of it is the part worth being told. When it is less than the ceiling,
+/// this says which of those it was — including the one that is no fault at
+/// all, nobody watching it any larger.
+String shareSendingDescription(
+  VoiceShareSendStats? sending,
+  VoiceShareQuality quality,
+) {
+  final asked = quality.isAuto ? 'Auto' : 'Up to ${quality.label}';
+  if (sending == null) return '$asked · starting…';
+  if (sending.idle) {
+    return '$asked · nobody is watching, so nothing is being sent';
+  }
+
+  final megabits = sending.bitrate / 1000000;
+  final now =
+      '${sending.sizeLabel} · ${sending.frameRate} fps'
+      '${sending.bitrate > 0 ? ' · ${megabits.toStringAsFixed(1)} Mbit/s' : ''}';
+  final why = switch (sending.limitedBy) {
+    VoiceShareLimitedBy.nothing => null,
+    VoiceShareLimitedBy.network => 'limited by your connection',
+    VoiceShareLimitedBy.device => 'limited by this device',
+    VoiceShareLimitedBy.viewers => 'nobody is watching it any larger',
+  };
+  return why == null ? '$asked · sending $now' : '$asked · sending $now, $why';
+}
+
+/// The quality of this client's own running share, changeable without
+/// stopping it.
+class _SendQualityMenu extends ConsumerWidget {
+  const _SendQualityMenu({required this.quality, required this.enabled});
+
+  final VoiceShareQuality quality;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return IconButton(
+      tooltip: 'Share quality',
+      visualDensity: VisualDensity.compact,
+      icon: const Icon(Icons.tune, size: 20),
+      onPressed: !enabled
+          ? null
+          : () => showDialog<void>(
+              context: context,
+              builder: (_) => const _SendQualityDialog(),
+            ),
+    );
+  }
+}
+
+/// A dialog rather than a popup menu, because the control is two menus of its
+/// own: one inside the other closes the outer the moment the inner opens.
+class _SendQualityDialog extends ConsumerWidget {
+  const _SendQualityDialog();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final call = ref.watch(voiceCallProvider);
+    final limit = ref.watch(voiceShareLimitProvider);
+
+    return AlertDialog(
+      title: const Text('Share quality'),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: ShareQualityField(
+          quality: call.screenShare.quality,
+          limit: limit,
+          onChanged: (quality) => ref
+              .read(voiceCallProvider.notifier)
+              .setScreenShareQuality(quality),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Done'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Which version of somebody's share this client asks for: automatic, or
+/// pinned lower to save data. Only for this client — the sharer is not told,
+/// and nobody else's picture changes.
+class _ReceiveQualityMenu extends ConsumerWidget {
+  const _ReceiveQualityMenu({required this.userId});
+
+  final String userId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final chosen = ref.watch(
+      voiceCallProvider.select((call) => call.receiveQualityFor(userId)),
+    );
+
+    return PopupMenuButton<VoiceShareReceiveQuality>(
+      tooltip: 'Quality, only for you',
+      icon: Icon(
+        chosen == VoiceShareReceiveQuality.auto
+            ? Icons.hd_outlined
+            : Icons.data_saver_on_outlined,
+      ),
+      initialValue: chosen,
+      onSelected: (quality) => ref
+          .read(voiceCallProvider.notifier)
+          .setScreenShareReceiveQuality(userId, quality),
+      itemBuilder: (context) => [
+        for (final quality in VoiceShareReceiveQuality.values)
+          CheckedPopupMenuItem(
+            value: quality,
+            checked: quality == chosen,
+            child: Text(
+              quality == VoiceShareReceiveQuality.auto
+                  ? 'Auto — the best your connection carries'
+                  : quality.label,
+            ),
+          ),
+      ],
     );
   }
 }

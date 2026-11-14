@@ -327,6 +327,9 @@ The server carries camera video when it advertises `voice.video.v1`
 - `VoiceParticipant.screenShareOn` / `.screenShareKind` (`VoiceShareKinds.screen` or `.window`) /
   `.screenShareAudio` / `.screenShareSuppressed` and `VoiceStatus.maximumScreenShares` — the same for
   screen sharing (`voice.screen.v1`); see [Screen sharing](#screen-sharing).
+- `VoiceStatus.maximumScreenShareHeight` / `.maximumScreenShareFrameRate` — the best the server's owner
+  lets a share be sent at (0 for either: none stated, as from an older server). They become
+  `VoiceRoster.shareLimit`; see [How good a share is](#how-good-a-share-is).
 - `VoiceApi.setSelfState(cameraOn:, screenShareOn:, …)` — **the whole self-state, not a change.**
   The server reads every field, so a mute that left out the camera would turn the camera off at the
   server and withdraw its grant from under the live track. `cameraOn` and `screenShareOn` are
@@ -356,9 +359,9 @@ in three places: `VoiceScreenShareOptions` drops `withAudio` for a screen before
 the engine asks the capturer for sound only for a window, and the server never grants a screen's
 sound anyway.
 
-**Who can share.** The desktops (`canShareScreen`). Phones can watch but not share: showing another
-app sends Raindrop to the background, and until calls keep running there the share would stop the
-moment it started.
+**Who can share.** Every platform Raindrop runs on (`canShareScreen`). The desktops choose a screen
+or a window. A phone or a tablet shares **everything on its screen** and nothing less
+(`sharesWholeDeviceOnly`), because that is all either system offers; see [On a phone](#on-a-phone).
 
 **Whose sound can be shared** — `windowAudioUnavailableReason(windowId)` in `platform_info.dart`:
 
@@ -368,6 +371,7 @@ moment it started.
 | Windows 10 | No: its audio engine cannot separate one app's sound from everything else's |
 | macOS | Not yet. Apple's WebRTC build has no custom audio source, so the only way without a fork is mixing it into the microphone track — decided against |
 | Linux | Not yet. flutter_webrtc's capture records the whole default output, Raindrop's own call included, and ignores which window was chosen; it needs a change in flutter_webrtc itself |
+| Android, iOS | Never: a phone shares its whole screen, and a whole screen is shared without sound |
 
 **The process-tree guard (Windows).** The capture takes the window's process *and everything it
 started*. That is right for a browser, whose sound comes from a child process, and badly wrong for
@@ -379,23 +383,184 @@ window's owner, and a Toolhelp32 walk up from this process). A UWP app's window 
 has closed by the time sharing starts, flutter_webrtc falls back to *all* sound except Raindrop's —
 so the window is checked again (`isWindowStillOpen`) right before sharing.
 
-**The 1080p cap is enforced on the sender, by us.** livekit_client cannot: on desktop it works out a
-share's encodings from the size it *asked* for, not the size it got (`getSettings()` is read on web
-and mobile only), and never scales the top layer below the source. The desktop capturers ignore
-size constraints too, and macOS captures at the display's size in points. Left alone, a 4K screen goes
-out at 4K. `_ScreenSizeGuard` reads the size actually being captured from the sender's `media-source`
-statistic (the largest encoded layer, scaled back up, if that is missing), and sets every layer's
-`scaleResolutionDownBy` to LiveKit's own value times `screenShareScale` — the picture fitted inside
-1920×1080, turned for a portrait source, never scaled up. It looks every 250 ms until it has a size
-and every 2 s after, since windows are resized. For the first quarter-second a share can go out
-unscaled; the 2.5 Mbit/s ceiling bounds the bandwidth even then.
+### How good a share is
 
-**How a share is sent** (`_screenPublish`): VP8 pinned for both codecs (the codec is a security
-setting, see [Codecs](#codecs-and-the-frame-cryptor)), simulcast with a half-size layer, 15 fps, 2.5
-Mbit/s, and `maintainResolution` — under congestion a share drops frames rather than going soft,
-because blurry text is unreadable and slightly late text is not. A window's sound goes as music
-(`presetMusic`, no DTX), not with the microphone's speech settings, which would cut a film's quiet
-passages to nothing.
+A sharer chooses **Auto**, or a **maximum**: 480p, 720p or 1080p, at 15, 24, 30 or 60 frames a second
+(`VoiceShareQuality`, remembered in `VoiceSettings.shareQuality`). Both are ceilings, never promises.
+Auto's ceiling is **1080p at 30** (`autoShareResolution`, `autoShareFrameRate`) — 60 is something a
+sharer asks for, since it costs half as much again in upload and a great deal of processor for what
+is, most of the time, a document.
+
+**What makes it automatic is that a share is sent in three versions at once** (`shareLadder`, VP8
+simulcast). Nothing in the app measures a connection or decides anything:
+
+| Ceiling | Smallest | Middle | Top |
+|---|---|---|---|
+| 1080p | 360p @ 15, 0.4 Mbit/s | 720p @ ≤30, 1.5 Mbit/s | 1080p @ chosen rate |
+| 720p | 240p @ 15, 0.2 Mbit/s | 480p @ ≤30, 0.8 Mbit/s | 720p @ chosen rate |
+| 480p | 240p @ 15, 0.2 Mbit/s | 360p @ ≤30, 0.4 Mbit/s | 480p @ chosen rate |
+
+- **Each viewer is sent the largest version their own connection carries**, chosen by the media
+  server and changed as that connection changes — so one viewer on a train does not cost anybody else
+  their picture, which a single version cut down to suit the weakest viewer would. It also picks by
+  the size the share is drawn at (adaptive stream), so a share in a small strip is not sent at 1080p.
+- **The sharer's own connection is handled from the other end.** Versions are filled smallest first,
+  so an upload that cannot afford the top simply does not send it, and a version nobody is receiving
+  is not encoded at all (dynacast).
+
+The top version's ceiling, in kbit/s (`shareTopBitrate`) — a screen that is not changing costs a
+small fraction of it:
+
+| | 15 | 24 | 30 | 60 |
+|---|---|---|---|---|
+| 480p | 500 | 700 | 800 | 1200 |
+| 720p | 1200 | 1600 | 2000 | 3000 |
+| 1080p | 2500 | 3200 | 4000 | 6000 |
+
+**Always three versions, whatever the ceiling**, and that is load-bearing: the number is fixed when a
+share is published. A ladder two long at 720p and three at 1080p could not be moved between them
+without stopping the share — and on a phone, stopping means asking the system for consent again.
+Three everywhere is what lets `setScreenShareQuality` change a running share's ceiling with nothing
+unpublished and nothing captured again. One exception: a desktop capture delivers frames at the rate
+it was opened with, so *raising* the frame rate above that reopens the capture (same source, nobody
+asked anything; a brief freeze).
+
+**What it gives up first** (`shareKeepsResolution`): at 15 frames a share is a document, and text that
+goes soft is unreadable while text that updates late is not, so it keeps its resolution and drops
+frames (`maintainResolution`). Anything faster was chosen for motion, and Auto has to serve both, so
+those give up a little of each (`balanced`).
+
+**Three ceilings apply, the lowest of each half winning** (`shareLimitFor`, applied in
+`VoiceCallController.startScreenShare` so no caller can forget it). Widgets read it as
+`voiceShareLimitProvider`; the controller works the same answer out itself (`_shareLimit`), because
+that provider watches the call and the call reading it back is a circular dependency Riverpod
+refuses:
+
+1. the sharer's own choice;
+2. the server owner's (`voice.maximumScreenShareHeight` / `maximumScreenShareFrameRate`, arriving as
+   `VoiceRoster.shareLimit`). **Honoured here, not enforced there**: the media is end-to-end encrypted
+   and the server never sees a frame, so there is nothing for it to measure — the same kind of promise
+   the 1080p box always was;
+3. the platform's (`maximumShareFrameRate`): iOS is held to 30, see below.
+
+The picker lists what a ceiling rules out, greyed, and says whose ceiling it is
+(`shareLimitExplanation`).
+
+**The cap is enforced on the sender, by us.** livekit_client cannot: on desktop it works out a share's
+encodings from the size it *asked* for, not the size it got (`getSettings()` is read on web and
+mobile only), and the desktop capturers ignore size constraints, so left alone a 4K screen goes out at
+4K. On a phone it does read the real size and scales the lower versions from it — which, multiplied by
+a correction of ours, would scale them twice. So `_ShareSendGuard` **owns every encoder's settings
+outright**: it reads the size actually being captured from the sender's `media-source` statistic (the
+largest encoded layer, scaled back up, if that is missing) and sets each encoder's
+`scaleResolutionDownBy`, `maxFramerate` and `maxBitrate` from its version of the ladder
+(`shareLayerScales`) — the picture fitted inside that version's box, turned for a portrait source,
+never scaled up. It looks every 250 ms until it has a size and every 2 s after, since windows are
+resized and a phone is turned on its side. For the first quarter-second a share can go out unscaled;
+the top version's bitrate bounds the bandwidth even then.
+
+Two details in that:
+
+- **A small source is still sent in three sizes.** A 900×600 window already fits the 720p box as well
+  as the 1080p one, and would be sent twice at the same size. So each version is also at least 1.5×
+  smaller than the one above it (`shareLayerStep`).
+- **The capture is always opened asking for 1920×1080**, whatever the ceiling. No capturer honours the
+  size, and LiveKit opens a third encoder only for a source it believes is at least 960 across — which
+  a 480p box would not be.
+
+**What the sharer is told** (`voiceShareSendStatsProvider`, shown in `VoiceOwnShareBar`). The same 2 s
+look reads what is really going out — the largest version being sent, its frame rate, the bits all
+versions cost together — and, when that is less than the ceiling, why
+(`VoiceShareLimitedBy`): the encoder's own `qualityLimitationReason` (`bandwidth` → *your
+connection*, `cpu` → *this device*), or the top version being switched off by the media server because
+**nobody is watching it any larger**, which is no fault at all and is said so nobody goes looking for
+one. For the first 8 seconds nothing is blamed on the connection: every share starts on its smallest
+version and works up as the connection is measured, which the encoder also reports as a bandwidth
+limit. With no viewers nothing is encoded, and the bar says that too. It is its own provider rather than
+a field of the call state, because it changes every two seconds and nearly everything on screen
+watches the call state.
+
+**How a share is sent** (`_screenPublishFor`): VP8 pinned for both codecs (the codec is a security
+setting, see [Codecs](#codecs-and-the-frame-cryptor)), the three versions named outright rather than
+left to LiveKit's default of one half-size layer, and the degradation rule above. A window's sound
+goes as music (`presetMusic`, no DTX), not with the microphone's speech settings, which would cut a
+film's quiet passages to nothing.
+
+**1080p at 60 is software VP8 on most machines**, and expensive. Nothing refuses it: WebRTC throttles
+a device that cannot keep up, and the readout says *limited by this device*. A hardware codec (H.264)
+would be far cheaper but is not a free choice here — see [Codecs](#codecs-and-the-frame-cryptor).
+
+### On a phone
+
+A phone or a tablet shares its whole screen — other apps, the home screen, notifications. Neither
+system lets an app capture one other app, so there is no picker: `showScreenSharePicker` shows a sheet
+that says what will be seen and offers the quality, and the source is always `deviceScreenSource`,
+shared as a *screen* (so never with sound, and with no change to the protocol).
+
+**The system's consent comes first** (`VoiceEngine.prepareScreenCapture`), before the server is told
+anything — so somebody who backs out at the system's sheet was never announced as sharing. Whatever it
+obtained is handed back if the share then does not start (`cancelScreenCapture`). The order is:
+
+1. `prepareScreenCapture` — the system's own sheet;
+2. the server claim, and the wait for the media server's grant (the camera's handshake, below);
+3. `CallSessionHost.setScreenCapture(true)`;
+4. capture and publish.
+
+**Android** captures through MediaProjection, by way of flutter_webrtc.
+
+- Consent is `Helper.requestCapturePermission()`: Android's "share your screen with Raindrop?" sheet.
+  Since Android 14 an answer is good for **one capture**, so it is asked before every share and never
+  remembered. That sheet is also where recent Android offers **one app** instead of the whole screen;
+  the choice is the system's and the app is not told which was made, so the share is announced as a
+  screen either way and Raindrop's own sheet says both are possible.
+- Android only hands over the screen to an app with a foreground service of type `mediaProjection`
+  running, and from Android 14 only lets a service *take* that type once the user has agreed. So the
+  call's own service (`CallForegroundService`) adds the type after the consent and before the capture
+  and drops it when the share ends — it is not held for the whole call. That is step 3, and it answers
+  whether the service took the type, because a capture started without it is refused by the system.
+- The call's notification says **Sharing your screen** and gains **Stop sharing**, since the whole
+  point of sharing is being in some other app. It is only visible if notifications are allowed, which
+  `MainActivity` asks for the first time a call begins (see [Android and iOS](mobile.md#permissions)).
+- **A capture the system ended** — its own stop control in the status bar, or (Android 14+) the screen
+  locking — is reported by nobody: flutter_webrtc's `MediaProjection.Callback.onStop` does nothing,
+  and a track that stops receiving frames looks exactly like a screen that is not changing. What does
+  change is the virtual display the capture draws into (`WebRTC_ScreenCapture`): switched off when the
+  projection stops, gone when it is released. The service watches that display and, after 1.5 s without
+  a live one (turning the phone replaces it, so a moment without one is a rotation), tells Dart —
+  `CallSessionHost.screenCaptureEnded`, which the notification's Stop sharing uses too. The controller
+  ends the share as if from the app.
+
+**iOS and iPadOS** capture through a **Broadcast Upload Extension** (`ios/RaindropBroadcast`), which is
+the only way iOS gives an app anything but its own screen.
+
+- The extension is a separate process the system starts when the user taps *Start Broadcast*. It
+  knows nothing about the call: it passes each picture of the screen to the app through a Unix socket
+  in the folder the two share (the App Group `group.com.raindrop.raindropClient`), in the format
+  flutter_webrtc's `FlutterSocketConnectionFrameReader` already reads. **The app is what encodes,
+  encrypts and sends**, so encryption is exactly what it is for any other share, and nothing leaves the
+  device from the extension.
+- Consent is the system's broadcast sheet. It reports nothing — not that it was shown, not that it was
+  dismissed — so `prepareScreenCapture` waits for the extension to say it is running, for up to 45 s,
+  and that is the answer.
+- `BroadcastManager().shouldPublishTrack` is **false**, set at startup. Left on, LiveKit publishes a
+  share of its own the moment a broadcast starts — around the handshake, and with none of the settings
+  above. The class is not exported by livekit_client 2.13.0 and is imported by path; re-check on a
+  bump.
+- A broadcast the user stops from the status bar or Control Centre ends the share (`_watchBroadcast`).
+  Stopping in the app asks the extension to finish (`requestStop`); iOS then shows its own short alert
+  saying the broadcast ended, which is the system's and cannot be suppressed.
+- A broadcast started from Control Centre with no call behind it gets no answer from the app, and ends
+  itself after 20 s rather than recording a screen for nobody.
+- **30 frames a second at most** (`maximumShareFrameRate`). The system holds an extension to about
+  50 MB and each frame crosses to the app as a JPEG; that hop does not keep up with 60. The extension
+  takes at most 30 a second, never queues one while another is in hand, and fits each inside the 1080p
+  box before compressing it. A lower ceiling its sharer picks is applied by the encoder in the app.
+- The app stays alive behind another app through the `audio` background mode a call already has.
+
+Backgrounding still turns the **camera** off on a phone. It never touches a share: being behind
+another app is what a share is for.
+
+### The handshake, and what can end a share
 
 **The handshake is the camera's.** `VoiceCallController.startScreenShare` tells the server
 (`_sendSelfState(share: …)`), waits for the media server's grant — the sound's too, when asked for
@@ -410,7 +575,12 @@ roster stays true (`_onEngineShare`):
   wrong for a screen, which on macOS sends none while nothing on it changes;
 - the grant was withdrawn (the permission went, or a mute for everyone took the sound);
 - it could not be encrypted — the send-side check covers both screen tracks, and withdraws both;
-- the window's sound could not be captured: the picture carries on, and the user is told.
+- the window's sound could not be captured: the picture carries on, and the user is told;
+- on iOS, the broadcast behind it ended (`_watchBroadcast`).
+
+On Android the *service* notices a capture the system ended and the controller stops the share
+(`CallSessionHost.screenCaptureEnded`); see [On a phone](#on-a-phone). Whichever way a share ends,
+`_shareEnded` drops the service's `mediaProjection` type and clears the readout.
 
 **Claims follow the engine, never `voice.state` events** — for the camera as well. An event can arrive
 after a newer report has already gone out, and a claim moved back by a stale one would have the next
@@ -437,6 +607,13 @@ untrusted one (`untrustedScreenShares`) is never drawn or played. A share's soun
 (`setScreenShareVolume`), separate from the member's voice, and follows the default volume — so it
 goes silent with deafen — until one is set. Hiding somebody's camera only ever touches their camera.
 
+**A viewer can pin a share lower** (`setScreenShareReceiveQuality`: Auto, High, Medium, Low — the
+three versions). Auto is the media server choosing, which is right nearly always; the others are for a
+metered connection, where what the connection can carry and what its owner wants to pay for are
+different answers. It is a ceiling on top of the automatic choice — LiveKit takes the smaller of the
+two — so it never asks for more than the connection carries. Local only, kept per sharer for the
+call, and dropped with `watching` when they leave it.
+
 **macOS** asks for the Screen Recording permission when the picker opens
 (`needsScreenCapturePermission`); refused once, it can only be granted in System Settings → Privacy
 & Security → Screen & System Audio Recording, and `VoiceScreenSources.captureAllowed` says so.
@@ -447,7 +624,9 @@ goes silent with deafen — until one is set. Hiding somebody's camera only ever
 |---|---|---|
 | `voiceCallProvider` (`features/voice/controllers/voice_call_controller.dart`) | The **one** call this client is in, across all servers: server and channel, `joining`/`connected`/`reconnecting`, who is speaking, whether you are muted for everyone or suppressed, the camera (`cameraOn`, `cameraSuppressed`, `cameraBusy`, `videoFeeds`, `untrustedVideo`), a one-shot `notice` for why a call ended, and a dismissible `warning` for something the engine refused mid-call | global, kept alive |
 | `voiceRosterProvider(serverId)` (`voice_roster_controller.dart`) | Who is in every call on a server, plus `available`, `maximumParticipants` and `maximumCameraPublishers`; drives the sidebar and the voice view | per server |
-| `voiceSettingsProvider` (`voice_settings_controller.dart`) | Your mute/deafen, output volume, devices, and echo cancellation / noise suppression / auto gain | global, persisted |
+| `voiceSettingsProvider` (`voice_settings_controller.dart`) | Your mute/deafen, output volume, devices, echo cancellation / noise suppression / auto gain, and the share quality last chosen (`shareQuality`) | global, persisted |
+| `voiceShareLimitProvider` (`voice_call_controller.dart`) | The most a share from this device may be sent at in the call it is in: the server owner's ceiling and the platform's, whichever is lower | derived |
+| `voiceShareSendStatsProvider` (`voice_call_controller.dart`) | What this client's share is really going out at, every 2 s while one runs; null otherwise | global |
 | `memberAudioProvider` (`member_media_controller.dart`) | Per-member volume, local mute, hidden camera and **share volume** (`MemberMedia.screenVolume`), keyed `serverId/userId` | global, persisted |
 
 **The roster** follows the event stream through `LiveSync`, like every other list. It applies:
@@ -546,7 +725,7 @@ units mistake, and why the cap is 2.
   - a capacity count;
   - a **Join voice** button, or "Switch to this call" if you are in another one. The button is disabled,
     with the reason, without `connect`, when voice is unavailable, or when the call is full;
-  - once you are in the call: mute, deafen, **camera**, **share screen** (desktop only) and
+  - once you are in the call: mute, deafen, **camera**, **share screen** and
     **Disconnect**; a banner when a moderator muted you or you can only listen; and a dismissible
     banner when the engine refused something (the state banners have no dismiss, because the state
     would still be true afterwards).
@@ -563,8 +742,13 @@ units mistake, and why the cap is 2.
     sound (its own, apart from their voice), **Full view** (a full-window route, Esc to close, which
     closes itself once the share ends — stopped, the sharer left, or this client left the call) and **Stop watching**.
   - **while you share**, `VoiceOwnShareBar` above the participants: "You're sharing “Notes”, with its
-    sound", a small preview of exactly what everybody sees (foldable, and not drawn at all when folded
-    — a local preview of a large screen costs a texture upload every frame), and **Stop sharing**.
+    sound", and under it what is really going out — "Auto · sending 1080p · 30 fps · 2.1 Mbit/s", or
+    "…720p · 24 fps, limited by your connection"; a **quality** button that changes the ceiling
+    without stopping the share; a small preview of exactly what everybody sees (foldable, and not
+    drawn at all when folded — a local preview of a large screen costs a texture upload every frame;
+    folded to begin with on a phone, where it would be a picture of the screen it is on); and **Stop
+    sharing**.
+  - a watched share's bar also has **Quality, only for you**: Auto, or pinned to a smaller version.
 
   The camera button is in the layout's button registry (`MainButtons.camera`) *and* hard-wired into
   the in-call controls. **`LayoutConfig.normalize` keeps unknown button ids but never adds new ones**,
@@ -572,8 +756,7 @@ units mistake, and why the cap is 2.
   always reachable. See [Layout](layout.md). The share button (`MainButtons.screenShare`,
   `VoiceScreenShareButton`) is in the registry, so it can be placed in a toolbar from the layout
   editor, but **not in the default layout**: the user panel under your name already holds four
-  buttons in a 240-wide sidebar. It is always in the in-call controls, and draws nothing where
-  sharing is impossible (phones), whichever toolbar it is put in.
+  buttons in a 240-wide sidebar. It is always in the in-call controls.
 
 - **The share picker** (`screen_share_picker.dart`, `showScreenSharePicker`) opens from the share
   button. **Screens** and **Windows**, each a grid of live thumbnails from `openScreenSources()`
@@ -583,7 +766,14 @@ units mistake, and why the cap is 2.
   `windowAudioUnavailableReason` (not available on macOS or Linux yet, needs Windows 11, or the
   window's process tree contains Raindrop). Under Screens: "A whole screen is shared without sound."
   On Share, a chosen window is checked again (`isWindowStillOpen`). On macOS a refused Screen
-  Recording permission shows where to allow it instead of an empty grid.
+  Recording permission shows where to allow it instead of an empty grid. Under both sits the
+  **quality** (`ShareQualityField`): Auto or a size and a frame rate, a line saying what that comes
+  to, and — when the server or the platform caps it — whose cap it is. Unlike the sound checkbox the
+  quality is remembered: it is a preference about this device and its connection, not an agreement
+  about what is on screen.
+
+  On a phone the same call opens a **sheet** instead: what will be seen (everything), what the system
+  asks next, the quality, and Continue.
 
   **Selecting a channel never joins it**: joining is the button.
 - **Narrow layout**: the sidebar lives in a drawer, so a call in progress gets a thin
@@ -614,8 +804,8 @@ Speaking and "connected" colours reuse `AppSurfaces.onlineIndicator`, so no them
 | Platform | What voice needed |
 |---|---|
 | macOS | `com.apple.security.device.audio-input`, `com.apple.security.network.client` **and `com.apple.security.network.server`** in *both* entitlements files; `NSMicrophoneUsageDescription` in `Info.plist`. Screen sharing needs no entitlement or usage string: the system asks for Screen Recording itself |
-| iOS | `NSMicrophoneUsageDescription`, and the `audio` background mode so a call survives leaving the screen |
-| Android | `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `BLUETOOTH_CONNECT` (+ legacy `BLUETOOTH` ≤ API 30), and `INTERNET`/`ACCESS_NETWORK_STATE` in the **main** manifest (release builds had no network access before). Plus `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE` and `POST_NOTIFICATIONS` for the ongoing-call service |
+| iOS | `NSMicrophoneUsageDescription`, and the `audio` background mode so a call survives leaving the screen. Screen sharing: the `RaindropBroadcast` extension target, the App Group in both targets' entitlements, and `RTCAppGroupIdentifier` + `RTCScreenSharingExtension` in `Info.plist` — see [Android and iOS](mobile.md#sharing-the-screen) |
+| Android | `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `BLUETOOTH_CONNECT` (+ legacy `BLUETOOTH` ≤ API 30), and `INTERNET`/`ACCESS_NETWORK_STATE` in the **main** manifest (release builds had no network access before). Plus `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE` and `POST_NOTIFICATIONS` for the ongoing-call service, and `FOREGROUND_SERVICE_MEDIA_PROJECTION` with the service typed `microphone\|mediaProjection` for screen sharing |
 | Windows, Linux | nothing. Sharing a window's sound needs Windows 11 |
 
 flutter_webrtc and livekit_client ship Swift Package Manager manifests, so the Apple builds stay on
@@ -648,7 +838,12 @@ when the media library first initializes, not when a call starts. Full detail:
 ## Not yet
 
 - Push-to-talk.
-- **Sharing from a phone** — background calls exist now, but nothing captures a phone's screen; phones can watch.
+- **Sixty frames a second from iOS** — its screen comes through a broadcast extension, which does not
+  keep up; see [On a phone](#on-a-phone).
+- **A hardware video codec for shares.** 1080p at 60 is software VP8, which is costly; H.264 would be
+  cheap on most devices but the codec is a security setting here and would need the frame cryptor
+  re-read for it first.
+- **Sound from a phone's screen.** A whole screen is shared without sound everywhere.
 - **A window's sound on macOS and Linux** ([why](#screen-sharing)).
 - **Camera effects on Windows and Linux.** They run on macOS, iOS and Android; see
   [Camera effects](#camera-effects). Those two have no chain between the capturer and the video

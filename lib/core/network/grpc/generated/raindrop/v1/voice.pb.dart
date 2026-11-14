@@ -307,6 +307,8 @@ class GetVoiceStatusResponse extends $pb.GeneratedMessage {
     $core.Iterable<VoiceParticipant>? participants,
     $core.int? maximumCameraPublishers,
     $core.int? maximumScreenShares,
+    $core.int? maximumScreenShareHeight,
+    $core.int? maximumScreenShareFrameRate,
   }) {
     final result = GetVoiceStatusResponse._();
     if (available != null) result.available = available;
@@ -318,6 +320,10 @@ class GetVoiceStatusResponse extends $pb.GeneratedMessage {
       result.maximumCameraPublishers = maximumCameraPublishers;
     if (maximumScreenShares != null)
       result.maximumScreenShares = maximumScreenShares;
+    if (maximumScreenShareHeight != null)
+      result.maximumScreenShareHeight = maximumScreenShareHeight;
+    if (maximumScreenShareFrameRate != null)
+      result.maximumScreenShareFrameRate = maximumScreenShareFrameRate;
     return result;
   }
 
@@ -341,6 +347,8 @@ class GetVoiceStatusResponse extends $pb.GeneratedMessage {
         subBuilder: VoiceParticipant.$_createMessage)
     ..aI(5, _omitFieldNames ? '' : 'maximumCameraPublishers')
     ..aI(6, _omitFieldNames ? '' : 'maximumScreenShares')
+    ..aI(7, _omitFieldNames ? '' : 'maximumScreenShareHeight')
+    ..aI(8, _omitFieldNames ? '' : 'maximumScreenShareFrameRate')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -421,6 +429,31 @@ class GetVoiceStatusResponse extends $pb.GeneratedMessage {
   $core.bool hasMaximumScreenShares() => $_has(5);
   @$pb.TagNumber(6)
   void clearMaximumScreenShares() => $_clearField(6);
+
+  /// The most lines a shared screen may be sent at on this server: 480, 720 or 1080. 0 when the server
+  /// states none (an older one), which a client reads as 1080. A client fits its share inside the box
+  /// this names. Honoured by clients rather than enforced: the media is end-to-end encrypted and this
+  /// server never sees a frame of it.
+  @$pb.TagNumber(7)
+  $core.int get maximumScreenShareHeight => $_getIZ(6);
+  @$pb.TagNumber(7)
+  set maximumScreenShareHeight($core.int value) => $_setSignedInt32(6, value);
+  @$pb.TagNumber(7)
+  $core.bool hasMaximumScreenShareHeight() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearMaximumScreenShareHeight() => $_clearField(7);
+
+  /// The most frames a second a shared screen may be sent at on this server: 15, 24, 30 or 60. 0 when
+  /// the server states none, which a client reads as 60. Honoured by clients, like the height.
+  @$pb.TagNumber(8)
+  $core.int get maximumScreenShareFrameRate => $_getIZ(7);
+  @$pb.TagNumber(8)
+  set maximumScreenShareFrameRate($core.int value) =>
+      $_setSignedInt32(7, value);
+  @$pb.TagNumber(8)
+  $core.bool hasMaximumScreenShareFrameRate() => $_has(7);
+  @$pb.TagNumber(8)
+  void clearMaximumScreenShareFrameRate() => $_clearField(8);
 }
 
 /// Joins a call.

@@ -9,4 +9,9 @@
     <string name="call_channel_name">Voice calls</string>
     <string name="call_channel_description">Shown while you are in a voice call, so the call keeps running when Raindrop is not on screen.</string>
     <string name="call_ongoing">In a voice call</string>
+
+    <!-- The same notification while the call is sharing this device's screen:
+         what it says, and its one action. -->
+    <string name="call_sharing_screen">Sharing your screen</string>
+    <string name="call_stop_sharing">Stop sharing</string>
 </resources>
