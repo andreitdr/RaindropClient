@@ -45,10 +45,16 @@ already-connected server:
 4. Call `UserService.GetMe` to confirm the token is still valid.
    - Valid → returns a populated `ServerSession`.
    - `invalid_session` → clears the stored token and returns `null`.
+   - `network_error` (nothing answered, or not within the 20 s deadline) → **throws**, keeping the
+     token. Not reaching the server says nothing about the session, so it must not become `null`.
 
 A `null` result routes the shell to [`ReauthPrompt`](connecting-to-a-server.md#reconnecting-connectserverflowforexisting)
 in the chat pane, next to the server rail (`HomeShell`'s `_SignedOutLayout`) — see `HomeShell` in
-[Architecture overview](architecture-overview.md).
+[Architecture overview](architecture-overview.md). An error puts `ServerUnreachablePane`
+(`features/servers/widgets/`) in the same place instead: "Can't reach …" naming the stored
+`host:port` (a server whose address has changed looks exactly like one that is down) and a
+**Try again** button that invalidates the provider. Before this, an unreachable server was shown as
+"Your session expired", which sent people to retype a password that could not help.
 
 Two mutating methods:
 

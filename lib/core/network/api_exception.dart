@@ -51,6 +51,9 @@ class ApiException implements Exception {
 
   bool get isCertificateMismatch => code == 'certificate_mismatch';
 
+  /// The server could not be reached, or did not answer in time.
+  bool get isNetworkError => code == 'network_error';
+
   @override
   String toString() => message;
 }

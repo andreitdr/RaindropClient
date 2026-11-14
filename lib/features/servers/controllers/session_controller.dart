@@ -94,6 +94,10 @@ class ServerSessionController
         await _secureStore.clearSessionToken(serverId);
         return null;
       }
+      // Not reaching the server says nothing about the session: keep the
+      // token and fail, so the shell offers a retry instead of a password
+      // prompt that claims the session expired.
+      if (e.isNetworkError) rethrow;
       if (!e.isCertificateMismatch || fingerprint == null) return null;
     }
 
@@ -110,6 +114,7 @@ class ServerSessionController
       if (e.code == 'invalid_session') {
         await _secureStore.clearSessionToken(serverId);
       }
+      if (e.isNetworkError) rethrow;
       return null;
     }
   }

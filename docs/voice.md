@@ -726,7 +726,9 @@ units mistake, and why the cap is 2.
   - a **Join voice** button, or "Switch to this call" if you are in another one. The button is disabled,
     with the reason, without `connect`, when voice is unavailable, or when the call is full;
   - once you are in the call: mute, deafen, **camera**, **share screen** and
-    **Disconnect**; a banner when a moderator muted you or you can only listen; and a dismissible
+    **Disconnect** — labelled when the view is at least 460 wide, an icon-only red hang-up button
+    on a phone, where the labelled one pushed the row 31px past the edge (the row also scales
+    down rather than overflowing on anything narrower); a banner when a moderator muted you or you can only listen; and a dismissible
     banner when the engine refused something (the state banners have no dismiss, because the state
     would still be true afterwards).
   - a participant with their camera on gets a 16:9 `VoiceVideoTile` instead of the avatar tile, or a

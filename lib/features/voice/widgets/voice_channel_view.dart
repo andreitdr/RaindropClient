@@ -506,34 +506,65 @@ class _InCallControls extends ConsumerWidget {
 
   final VoiceCallStatus status;
 
+  /// Below this width the hang-up button drops its label. Five icon buttons,
+  /// the connecting spinner and a labelled "Disconnect" need about this much;
+  /// a phone in portrait has well under it.
+  static const _labelledMinWidth = 460.0;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        if (status != VoiceCallStatus.connected) ...[
-          const AdaptiveActivityIndicator(size: 16),
-          const SizedBox(width: 12),
-        ],
-        const VoiceSelfControls(iconSize: 26),
-        // Here as well as in the layout's toolbars: `LayoutConfig.normalize`
-        // keeps unknown button ids but never adds new ones, so an existing
-        // user's saved layout will not gain the camera or share buttons. This
-        // is where they are always reachable.
-        const VoiceCameraButton(iconSize: 26),
-        const VoiceScreenShareButton(iconSize: 26),
-        const SizedBox(width: 16),
-        FilledButton.icon(
-          style: FilledButton.styleFrom(
-            backgroundColor: scheme.error,
-            foregroundColor: scheme.onError,
+    void leave() => ref.read(voiceCallProvider.notifier).leave();
+    final hangUpStyle = FilledButton.styleFrom(
+      backgroundColor: scheme.error,
+      foregroundColor: scheme.onError,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final labelled = constraints.maxWidth >= _labelledMinWidth;
+        // Scaled down rather than overflowing on a screen narrower than
+        // anything this was laid out for; at phone widths it fits as is.
+        return FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (status != VoiceCallStatus.connected) ...[
+                const AdaptiveActivityIndicator(size: 16),
+                const SizedBox(width: 12),
+              ],
+              const VoiceSelfControls(iconSize: 26),
+              // Here as well as in the layout's toolbars:
+              // `LayoutConfig.normalize` keeps unknown button ids but never
+              // adds new ones, so an existing user's saved layout will not
+              // gain the camera or share buttons. This is where they are
+              // always reachable.
+              const VoiceCameraButton(iconSize: 26),
+              const VoiceScreenShareButton(iconSize: 26),
+              SizedBox(width: labelled ? 16 : 8),
+              if (labelled)
+                FilledButton.icon(
+                  style: hangUpStyle,
+                  onPressed: leave,
+                  icon: const Icon(Icons.call_end),
+                  label: const Text('Disconnect'),
+                )
+              else
+                IconButton.filled(
+                  style: IconButton.styleFrom(
+                    backgroundColor: scheme.error,
+                    foregroundColor: scheme.onError,
+                  ),
+                  iconSize: 26,
+                  tooltip: 'Disconnect',
+                  onPressed: leave,
+                  icon: const Icon(Icons.call_end),
+                ),
+            ],
           ),
-          onPressed: () => ref.read(voiceCallProvider.notifier).leave(),
-          icon: const Icon(Icons.call_end),
-          label: const Text('Disconnect'),
-        ),
-      ],
+        );
+      },
     );
   }
 }

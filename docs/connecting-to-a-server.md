@@ -59,7 +59,9 @@ On success, `flow.persist(ref, session: ..., displayName: ...)`:
 server rail, so the app still opens on its normal layout) whenever a known server's stored session token is missing or has expired (idle timeout, or a
 restart of the server's in-memory session store — see the server's
 [Users doc](../../RaindropServer/docs/users.md#lifecycle)). It only asks for the password — the GUID
-and pinned fingerprint are already on file.
+and pinned fingerprint are already on file. It is **not** shown when the server simply cannot be
+reached — that is `ServerUnreachablePane`, with a retry; see
+[Servers & sessions](servers-and-sessions.md).
 
 `ConnectServerFlow.forExisting(profile)` rebuilds a flow for a server already known to
 `ServersController`. Unlike the fresh-connect constructor, **this pins strictly from the start** — a

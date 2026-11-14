@@ -23,6 +23,7 @@ import '../../onboarding/screens/reauth_prompt.dart';
 import '../../servers/controllers/servers_controller.dart';
 import '../../servers/controllers/session_controller.dart';
 import '../../servers/widgets/server_rail.dart';
+import '../../servers/widgets/server_unreachable_pane.dart';
 import '../../voice/controllers/voice_call_controller.dart';
 import '../../voice/widgets/voice_channel_view.dart';
 import '../../voice/widgets/voice_controls.dart';
@@ -63,18 +64,26 @@ class MainView extends ConsumerWidget {
     final activeId = ref.watch(activeServerIdProvider) ?? servers.first.id;
     final sessionAsync = ref.watch(serverSessionProvider(activeId));
 
+    final profile = servers.firstWhere(
+      (s) => s.id == activeId,
+      orElse: () => servers.first,
+    );
+
     return sessionAsync.when(
       loading: () =>
           const Scaffold(body: Center(child: AdaptiveActivityIndicator())),
-      error: (err, _) =>
-          Scaffold(body: Center(child: Text('Could not connect: $err'))),
+      // Kept in the usual layout, rail included, so another server can still
+      // be picked — or this one removed — while this one is unreachable.
+      error: (err, _) => _SignedOutLayout(
+        profile: profile,
+        content: ServerUnreachablePane(profile: profile, error: err),
+      ),
       data: (session) {
         if (session == null) {
-          final profile = servers.firstWhere(
-            (s) => s.id == activeId,
-            orElse: () => servers.first,
+          return _SignedOutLayout(
+            profile: profile,
+            content: ReauthPrompt(profile: profile),
           );
-          return _SignedOutLayout(profile: profile);
         }
         return _ShellLayout(session: session);
       },
@@ -82,13 +91,15 @@ class MainView extends ConsumerWidget {
   }
 }
 
-/// The shell as it looks with no valid session for the active server: the
+/// The shell as it looks with no usable session for the active server: the
 /// server rail stays in place so the app always opens on its usual layout,
-/// and the login form takes the chat pane.
+/// and [content] — the login form, or why the server could not be reached —
+/// takes the chat pane.
 class _SignedOutLayout extends StatelessWidget {
-  const _SignedOutLayout({required this.profile});
+  const _SignedOutLayout({required this.profile, required this.content});
 
   final ServerProfile profile;
+  final Widget content;
 
   @override
   Widget build(BuildContext context) {
@@ -99,7 +110,7 @@ class _SignedOutLayout extends StatelessWidget {
       body: LayoutRow(
         paneBuilder: (context, pane) => switch (pane.id) {
           MainPanes.servers => ServerRail(activeServerId: profile.id),
-          MainPanes.content => ReauthPrompt(profile: profile),
+          MainPanes.content => content,
           _ when editing && mainPaneLabels.containsKey(pane.id) =>
             PanePlaceholder(label: mainPaneLabels[pane.id]!),
           _ => null,
@@ -177,14 +188,10 @@ class _ShellLayoutState extends ConsumerState<_ShellLayout> {
       });
 
       // A call that ended without this client hanging up says why, once.
-      ref.listen(voiceCallProvider.select((call) => call.notice), (
-        _,
-        notice,
-      ) {
+      ref.listen(voiceCallProvider.select((call) => call.notice), (_, notice) {
         if (notice == null) return;
-        ScaffoldMessenger.maybeOf(
-          context,
-        )?.showSnackBar(SnackBar(content: Text(notice)));
+        ScaffoldMessenger.maybeOf(context)
+            ?.showSnackBar(SnackBar(content: Text(notice)));
         ref.read(voiceCallProvider.notifier).dismissNotice();
       });
     }
