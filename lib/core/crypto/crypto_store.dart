@@ -27,21 +27,44 @@ class CryptoStores {
   static Future<void> initialize() => RustLib.init();
 
   /// Opens (creating on first use) the crypto store for [serverId].
+  ///
+  /// A store its key cannot open is unrecoverable — the key exists nowhere
+  /// else — so it is discarded and a fresh one created, rather than leaving
+  /// the server stuck on [CryptoErrorKind.storeLocked] forever. That happens
+  /// when the keystore loses the key but the file survives: an Android backup
+  /// restored onto a new install (the Keystore is never backed up, and
+  /// `flutter_secure_storage` wipes what it can no longer decrypt), or a
+  /// keychain reset. The device then has no keys and goes through setup
+  /// again (link or recovery words), as a new device would.
   Future<MlsCryptoEngine> open(String serverId) async {
-    final key =
-        await _secure.cryptoStoreKey(serverId) ?? await _createKey(serverId);
-    return MlsCryptoEngine.open(path: await _path(serverId), key: key);
+    final path = await _path(serverId);
+    var key = await _secure.cryptoStoreKey(serverId);
+    if (key == null) {
+      // Whatever file is here was made under a key that is gone.
+      await _deleteFiles(path);
+      key = await _createKey(serverId);
+    }
+    try {
+      return await MlsCryptoEngine.open(path: path, key: key);
+    } on CryptoException catch (e) {
+      if (e.kind != CryptoErrorKind.storeLocked) rethrow;
+      await _deleteFiles(path);
+      return MlsCryptoEngine.open(path: path, key: key);
+    }
   }
 
   /// Deletes [serverId]'s store and its key: every private key, group and
   /// decrypted message this device held for that server. Irreversible.
   Future<void> delete(String serverId) async {
-    final path = await _path(serverId);
+    await _deleteFiles(await _path(serverId));
+    await _secure.deleteCryptoStoreKey(serverId);
+  }
+
+  Future<void> _deleteFiles(String path) async {
     for (final suffix in const ['', '-wal', '-shm']) {
       final file = File('$path$suffix');
       if (await file.exists()) await file.delete();
     }
-    await _secure.deleteCryptoStoreKey(serverId);
   }
 
   Future<Uint8List> _createKey(String serverId) async {

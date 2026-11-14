@@ -42,6 +42,9 @@ and the C# server.
 - **`CryptoStores`** (`crypto_store.dart`) opens one engine per server:
   - The encrypted store is `<app support>/crypto/raindrop-<serverId>.db`.
   - Its random 32-byte key is `server.<id>.dbkey` in [`SecureStore`](storage.md).
+  - A store its key cannot open (no key stored, or `storeLocked`) is unrecoverable, so `open` deletes
+    it and starts fresh instead of failing on every launch. The device then has no keys and shows
+    setup (link or recovery words).
   - `CryptoStores.initialize()` loads the native library and runs in `main.dart` before `runApp`.
   - `CryptoStores.delete` wipes a server's store and key. `ServersController.remove` calls it.
 - **`AttachmentCipher`** (`attachment_cipher.dart`, implemented by `RustAttachmentCipher` over

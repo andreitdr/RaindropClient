@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12 and newer. The encrypted crypto stores (files/crypto/) are useless without
+     their keys, which live in the Keystore and are never backed up or transferred. See
+     docs/storage.md. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="crypto/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="crypto/" />
+    </device-transfer>
+</data-extraction-rules>

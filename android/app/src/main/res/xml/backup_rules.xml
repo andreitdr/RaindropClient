@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older. The encrypted crypto stores (files/crypto/) are useless without
+     their keys, which live in the Keystore and are never backed up: restored on their own,
+     they cannot be opened. See docs/storage.md. -->
+<full-backup-content>
+    <exclude domain="file" path="crypto/" />
+</full-backup-content>

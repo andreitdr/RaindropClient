@@ -35,7 +35,11 @@ per server id:
 - `server.<id>.token` — the session bearer token.
 - `server.<id>.dbkey` — the random 32-byte key for that server's encrypted crypto store
   (`<app support>/crypto/raindrop-<id>.db`, SQLCipher). The store holds the device's private keys, MLS
-  state and decrypted messages; see [End-to-end encryption](crypto.md).
+  state and decrypted messages; see [End-to-end encryption](crypto.md). If the key is lost while the
+  file survives (an Android backup restored onto a new install, a keychain reset), the file can never
+  be opened again, so `CryptoStores.open` discards it and starts a fresh store; the device then goes
+  through encryption setup again. Android excludes `files/crypto/` from backups and device transfers
+  (`res/xml/backup_rules.xml`, `data_extraction_rules.xml`) so a restore does not bring one back.
 
 `.forgetServer(serverId)` removes them all at once (and `ServersController.remove` also deletes the
 crypto store itself through `CryptoStores.delete`) — called whenever a server is removed from
