@@ -96,6 +96,19 @@ add_subdirectory("runner")
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# local_auth_windows (2.0.2, the latest) compiles with /await, MSVC's pre-standard coroutines. Since
+# Visual Studio 18 (MSVC 14.51) the STL refuses that flag with static assertion STL1011. The plugin
+# already builds as C++20, where C++/WinRT uses standard coroutines, so /await is dropped from its
+# options rather than silencing the deprecation.
+if(TARGET local_auth_windows_plugin)
+  get_target_property(LOCAL_AUTH_OPTIONS local_auth_windows_plugin COMPILE_OPTIONS)
+  if(LOCAL_AUTH_OPTIONS)
+    list(REMOVE_ITEM LOCAL_AUTH_OPTIONS "/await")
+    set_target_properties(local_auth_windows_plugin PROPERTIES
+      COMPILE_OPTIONS "${LOCAL_AUTH_OPTIONS}")
+  endif()
+endif()
+
 
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can

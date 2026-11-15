@@ -138,3 +138,4 @@ and Perl don't all honour long paths.
 | `could not find ...\RaindropCrypto\crates\raindrop_crypto_ffi` | RaindropCrypto is not cloned next to RaindropClient. |
 | `cargo` / `rustup` not found during the build | Rust is not on the `PATH` the build sees. Open a new terminal after installing rustup. |
 | The exe starts on your PC but not on another one (missing `MSVCP140.dll` / `VCRUNTIME140.dll`) | Install the Visual C++ Redistributable there, or copy the DLLs next to the exe. |
+| `error STL1011: The /await compiler option ... deprecated` in `local_auth_windows_plugin` | Visual Studio 18 refuses `/await`, which `local_auth_windows` 2.0.2 still adds. `windows/CMakeLists.txt` drops it from that plugin's options (it already builds as C++20, so C++/WinRT uses standard coroutines). If the error comes back, check that block still runs after `generated_plugins.cmake`. |
