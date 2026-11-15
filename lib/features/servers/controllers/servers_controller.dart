@@ -25,6 +25,12 @@ class ServersController extends Notifier<List<ServerProfile>> {
     if (state.any((s) => s.id == server.id)) return;
     state = [...state, server];
     _persist();
+    // Adding a server back undoes having removed it from this device.
+    final prefs = ref.read(appPrefsProvider);
+    final hidden = prefs.hiddenServers;
+    if (hidden.remove('${server.host}:${server.port}')) {
+      prefs.setHiddenServers(hidden);
+    }
   }
 
   void rename(String serverId, String displayName) {
@@ -35,7 +41,19 @@ class ServersController extends Notifier<List<ServerProfile>> {
     _persist();
   }
 
+  /// Takes a server off this device. Entirely local, so it works whether or
+  /// not the server can be reached: the account stays on the server, where
+  /// only this person's paired devices or recovery words can sign in to it,
+  /// and adding the server again arrives back at it.
   Future<void> remove(String serverId) async {
+    final prefs = ref.read(appPrefsProvider);
+    for (final s in state) {
+      if (s.id == serverId) {
+        // The vault still lists it for the person's other devices; this
+        // keeps it from being put straight back on this one.
+        prefs.setHiddenServers({...prefs.hiddenServers, '${s.host}:${s.port}'});
+      }
+    }
     state = state.where((s) => s.id != serverId).toList(growable: false);
     _persist();
     // Private keys, groups and decrypted messages for this server go with it.

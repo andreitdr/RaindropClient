@@ -5,12 +5,15 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 /**
  * The app's one activity, plus the channel Dart keeps a call alive over.
+ *
+ * A fragment activity because unlocking the app with a fingerprint or face (local_auth) shows the
+ * system's biometric prompt, which is a fragment.
  *
  * Everything else is plugins; this exists only because Android has no
  * plugin-free way to run a microphone in the background, or to capture the
@@ -18,7 +21,7 @@ import io.flutter.plugin.common.MethodChannel
  * [CallForegroundService] for why a service is needed at all, and
  * `core/voice/call_session_host.dart` for the Dart end of this channel.
  */
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
 
     private companion object {
         const val CHANNEL = "raindrop/call_session"

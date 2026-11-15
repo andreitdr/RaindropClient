@@ -2,6 +2,8 @@
     <!-- Talking to a Raindrop server at all. Only the debug and profile manifests had this, so a
          release build could not connect to anything. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Unlocking the app with a fingerprint or face before it signs in anywhere. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Voice channels: the microphone, routing audio, and Bluetooth headsets. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />

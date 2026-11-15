@@ -9,7 +9,8 @@ import '../../../core/theme/theme_definition.dart';
 import '../../../core/widgets/adaptive.dart';
 import '../../servers/controllers/servers_controller.dart';
 import '../../security/widgets/encryption_settings_section.dart';
-import '../../servers/controllers/session_controller.dart';
+import '../../identity/widgets/identity_settings_section.dart';
+import '../../servers/widgets/remove_server.dart';
 import '../../voice/widgets/voice_settings_section.dart';
 import 'layout_editor_screen.dart';
 
@@ -95,6 +96,9 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 16),
           _SectionLabel('Voice & video'),
           const VoiceSettingsSection(),
+          const SizedBox(height: 16),
+          _SectionLabel('Identity & devices'),
+          const IdentitySettingsSection(),
           const SizedBox(height: 16),
           if (activeServer != null) ...[
             _SectionLabel('Encryption'),
@@ -271,22 +275,14 @@ class _ServerRow extends ConsumerWidget {
       title: Text(name),
       subtitle: Text(host),
       trailing: IconButton(
-        icon: const Icon(Icons.logout, size: 20),
-        tooltip: 'Remove server',
-        onPressed: () async {
-          final confirmed = await showAdaptiveConfirm(
-            context,
-            title: 'Remove $name?',
-            message:
-                'This forgets the server locally, including its saved session and pinned '
-                "certificate. It doesn't delete your account on the server — you can log "
-                'back in later with your username and password.',
-            confirmLabel: 'Remove',
-            destructive: true,
-          );
-          if (!confirmed) return;
-          await ref.read(serverSessionProvider(serverId).notifier).logout();
-          await ref.read(serversControllerProvider.notifier).remove(serverId);
+        icon: const Icon(Icons.remove_circle_outline, size: 20),
+        tooltip: 'Remove from this device',
+        onPressed: () {
+          for (final server in ref.read(serversControllerProvider)) {
+            if (server.id == serverId) {
+              confirmRemoveServer(context, ref, server);
+            }
+          }
         },
       ),
     );

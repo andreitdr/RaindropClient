@@ -98,6 +98,10 @@ class VoiceChannelView extends ConsumerWidget {
                           participants.length >= roster.maximumParticipants &&
                           !participants.any((p) => p.userId == me),
                       inOtherCall: call.inCall,
+                      // Listed in this call without this device being in
+                      // it: another of this person's devices is. Joining
+                      // here takes the call over, and that device hangs up.
+                      onAnotherDevice: participants.any((p) => p.userId == me),
                       joining:
                           call.status == VoiceCallStatus.joining &&
                           call.serverId == serverId &&
@@ -576,6 +580,7 @@ class _JoinButton extends ConsumerWidget {
     required this.available,
     required this.full,
     required this.inOtherCall,
+    required this.onAnotherDevice,
     required this.joining,
   });
 
@@ -584,6 +589,7 @@ class _JoinButton extends ConsumerWidget {
   final bool available;
   final bool full;
   final bool inOtherCall;
+  final bool onAnotherDevice;
   final bool joining;
 
   @override
@@ -603,12 +609,27 @@ class _JoinButton extends ConsumerWidget {
       icon: joining
           ? const AdaptiveActivityIndicator(size: 16)
           : const Icon(Icons.call),
-      label: Text(inOtherCall ? 'Switch to this call' : 'Join voice'),
+      label: Text(
+        onAnotherDevice
+            ? 'Move the call to this device'
+            : inOtherCall
+            ? 'Switch to this call'
+            : 'Join voice',
+      ),
     );
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (onAnotherDevice && blocked == null) ...[
+          Text(
+            'You are in this call on another of your devices. Moving it here '
+            'ends it there.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
+        ],
         button,
         if (blocked != null) ...[
           const SizedBox(height: 8),

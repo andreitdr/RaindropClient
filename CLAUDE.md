@@ -146,7 +146,10 @@ core/
   models/     — ServerProfile, the one cross-feature domain model
   router/     — go_router route table
 features/
-  onboarding/ — ConnectServerFlow + the connect/auth/reauth screens
+  identity/   — the person's one identity: IdentityController, AppLock + LockGate (unlocking),
+                signInWithDevice, the Vault and its sync, pairing, the welcome / pair / recover
+                screens, Settings → Identity & devices
+  onboarding/ — ConnectServerFlow + the connect and sign-in screens
   servers/    — ServersController (the local server list), ServerSession, serverEventsProvider +
                 LiveSync (following the event stream), the per-server UUID→name lookup cache, the
                 left-hand server rail
@@ -157,8 +160,8 @@ features/
   voice/      — the call, who is in each call, voice settings + per-member media, the voice view and
                 its video tiles, the camera-and-effects sheet, the share picker and share tiles,
                 member menu and call controls
-  security/   — end-to-end encryption: DeviceSetupController (create/link/restore, register, bind
-                the session), ChannelGroups (each channel's MLS group: join, catch up, Welcomes, key
+  security/   — end-to-end encryption: DeviceSetupController (confirm this device's registration,
+                sync the vault, enrol the authenticator), ChannelGroups (each channel's MLS group: join, catch up, Welcomes, key
                 packages, roster reconcile, encrypt/decrypt), the setup pane that takes the chat pane
                 when this device has no keys, the recovery-words dialog, Settings → Encryption
   settings/   — appearance (theme), the layout editor, voice & video, encryption, and
@@ -238,30 +241,43 @@ Raindrop has no directory server — a client's only way to find a server is bei
 `ConnectServerFlow` (`features/onboarding/controllers/connect_server_flow.dart`) drives the whole
 lifecycle:
 
-1. Generate a GUID client-side (`Uuid().v4()`). This *is* the account identity the server will know
-   the client by — see `RaindropServer/CLAUDE.md`'s "client holds a separate GUID per server" — and it
-   doubles as this client's local storage key (`ServerProfile.id`), so there's no second synthetic id
-   to keep in sync with it.
-2. `ServerService.GetServerInfo` to confirm the server is reachable and see its capabilities; this is
-   also what triggers the TLS handshake `CertificatePinner` observes.
-3. `UserService.GetUserStatus` with that GUID. On a real first connection this always comes back
-   `unregistered` — the `active`/`left_preserved` branches in `ServerAuthScreen` exist for GUID re-import,
-   not the common path.
-4. Register, log in, or rejoin. On success, `ConnectServerFlow.persist` pins the fingerprint observed
-   in step 2 (only if nothing was pinned yet — trust-on-first-use, same model as SSH host keys), saves
-   the session token, and registers the server with `ServersController`.
+1. `ServerService.GetServerInfo` to confirm the server is reachable; this is also what triggers the
+   TLS handshake `CertificatePinner` observes. A server with no identity key is refused.
+2. Derive the account id from the person's root secret and the server's identity key
+   (`IdentityCrypto.accountId`). It is the same from every device of theirs, and doubles as this
+   client's local storage key (`ServerProfile.id`).
+3. `UserService.GetUserStatus` with that id: `unregistered`/`erased` asks for a username;
+   `active`/`left_preserved` asks for nothing — another of their devices already joined, or they are
+   adding back a server they removed.
+4. `signInWithDevice` (`features/identity/device_sign_in.dart`): `BeginAuth`, a device-key signature,
+   `CompleteAuth`. On success `ConnectServerFlow.persist` pins the fingerprint and identity key (only
+   if nothing was pinned yet — trust-on-first-use), saves the session token, and registers the server
+   with `ServersController`.
+
+**There are no passwords.** A person has one identity (`features/identity/`, full detail
+[`docs/identity.md`](docs/identity.md)): a root secret held by their paired devices, from which every
+server account is derived. The app shows nothing until an identity exists (`WelcomeScreen`: new, pair
+with another device, or recovery words) and the device is unlocked (`LockGate`/`AppLock`: the system's
+biometrics or passcode through `local_auth`, or an app PIN where there is neither). A vault sealed on
+every server carries the server list and device names between devices (`VaultController.sync`), so a
+server joined on one device appears on the others. An optional authenticator is what a device new to an
+account must also present, so leaked recovery words are not the account.
 
 `ServerSessionController` (`features/servers/controllers/session_controller.dart`) resolves the
 *current* session for an already-connected server on cold start: read the token from `SecureStore`,
-call `UserService.GetMe` to confirm it's still valid, and fall back to `ReauthPrompt` (password only — the
-GUID and pin are already on file) if it isn't. A session's token, once obtained, lives only in
-`SecureStore`; `AppPrefs` only ever holds the non-secret server list (host/port/nickname) and UI
-settings.
+call `UserService.GetMe`, and **sign in again with the device key when the token is missing or
+refused** — a lapsed session or a restarted server reaches nobody. Only what needs the person (an
+authenticator code this device cannot compute, an account the server no longer has, a device that was
+removed) lands on `SignInPane`, via `signInFailureProvider`. A session's token lives only in
+`SecureStore`; the identity lives in `IdentityStore` (`client.*` keys, untouched by removing a server);
+`AppPrefs` holds the non-secret server list, the merged vault and UI settings.
 
 **Leaving is the server rail's right-click menu** (`features/servers/widgets/`): "Leave server" asks
-for the password and whether to erase the account (`UserService.LeaveServer`, `preserveData`
-inverted), hangs up a call on that server, then forgets the server locally; "Remove from this device"
-is the local-only half, and the only one available while signed out. The rail also carries the
+whether to erase the account and has the person unlock the device (`UserService.LeaveServer`,
+`preserveData` inverted), hangs up a call on that server, then forgets the server locally. "Remove from
+this device" (`confirmRemoveServer`, also on the unreachable and sign-in panes and in Settings) is
+local and never waits on the server, so it works for one that is down or gone; the account stays on the
+server, reachable only by the person's paired devices or recovery words. The rail also carries the
 settings button by default, since it is the one pane shown for every server signed in or not.
 
 Alongside the fingerprint, the client pins the server's **identity key** (`core/network/server_trust.dart`).
@@ -302,8 +318,8 @@ three seconds. The provider is `autoDispose` so leaving a channel drops its subs
 Two rules for anything new that follows the stream: create the `LiveSync` *before* the first fetch
 and buffer events that arrive during it (`_early`), and reset per-build fields at the top of `build` —
 Riverpod reuses the notifier instance on rebuild. A stream ended as `session_ended` (or refused as
-`invalid_session`, e.g. after a server restart) invalidates `serverSessionProvider`, which is what routes
-the shell to `ReauthPrompt`.
+`invalid_session`, e.g. after a server restart) invalidates `serverSessionProvider`, which signs in
+again with the device key.
 
 **Messages are end-to-end encrypted** when the server offers it (`e2ee.delivery.v1`) and this device
 is set up: `ChatController` encrypts through `ChannelGroups` (`features/security/`) and sends it with
@@ -483,8 +499,8 @@ camera and moderate; the media goes over the transport it names on join (`liveki
 
 - Push-to-talk, **camera effects on Windows and Linux** (they run on macOS, iOS and Android), a
   window's sound on macOS and Linux, sixty frames a second from an iOS screen share, a hardware codec
-  for shares, microphone gain; changing your username or
-  password from the app; any role-editing or report-moderation UI.
+  for shares, microphone gain; changing your username from the app; replacing the root identity
+  after a device is stolen; any role-editing or report-moderation UI.
 - **Notifications**, including for messages that arrive while the app is closed. Raindrop is self-hosted
   with no push infrastructure; `docs/roadmap.md` lays out what closing that would cost.
 

@@ -38,68 +38,53 @@ keyed by `serverId`. `build(serverId)` is what runs automatically on **cold star
 already-connected server:
 
 1. Look up the `ServerProfile` in `ServersController`'s list; `null` if not found.
-2. Read the session token from `SecureStore`; `null` (not signed in) if there isn't one.
-3. Build a `RaindropChannel` pinned to whatever fingerprint is stored for this server, and register that
-   fingerprint with `PinRegistry` so the voice engine's own sockets trust the server too (see
-   [Voice](voice.md#how-a-call-is-carried)). `adopt` does the same for a first connection.
-4. Call `UserService.GetMe` to confirm the token is still valid.
-   - Valid → returns a populated `ServerSession`.
-   - `invalid_session` → clears the stored token and returns `null`.
-   - `network_error` (nothing answered, or not within the 20 s deadline) → **throws**, keeping the
-     token. Not reaching the server says nothing about the session, so it must not become `null`.
+2. Read the session token from `SecureStore`. With one, build a `RaindropChannel` pinned to the stored
+   fingerprint (registered with `PinRegistry` too, for the voice engine's sockets — see
+   [Voice](voice.md#how-a-call-is-carried)) and call `UserService.GetMe`.
+3. **No token, or `invalid_session`: sign in again with the device key**
+   ([`signInWithDevice`](identity.md#signing-in)) and save the new token. Sessions lapse after twelve
+   idle hours and a restarted server forgets them all; none of that reaches the person.
+4. `network_error` (nothing answered, or not within the 20 s deadline) → **throws**. Not reaching the
+   server says nothing about the account.
+5. A certificate mismatch is followed only if the pinned identity key signed the new certificate
+   (`ServerTrust.followCertificateChange`), and steps 2–3 are tried again.
 
-A `null` result routes the shell to [`ReauthPrompt`](connecting-to-a-server.md#reconnecting-connectserverflowforexisting)
-in the chat pane, next to the server rail (`HomeShell`'s `_SignedOutLayout`) — see `HomeShell` in
-[Architecture overview](architecture-overview.md). An error puts `ServerUnreachablePane`
-(`features/servers/widgets/`) in the same place instead: "Can't reach …" naming the stored
-`host:port` (a server whose address has changed looks exactly like one that is down) and a
-**Try again** button that invalidates the provider. Before this, an unreachable server was shown as
-"Your session expired", which sent people to retype a password that could not help.
+An error puts `ServerUnreachablePane` (`features/servers/widgets/`) in the chat pane, beside the rail
+(`HomeShell`'s `_SignedOutLayout`): "Can't reach …" naming the stored `host:port`, **Try again**, and
+**Remove from this device** — a server that is gone for good never answers, so removing it cannot
+depend on it answering.
 
-Two mutating methods:
+### When signing in needs the person
 
-- `.adopt(session)` — called once [`ConnectServerFlow.persist`](connecting-to-a-server.md) hands back
-  a fresh session, so the shell picks it up without another `GetMe`. It does not set `state`: it
-  stashes the session and invalidates the provider, and the next `build` returns it (and closes its
-  channel when it is rebuilt). Setting `state` directly would leave any build already in flight
-  (restoring from the token `persist` just saved) to land afterwards and replace it with a second
-  session on the same token — and everything that follows the session (device setup, the event
-  stream, channel groups) would start twice, racing each other. `persist` adopts **before** adding the
-  profile for the same reason, so no restoring build starts at all.
-- `.logout()` — best-effort `UserService.Logout` (a failure there is ignored — the token is being
-  discarded locally regardless), then clears the stored token and sets state to `null`.
-- `.leave({password, preserveData})` — `UserService.LeaveServer`, then clears the stored token and
-  sets state to `null`, same as a logout. **Its failures are not swallowed**, unlike `logout()`'s: a
-  wrong password comes back as `invalid_credentials` and has to reach the dialog that asked for it.
-  Forgetting the server locally is the caller's next step, not part of this.
+Anything else settles on `null` and records why in `signInFailureProvider(serverId)`;
+[`SignInPane`](../lib/features/servers/widgets/sign_in_pane.dart) takes the chat pane and asks for the
+one thing missing:
 
-## The event stream
+| Refusal | Means | Asks for |
+|---|---|---|
+| `authenticator_required`, `invalid_authenticator_code`, `authenticator_locked` | The device is new to an account with an authenticator and does not hold its secret | A code, or a backup code |
+| `invalid_username` | The server no longer has the account (reset, or erased) | A username, to join again |
+| `invalid_credentials`, `device_exists` | This device was removed from the account | A go-ahead: its keys for the server are deleted and new ones made |
+| anything else | | **Try again** |
 
-`serverEventsProvider(serverId)` ([`server_events.dart`](../lib/features/servers/controllers/server_events.dart))
-is the live event stream for a signed-in server, open for as long as its session is, and
-[`LiveSync`](../lib/features/servers/controllers/live_sync.dart) is how controllers follow it. When the
-server closes the stream because the session ended — logged out elsewhere, or a server restart that
-logged everyone out — the provider invalidates `serverSessionProvider(serverId)`, whose re-check finds
-the token gone and routes the shell to `ReauthPrompt`. Full detail in [Live updates](live-updates.md).
+All of them also offer **Remove from this device**. `ServerSessionController.signInWith(...)` is what
+the pane calls.
 
-## User lookup cache
+Mutating methods:
 
-[`user_lookup.dart`](../lib/features/servers/controllers/user_lookup.dart). Messages carry only their
-author's UUID (see the server's [Messages doc](../../RaindropServer/docs/messages.md)), so every
-message row needs this to show a name.
-
-`userLookupProvider` is a `FutureProvider.family<PublicUserProfile?, UserRef>` (`UserRef` =
-`(serverId, userId)`) wrapping `UserService.LookupUser`. **Riverpod's own per-argument caching is the
-cache** — one request per distinct author, however many messages that author wrote, for as long as the
-provider's arguments keep matching. A failed lookup resolves to `null` rather than throwing.
-
-The cache follows the [event stream](live-updates.md): a `member.renamed`, `member.left` or
-`member.joined` for that UUID invalidates the entry, so every message they wrote shows the new name
-without re-reading any history.
-
-`displayNameFor(ref, who)` is the convenience read: the looked-up username, `'Unknown'` for an erased
-account (see the server's [Users doc](../../RaindropServer/docs/users.md#lifecycle)), or a short prefix
-of the UUID while the lookup is still in flight.
+- `.adopt(session)` — called once [`ConnectServerFlow.persist`](connecting-to-a-server.md) or
+  `signInWith` has a fresh session. It does not set `state`: it stashes the session and invalidates
+  the provider, and the next `build` returns it (and closes its channel when it is rebuilt). Setting
+  `state` directly would let a build already in flight land afterwards with a second session, and
+  everything that follows the session (device setup, the event stream, channel groups) would start
+  twice.
+- `.logout({forgetDevice})` — clears the stored token and sets state to `null` at once, then sends
+  `UserService.Logout` — or, with `forgetDevice`, `DeviceService.RevokeDevice` for this device — **without
+  waiting for it** (five-second timeout, failures ignored). Removing a server must work when the server
+  is down.
+- `.leave({preserveData})` — `UserService.LeaveServer`, then the same. **Its failures are not
+  swallowed.** There is no password: the server takes the session being bound to a device, and the
+  dialog has the person unlock first.
 
 ## Server rail
 
@@ -111,7 +96,7 @@ calls `activeServerIdProvider.notifier.select`. Switching servers is always a si
 of how deep the user is in a channel — the same pattern Discord-style clients are known for.
 
 The rail is the **one pane that is on screen for every server, signed in or not** — `HomeShell`'s
-`_SignedOutLayout` keeps it beside `ReauthPrompt`, and the narrow layout puts it in the drawer — which
+`_SignedOutLayout` keeps it beside `SignInPane` and `ServerUnreachablePane`, and the narrow layout puts it in the drawer — which
 is why settings hang off it rather than off a server's own sidebar, where they were unreachable on a
 server this device is signed out of. The sidebar's own gear and header still push `/settings` too;
 they are shortcuts, not the only way in.
@@ -122,18 +107,18 @@ Right-click (long-press on touch) a server avatar for its menu, the same gesture
 use (see [Channels](channels.md)):
 
 - **Leave server** opens [`leave_server_dialog.dart`](../lib/features/servers/widgets/leave_server_dialog.dart):
-  the password (the server requires it) and an "Erase my account" switch, off by default, which is
-  `preserveData` inverted — off leaves the account inactive but reserved until the server's retention
-  runs out, on erases username and password at once. See the server's
-  [Users doc](../../RaindropServer/docs/users.md#lifecycle). The dialog hangs up a call on that server
-  first (the voice leave needs the session the server leave is about to end), calls
-  `serverSessionProvider(id).notifier.leave(...)`, then `ServersController.remove(id)` — leaving always
-  forgets the server on this device. Like the channel-name dialog it stays open on failure, showing
-  the server's message under the field, and it resolves the session with `await ref.read(provider.future)`
-  rather than hiding the menu entry, since only the *active* server's session has been restored.
-- **Remove from this device** is the local-only half, identical to the Settings row: confirm,
-  `logout()`, `remove(id)`. The account on the server is untouched — this is the one to use when
-  signed out, since a leave needs a live session.
+  an "Erase my account" switch, off by default, which is `preserveData` inverted — off leaves the
+  account inactive but reserved until the server's retention runs out, on erases it at once. See the
+  server's [Users doc](../../RaindropServer/docs/users.md#lifecycle). The person unlocks the device
+  (`confirmUnlock`); the dialog hangs up a call on that server first, calls
+  `serverSessionProvider(id).notifier.leave(...)`, then `ServersController.remove(id)`.
+- **Remove from this device** — `confirmRemoveServer`
+  ([`remove_server.dart`](../lib/features/servers/widgets/remove_server.dart)), the one implementation
+  behind the rail's menu, the Settings row, `ServerUnreachablePane` and `SignInPane`. It is local and
+  works with the server down or gone: `logout(forgetDevice: true)`, then `ServersController.remove`,
+  which also records the server in `AppPrefs.hiddenServers` so the [vault](identity.md#the-vault) does
+  not put it back. **The account is not deleted**: it stays on the server, where only this person's
+  paired devices or recovery words can sign in to it, and adding the server again arrives back at it.
 
 ## Related
 

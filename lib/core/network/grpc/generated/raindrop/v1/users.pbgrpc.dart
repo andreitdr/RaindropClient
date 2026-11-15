@@ -75,6 +75,24 @@ class UserServiceClient extends $grpc.Client {
     return $createUnaryCall(_$rejoin, request, options: options);
   }
 
+  /// A one-time nonce for a device key to sign, to sign in without a password. Anonymous.
+  $grpc.ResponseFuture<$0.BeginAuthResponse> beginAuth(
+    $0.BeginAuthRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$beginAuth, request, options: options);
+  }
+
+  /// That signature to a session bound to the device. Registers the account when the UUID has none
+  /// (a username is needed then), and the device when the account has not seen it (its certificate
+  /// is needed then). Anonymous.
+  $grpc.ResponseFuture<$0.CompleteAuthResponse> completeAuth(
+    $0.CompleteAuthRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$completeAuth, request, options: options);
+  }
+
   /// End this session.
   $grpc.ResponseFuture<$0.LogoutResponse> logout(
     $0.LogoutRequest request, {
@@ -149,6 +167,16 @@ class UserServiceClient extends $grpc.Client {
           '/raindrop.v1.UserService/Rejoin',
           ($0.RejoinRequest value) => value.writeToBuffer(),
           $0.RejoinResponse.fromBuffer);
+  static final _$beginAuth =
+      $grpc.ClientMethod<$0.BeginAuthRequest, $0.BeginAuthResponse>(
+          '/raindrop.v1.UserService/BeginAuth',
+          ($0.BeginAuthRequest value) => value.writeToBuffer(),
+          $0.BeginAuthResponse.fromBuffer);
+  static final _$completeAuth =
+      $grpc.ClientMethod<$0.CompleteAuthRequest, $0.CompleteAuthResponse>(
+          '/raindrop.v1.UserService/CompleteAuth',
+          ($0.CompleteAuthRequest value) => value.writeToBuffer(),
+          $0.CompleteAuthResponse.fromBuffer);
   static final _$logout =
       $grpc.ClientMethod<$0.LogoutRequest, $0.LogoutResponse>(
           '/raindrop.v1.UserService/Logout',
@@ -224,6 +252,22 @@ abstract class UserServiceBase extends $grpc.Service {
         false,
         ($core.List<$core.int> value) => $0.RejoinRequest.fromBuffer(value),
         ($0.RejoinResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.BeginAuthRequest, $0.BeginAuthResponse>(
+        'BeginAuth',
+        beginAuth_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) => $0.BeginAuthRequest.fromBuffer(value),
+        ($0.BeginAuthResponse value) => value.writeToBuffer()));
+    $addMethod(
+        $grpc.ServiceMethod<$0.CompleteAuthRequest, $0.CompleteAuthResponse>(
+            'CompleteAuth',
+            completeAuth_Pre,
+            false,
+            false,
+            ($core.List<$core.int> value) =>
+                $0.CompleteAuthRequest.fromBuffer(value),
+            ($0.CompleteAuthResponse value) => value.writeToBuffer()));
     $addMethod($grpc.ServiceMethod<$0.LogoutRequest, $0.LogoutResponse>(
         'Logout',
         logout_Pre,
@@ -315,6 +359,23 @@ abstract class UserServiceBase extends $grpc.Service {
 
   $async.Future<$0.RejoinResponse> rejoin(
       $grpc.ServiceCall call, $0.RejoinRequest request);
+
+  $async.Future<$0.BeginAuthResponse> beginAuth_Pre($grpc.ServiceCall $call,
+      $async.Future<$0.BeginAuthRequest> $request) async {
+    return beginAuth($call, await $request);
+  }
+
+  $async.Future<$0.BeginAuthResponse> beginAuth(
+      $grpc.ServiceCall call, $0.BeginAuthRequest request);
+
+  $async.Future<$0.CompleteAuthResponse> completeAuth_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.CompleteAuthRequest> $request) async {
+    return completeAuth($call, await $request);
+  }
+
+  $async.Future<$0.CompleteAuthResponse> completeAuth(
+      $grpc.ServiceCall call, $0.CompleteAuthRequest request);
 
   $async.Future<$0.LogoutResponse> logout_Pre(
       $grpc.ServiceCall $call, $async.Future<$0.LogoutRequest> $request) async {

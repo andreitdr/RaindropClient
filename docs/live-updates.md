@@ -58,10 +58,11 @@ session does, whether or not a pane showing that server is on screen. A new sess
 token) is a new stream.
 
 When the stream reports `sessionEnded`, the provider invalidates `serverSessionProvider(serverId)`.
-Re-resolving the session calls `UserService.GetMe`, finds the token gone and clears it, and the shell
-routes to `ReauthPrompt` (see [Servers & sessions](servers-and-sessions.md)). This is what happens
-after a **server restart**, which logs everyone out: the stream backs off while the server is down, is
-refused as `invalid_session` when it is back, and the user is asked for their password.
+Re-resolving the session calls `UserService.GetMe`, finds the token gone, and signs in again with the
+device key (see [Servers & sessions](servers-and-sessions.md)). This is what happens after a **server
+restart**, which forgets every session: the stream backs off while the server is down, is refused as
+`invalid_session` when it is back, and the client signs in again without the user being asked
+anything.
 
 ### Coming back from the background
 

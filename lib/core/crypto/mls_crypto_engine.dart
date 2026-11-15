@@ -51,6 +51,63 @@ class MlsCryptoEngine implements CryptoEngine {
     ),
   );
 
+  /// This device's identity on the server whose identity key is [serverKey],
+  /// derived from the person's [root] secret: the account id and identity
+  /// key are the ones every other device of theirs derives, the device key
+  /// is new, and the device certifies itself. `userId` in the result is the
+  /// account to register or sign in to.
+  Future<DeviceKeys> createIdentityFromRoot({
+    required Uint8List root,
+    required Uint8List serverKey,
+    required String deviceId,
+  }) => _guard(
+    () async => _device(
+      await _session.createIdentityFromRoot(
+        root: root,
+        serverKey: serverKey,
+        deviceId: deviceId,
+      ),
+    ),
+  );
+
+  /// Signs the server's sign-in challenge — its identity key and its nonce —
+  /// with this device's key. This is the whole credential: there is no
+  /// password.
+  Future<Uint8List> signAuthChallenge({
+    required Uint8List serverKey,
+    required Uint8List nonce,
+  }) => _guard(
+    () => _session.signAuthChallenge(serverKey: serverKey, nonce: nonce),
+  );
+
+  /// Every identity this device pinned, for the person's vault.
+  Future<List<PinnedUser>> exportPins() => _guard(
+    () async => [
+      for (final pin in await _session.exportPins())
+        PinnedUser(
+          userId: pin.userId,
+          identityKey: pin.identityKey,
+          verified: pin.verified,
+        ),
+    ],
+  );
+
+  /// Takes pins from the vault. A user this device already pinned is left
+  /// as it is: a vault can add trust, never replace a key held here.
+  Future<void> importPins(List<PinnedUser> pins) => _guard(
+    () => _session.importPins(
+      pins: [
+        for (final pin in pins)
+          rust.PinnedIdentity(
+            userId: pin.userId,
+            identityKey: pin.identityKey,
+            verified: pin.verified,
+            firstSeenUnix: 0,
+          ),
+      ],
+    ),
+  );
+
   @override
   Future<DeviceKeys> restoreWithRecoveryWords({
     required Uint8List backup,
@@ -371,7 +428,13 @@ class MlsCryptoEngine implements CryptoEngine {
 
   /// Runs [call], turning the bridge's error type into [CryptoException] so
   /// nothing above this file sees a generated type.
-  static Future<T> _guard<T>(Future<T> Function() call) async {
+  static Future<T> _guard<T>(Future<T> Function() call) => guardCrypto(call);
+}
+
+/// Runs a call into the Rust core, turning its failure type into the app's
+/// [CryptoException]. Shared with `identity_crypto.dart`.
+Future<T> guardCrypto<T>(Future<T> Function() call) async {
+  {
     try {
       return await call();
     } on rust.CryptoFailure catch (e) {

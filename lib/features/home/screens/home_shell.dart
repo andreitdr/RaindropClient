@@ -16,10 +16,12 @@ import '../../channels/widgets/channel_sidebar.dart';
 import '../../chat/widgets/chat_view.dart';
 import '../../security/controllers/device_setup_controller.dart';
 import '../../security/widgets/encryption_setup_pane.dart';
-import '../../security/widgets/recovery_words_dialog.dart';
+import '../../identity/controllers/identity_controller.dart';
+import '../../identity/screens/welcome_screen.dart';
+import '../../identity/widgets/lock_gate.dart';
 import '../../members/widgets/member_list.dart';
 import '../../onboarding/screens/connect_server_screen.dart';
-import '../../onboarding/screens/reauth_prompt.dart';
+import '../../servers/widgets/sign_in_pane.dart';
 import '../../servers/controllers/servers_controller.dart';
 import '../../servers/controllers/session_controller.dart';
 import '../../servers/widgets/server_rail.dart';
@@ -42,10 +44,20 @@ class HomeShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return LayoutScope(
-      config: ref.watch(layoutConfigProvider),
-      buttons: mainLayoutButtons,
-      child: const MainView(),
+    // Nothing is shown, and nothing signs in, before this device has the
+    // person's identity and they have unlocked it.
+    final identity = ref.watch(identityProvider);
+    if (identity.isLoading && !identity.hasValue) {
+      return const Scaffold(body: Center(child: AdaptiveActivityIndicator()));
+    }
+    if (identity.valueOrNull == null) return const WelcomeScreen();
+
+    return LockGate(
+      child: LayoutScope(
+        config: ref.watch(layoutConfigProvider),
+        buttons: mainLayoutButtons,
+        child: const MainView(),
+      ),
     );
   }
 }
@@ -82,7 +94,7 @@ class MainView extends ConsumerWidget {
         if (session == null) {
           return _SignedOutLayout(
             profile: profile,
-            content: ReauthPrompt(profile: profile),
+            content: SignInPane(profile: profile),
           );
         }
         return _ShellLayout(session: session);
@@ -170,7 +182,7 @@ class _ShellLayoutState extends ConsumerState<_ShellLayout> {
     );
 
     // This device's encryption setup. While it cannot take part yet, the
-    // setup pane takes the chat pane; a fresh recovery key is shown once.
+    // setup pane takes the chat pane.
     final setup = ref.watch(deviceSetupProvider(serverId)).valueOrNull;
 
     // The layout editor shows this view too, over the real one: only the
@@ -178,15 +190,6 @@ class _ShellLayoutState extends ConsumerState<_ShellLayout> {
     final scope = LayoutScope.maybeOf(context)!;
     final editing = scope.editing != null;
     if (!editing) {
-      ref.listen(deviceSetupProvider(serverId), (_, next) {
-        final state = next.valueOrNull;
-        if (state is! DeviceSetupReady || state.recoveryWords == null) return;
-        ref
-            .read(deviceSetupProvider(serverId).notifier)
-            .acknowledgeRecoveryWords();
-        showRecoveryWordsDialog(context, state.recoveryWords!);
-      });
-
       // A call that ended without this client hanging up says why, once.
       ref.listen(voiceCallProvider.select((call) => call.notice), (_, notice) {
         if (notice == null) return;
@@ -258,11 +261,9 @@ class _ShellLayoutState extends ConsumerState<_ShellLayout> {
         };
 
         final Widget chat = switch (setup) {
-          DeviceSetupNeedsKeys() ||
-          DeviceSetupLinking() ||
           DeviceSetupReplaced() => EncryptionSetupPane(
             serverId: serverId,
-            state: setup!,
+            state: setup,
             leading: menuButton,
           ),
           _ => channelPane,

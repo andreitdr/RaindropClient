@@ -503,4 +503,153 @@ class E2eeApi {
     );
     return Wire.optionalBytes(response.hasApproval(), response.approval);
   }
+
+  // ── Identity vault ──
+
+  /// Stores the person's sealed root and vault on this server. Needs a
+  /// session bound to a device.
+  Future<void> putVault(
+    String token, {
+    required String lookupId,
+    required Uint8List sealedRoot,
+    required Uint8List vault,
+  }) => _channel.call(
+    (o) => _devices.putIdentityVault(
+      pb.PutIdentityVaultRequest(
+        lookupId: lookupId,
+        sealedRoot: sealedRoot,
+        vault: vault,
+      ),
+      options: o,
+    ),
+    token: token,
+  );
+
+  /// The vault stored here, or null when there is none yet.
+  Future<({String lookupId, Uint8List vault})?> getVault(String token) async {
+    final response = await _channel.call(
+      (o) =>
+          _devices.getIdentityVault(pb.GetIdentityVaultRequest(), options: o),
+      token: token,
+    );
+    if (!response.hasVault() || !response.hasLookupId()) return null;
+    return (lookupId: response.lookupId, vault: Wire.bytes(response.vault));
+  }
+
+  /// The sealed root stored under [lookupId] — the one call a device holding
+  /// only the recovery words makes before it has an account. Anonymous.
+  /// Throws `vault_not_found`.
+  Future<Uint8List> sealedRoot(String lookupId) async => Wire.bytes(
+    (await _channel.call(
+      (o) => _devices.getSealedRoot(
+        pb.GetSealedRootRequest(lookupId: lookupId),
+        options: o,
+      ),
+    )).sealedRoot,
+  );
+
+  // ── Authenticator ──
+
+  /// Sets or replaces the account's authenticator. [code] is a current code
+  /// from [secret]; any paired device may do this, which is how a lost
+  /// authenticator is replaced.
+  Future<void> enrollAuthenticator(
+    String token, {
+    required Uint8List secret,
+    required String code,
+    List<String> backupCodes = const [],
+  }) => _channel.call(
+    (o) => _devices.enrollAuthenticator(
+      pb.EnrollAuthenticatorRequest(
+        secret: secret,
+        code: code,
+        backupCodes: backupCodes,
+      ),
+      options: o,
+    ),
+    token: token,
+  );
+
+  Future<void> disableAuthenticator(String token) => _channel.call(
+    (o) => _devices.disableAuthenticator(
+      pb.DisableAuthenticatorRequest(),
+      options: o,
+    ),
+    token: token,
+  );
+
+  Future<({bool enabled, int backupCodesLeft})> authenticatorStatus(
+    String token,
+  ) async {
+    final response = await _channel.call(
+      (o) => _devices.getAuthenticatorStatus(
+        pb.GetAuthenticatorStatusRequest(),
+        options: o,
+      ),
+      token: token,
+    );
+    return (
+      enabled: response.enabled,
+      backupCodesLeft: response.backupCodesLeft,
+    );
+  }
+
+  // ── Pairing a device that has no account yet ──
+
+  /// New device: posts its pairing offer. Anonymous. [takeToken] comes back
+  /// to collect the approval with.
+  Future<({String pairingId, String takeToken})> startPairing(
+    Uint8List offer,
+  ) async {
+    final response = await _channel.call(
+      (o) => _devices.startPairing(
+        pb.StartPairingRequest(offer: offer),
+        options: o,
+      ),
+    );
+    return (pairingId: response.pairingId, takeToken: response.takeToken);
+  }
+
+  /// Paired device: the new device's offer, to check against the code.
+  /// Throws `pairing_not_found`.
+  Future<Uint8List> pairingOffer(String token, String pairingId) async =>
+      Wire.bytes(
+        (await _channel.call(
+          (o) => _devices.getPairingOffer(
+            pb.GetPairingOfferRequest(pairingId: pairingId),
+            options: o,
+          ),
+          token: token,
+        )).offer,
+      );
+
+  Future<void> approvePairing(
+    String token,
+    String pairingId,
+    Uint8List approval,
+  ) => _channel.call(
+    (o) => _devices.approvePairing(
+      pb.ApprovePairingRequest(pairingId: pairingId, approval: approval),
+      options: o,
+    ),
+    token: token,
+  );
+
+  /// New device: the approval once a paired device has given it, else null.
+  /// Delivered once. Anonymous.
+  Future<Uint8List?> takePairingApproval(
+    String pairingId,
+    String takeToken,
+  ) async {
+    final response = await _channel.call(
+      (o) => _devices.takePairingApproval(
+        pb.TakePairingApprovalRequest(
+          pairingId: pairingId,
+          takeToken: takeToken,
+        ),
+        options: o,
+      ),
+    );
+    return Wire.optionalBytes(response.hasApproval(), response.approval);
+  }
 }

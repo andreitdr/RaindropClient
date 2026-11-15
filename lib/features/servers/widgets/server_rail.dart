@@ -5,12 +5,11 @@ import '../../../core/models/server_profile.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/layout/layout_scope.dart';
 import '../../../core/layout/layout_slot.dart';
-import '../../../core/widgets/adaptive.dart';
 import '../../../core/widgets/panel.dart';
 import '../../home/layout/main_layout_ids.dart';
 import '../controllers/servers_controller.dart';
-import '../controllers/session_controller.dart';
 import 'leave_server_dialog.dart';
+import 'remove_server.dart';
 
 /// The leftmost rail of the Discord-style shell: one circular avatar per
 /// connected server, and below them the rail's layout slot — by default an
@@ -126,19 +125,7 @@ class _ServerAvatar extends ConsumerWidget {
       case _ServerAction.leave:
         await showLeaveServerDialog(context, server);
       case _ServerAction.remove:
-        final confirmed = await showAdaptiveConfirm(
-          context,
-          title: 'Remove ${server.displayName}?',
-          message:
-              'This forgets the server locally, including its saved session and pinned '
-              "certificate. You stay a member of the server; to give that up, "
-              'leave it instead.',
-          confirmLabel: 'Remove',
-          destructive: true,
-        );
-        if (!confirmed) return;
-        await ref.read(serverSessionProvider(server.id).notifier).logout();
-        await ref.read(serversControllerProvider.notifier).remove(server.id);
+        await confirmRemoveServer(context, ref, server);
     }
   }
 

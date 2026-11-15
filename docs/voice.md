@@ -656,6 +656,10 @@ sees you unmuted for a moment. It then creates the engine and connects.
   It does **not** rejoin after anything somebody decided, because those will decide the same way
   again. It ends the call with a notice when:
   - the engine reports the same account joining from another device;
+    (the other side of this is the join button: when the roster lists this person in a call this
+    device is not in, another of their devices is, so the button reads **Move the call to this
+    device** and says that joining here ends it there — the server keeps one call record per member
+    and hands it to the newest join)
   - the server removed this participant, or the call itself ended;
   - `voice.left` arrives for this client, with its reason (`permission_lost`, `channel_deleted`,
     `session_ended`, …);

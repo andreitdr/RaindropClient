@@ -27,6 +27,7 @@ The sibling checkouts are not optional: `native/raindrop_crypto_builder` builds
 | Doc | Covers |
 |---|---|
 | [Architecture overview](architecture-overview.md) | `core/` vs. `features/` split, state management, folder layout |
+| [Identity, devices & signing in](identity.md) | The one identity behind every account, unlocking, passwordless sign-in, the vault, pairing, recovery words, the authenticator |
 | [Theming](theming.md) | `AppThemeDefinition`, the two built-in themes, custom themes, the theme editor |
 | [Native feel per platform](native-feel-per-platform.md) | Platform branching, adaptive widgets, the responsive shell |
 | [Building on Windows](building-on-windows.md) | Everything a Windows PC needs to build and run the app — Visual Studio, Rust, Strawberry Perl, NASM, Developer Mode — with download links, the path-length workaround, and common errors |
@@ -74,7 +75,7 @@ The sibling checkouts are not optional: `native/raindrop_crypto_builder` builds
   channel's MLS group through the server's delivery service, so text, files and call media are all
   encrypted for real. See [Crypto](crypto.md).
 - **What's not implemented yet:** push-to-talk, camera effects on Windows and Linux, changing your
-  username or password from the app, any role-editing UI, and notifications. See
+  username from the app, any role-editing UI, and notifications. See
   [Roadmap](roadmap.md).
 
 ## Keeping this wiki current

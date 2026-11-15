@@ -135,6 +135,90 @@ class DeviceServiceClient extends $grpc.Client {
         options: options);
   }
 
+  /// Replace the caller's identity vault and sealed root: needs a bound session.
+  $grpc.ResponseFuture<$0.PutIdentityVaultResponse> putIdentityVault(
+    $0.PutIdentityVaultRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$putIdentityVault, request, options: options);
+  }
+
+  /// The caller's identity vault and sealed root: needs a bound session.
+  $grpc.ResponseFuture<$0.GetIdentityVaultResponse> getIdentityVault(
+    $0.GetIdentityVaultRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$getIdentityVault, request, options: options);
+  }
+
+  /// The sealed root stored under a recovery lookup id, for a device that has only the recovery
+  /// words. Anonymous.
+  $grpc.ResponseFuture<$0.GetSealedRootResponse> getSealedRoot(
+    $0.GetSealedRootRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$getSealedRoot, request, options: options);
+  }
+
+  /// Set or replace the account's authenticator: needs a bound session, so any device still paired
+  /// can replace a lost one.
+  $grpc.ResponseFuture<$0.EnrollAuthenticatorResponse> enrollAuthenticator(
+    $0.EnrollAuthenticatorRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$enrollAuthenticator, request, options: options);
+  }
+
+  /// Remove the account's authenticator: needs a bound session.
+  $grpc.ResponseFuture<$0.DisableAuthenticatorResponse> disableAuthenticator(
+    $0.DisableAuthenticatorRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$disableAuthenticator, request, options: options);
+  }
+
+  /// Whether the account has an authenticator, and how many backup codes are left.
+  $grpc.ResponseFuture<$0.GetAuthenticatorStatusResponse>
+      getAuthenticatorStatus(
+    $0.GetAuthenticatorStatusRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$getAuthenticatorStatus, request,
+        options: options);
+  }
+
+  /// A device with no account anywhere posts its pairing offer. Anonymous.
+  $grpc.ResponseFuture<$0.StartPairingResponse> startPairing(
+    $0.StartPairingRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$startPairing, request, options: options);
+  }
+
+  /// A paired device fetches the offer, to check it against the pairing code: needs a bound session.
+  $grpc.ResponseFuture<$0.GetPairingOfferResponse> getPairingOffer(
+    $0.GetPairingOfferRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$getPairingOffer, request, options: options);
+  }
+
+  /// A paired device posts its sealed approval: needs a bound session.
+  $grpc.ResponseFuture<$0.ApprovePairingResponse> approvePairing(
+    $0.ApprovePairingRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$approvePairing, request, options: options);
+  }
+
+  /// The new device collects the approval, once. Anonymous; needs the token StartPairing returned.
+  $grpc.ResponseFuture<$0.TakePairingApprovalResponse> takePairingApproval(
+    $0.TakePairingApprovalRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$takePairingApproval, request, options: options);
+  }
+
   // method descriptors
 
   static final _$registerDevice =
@@ -197,6 +281,56 @@ class DeviceServiceClient extends $grpc.Client {
       '/raindrop.v1.DeviceService/TakeDeviceLinkApproval',
       ($0.TakeDeviceLinkApprovalRequest value) => value.writeToBuffer(),
       $0.TakeDeviceLinkApprovalResponse.fromBuffer);
+  static final _$putIdentityVault = $grpc.ClientMethod<
+          $0.PutIdentityVaultRequest, $0.PutIdentityVaultResponse>(
+      '/raindrop.v1.DeviceService/PutIdentityVault',
+      ($0.PutIdentityVaultRequest value) => value.writeToBuffer(),
+      $0.PutIdentityVaultResponse.fromBuffer);
+  static final _$getIdentityVault = $grpc.ClientMethod<
+          $0.GetIdentityVaultRequest, $0.GetIdentityVaultResponse>(
+      '/raindrop.v1.DeviceService/GetIdentityVault',
+      ($0.GetIdentityVaultRequest value) => value.writeToBuffer(),
+      $0.GetIdentityVaultResponse.fromBuffer);
+  static final _$getSealedRoot =
+      $grpc.ClientMethod<$0.GetSealedRootRequest, $0.GetSealedRootResponse>(
+          '/raindrop.v1.DeviceService/GetSealedRoot',
+          ($0.GetSealedRootRequest value) => value.writeToBuffer(),
+          $0.GetSealedRootResponse.fromBuffer);
+  static final _$enrollAuthenticator = $grpc.ClientMethod<
+          $0.EnrollAuthenticatorRequest, $0.EnrollAuthenticatorResponse>(
+      '/raindrop.v1.DeviceService/EnrollAuthenticator',
+      ($0.EnrollAuthenticatorRequest value) => value.writeToBuffer(),
+      $0.EnrollAuthenticatorResponse.fromBuffer);
+  static final _$disableAuthenticator = $grpc.ClientMethod<
+          $0.DisableAuthenticatorRequest, $0.DisableAuthenticatorResponse>(
+      '/raindrop.v1.DeviceService/DisableAuthenticator',
+      ($0.DisableAuthenticatorRequest value) => value.writeToBuffer(),
+      $0.DisableAuthenticatorResponse.fromBuffer);
+  static final _$getAuthenticatorStatus = $grpc.ClientMethod<
+          $0.GetAuthenticatorStatusRequest, $0.GetAuthenticatorStatusResponse>(
+      '/raindrop.v1.DeviceService/GetAuthenticatorStatus',
+      ($0.GetAuthenticatorStatusRequest value) => value.writeToBuffer(),
+      $0.GetAuthenticatorStatusResponse.fromBuffer);
+  static final _$startPairing =
+      $grpc.ClientMethod<$0.StartPairingRequest, $0.StartPairingResponse>(
+          '/raindrop.v1.DeviceService/StartPairing',
+          ($0.StartPairingRequest value) => value.writeToBuffer(),
+          $0.StartPairingResponse.fromBuffer);
+  static final _$getPairingOffer =
+      $grpc.ClientMethod<$0.GetPairingOfferRequest, $0.GetPairingOfferResponse>(
+          '/raindrop.v1.DeviceService/GetPairingOffer',
+          ($0.GetPairingOfferRequest value) => value.writeToBuffer(),
+          $0.GetPairingOfferResponse.fromBuffer);
+  static final _$approvePairing =
+      $grpc.ClientMethod<$0.ApprovePairingRequest, $0.ApprovePairingResponse>(
+          '/raindrop.v1.DeviceService/ApprovePairing',
+          ($0.ApprovePairingRequest value) => value.writeToBuffer(),
+          $0.ApprovePairingResponse.fromBuffer);
+  static final _$takePairingApproval = $grpc.ClientMethod<
+          $0.TakePairingApprovalRequest, $0.TakePairingApprovalResponse>(
+      '/raindrop.v1.DeviceService/TakePairingApproval',
+      ($0.TakePairingApprovalRequest value) => value.writeToBuffer(),
+      $0.TakePairingApprovalResponse.fromBuffer);
 }
 
 @$pb.GrpcServiceName('raindrop.v1.DeviceService')
@@ -312,6 +446,96 @@ abstract class DeviceServiceBase extends $grpc.Service {
         ($core.List<$core.int> value) =>
             $0.TakeDeviceLinkApprovalRequest.fromBuffer(value),
         ($0.TakeDeviceLinkApprovalResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.PutIdentityVaultRequest,
+            $0.PutIdentityVaultResponse>(
+        'PutIdentityVault',
+        putIdentityVault_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.PutIdentityVaultRequest.fromBuffer(value),
+        ($0.PutIdentityVaultResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.GetIdentityVaultRequest,
+            $0.GetIdentityVaultResponse>(
+        'GetIdentityVault',
+        getIdentityVault_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.GetIdentityVaultRequest.fromBuffer(value),
+        ($0.GetIdentityVaultResponse value) => value.writeToBuffer()));
+    $addMethod(
+        $grpc.ServiceMethod<$0.GetSealedRootRequest, $0.GetSealedRootResponse>(
+            'GetSealedRoot',
+            getSealedRoot_Pre,
+            false,
+            false,
+            ($core.List<$core.int> value) =>
+                $0.GetSealedRootRequest.fromBuffer(value),
+            ($0.GetSealedRootResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.EnrollAuthenticatorRequest,
+            $0.EnrollAuthenticatorResponse>(
+        'EnrollAuthenticator',
+        enrollAuthenticator_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.EnrollAuthenticatorRequest.fromBuffer(value),
+        ($0.EnrollAuthenticatorResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.DisableAuthenticatorRequest,
+            $0.DisableAuthenticatorResponse>(
+        'DisableAuthenticator',
+        disableAuthenticator_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.DisableAuthenticatorRequest.fromBuffer(value),
+        ($0.DisableAuthenticatorResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.GetAuthenticatorStatusRequest,
+            $0.GetAuthenticatorStatusResponse>(
+        'GetAuthenticatorStatus',
+        getAuthenticatorStatus_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.GetAuthenticatorStatusRequest.fromBuffer(value),
+        ($0.GetAuthenticatorStatusResponse value) => value.writeToBuffer()));
+    $addMethod(
+        $grpc.ServiceMethod<$0.StartPairingRequest, $0.StartPairingResponse>(
+            'StartPairing',
+            startPairing_Pre,
+            false,
+            false,
+            ($core.List<$core.int> value) =>
+                $0.StartPairingRequest.fromBuffer(value),
+            ($0.StartPairingResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.GetPairingOfferRequest,
+            $0.GetPairingOfferResponse>(
+        'GetPairingOffer',
+        getPairingOffer_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.GetPairingOfferRequest.fromBuffer(value),
+        ($0.GetPairingOfferResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.ApprovePairingRequest,
+            $0.ApprovePairingResponse>(
+        'ApprovePairing',
+        approvePairing_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.ApprovePairingRequest.fromBuffer(value),
+        ($0.ApprovePairingResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.TakePairingApprovalRequest,
+            $0.TakePairingApprovalResponse>(
+        'TakePairingApproval',
+        takePairingApproval_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.TakePairingApprovalRequest.fromBuffer(value),
+        ($0.TakePairingApprovalResponse value) => value.writeToBuffer()));
   }
 
   $async.Future<$0.RegisterDeviceResponse> registerDevice_Pre(
@@ -419,4 +643,94 @@ abstract class DeviceServiceBase extends $grpc.Service {
 
   $async.Future<$0.TakeDeviceLinkApprovalResponse> takeDeviceLinkApproval(
       $grpc.ServiceCall call, $0.TakeDeviceLinkApprovalRequest request);
+
+  $async.Future<$0.PutIdentityVaultResponse> putIdentityVault_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.PutIdentityVaultRequest> $request) async {
+    return putIdentityVault($call, await $request);
+  }
+
+  $async.Future<$0.PutIdentityVaultResponse> putIdentityVault(
+      $grpc.ServiceCall call, $0.PutIdentityVaultRequest request);
+
+  $async.Future<$0.GetIdentityVaultResponse> getIdentityVault_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.GetIdentityVaultRequest> $request) async {
+    return getIdentityVault($call, await $request);
+  }
+
+  $async.Future<$0.GetIdentityVaultResponse> getIdentityVault(
+      $grpc.ServiceCall call, $0.GetIdentityVaultRequest request);
+
+  $async.Future<$0.GetSealedRootResponse> getSealedRoot_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.GetSealedRootRequest> $request) async {
+    return getSealedRoot($call, await $request);
+  }
+
+  $async.Future<$0.GetSealedRootResponse> getSealedRoot(
+      $grpc.ServiceCall call, $0.GetSealedRootRequest request);
+
+  $async.Future<$0.EnrollAuthenticatorResponse> enrollAuthenticator_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.EnrollAuthenticatorRequest> $request) async {
+    return enrollAuthenticator($call, await $request);
+  }
+
+  $async.Future<$0.EnrollAuthenticatorResponse> enrollAuthenticator(
+      $grpc.ServiceCall call, $0.EnrollAuthenticatorRequest request);
+
+  $async.Future<$0.DisableAuthenticatorResponse> disableAuthenticator_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.DisableAuthenticatorRequest> $request) async {
+    return disableAuthenticator($call, await $request);
+  }
+
+  $async.Future<$0.DisableAuthenticatorResponse> disableAuthenticator(
+      $grpc.ServiceCall call, $0.DisableAuthenticatorRequest request);
+
+  $async.Future<$0.GetAuthenticatorStatusResponse> getAuthenticatorStatus_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.GetAuthenticatorStatusRequest> $request) async {
+    return getAuthenticatorStatus($call, await $request);
+  }
+
+  $async.Future<$0.GetAuthenticatorStatusResponse> getAuthenticatorStatus(
+      $grpc.ServiceCall call, $0.GetAuthenticatorStatusRequest request);
+
+  $async.Future<$0.StartPairingResponse> startPairing_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.StartPairingRequest> $request) async {
+    return startPairing($call, await $request);
+  }
+
+  $async.Future<$0.StartPairingResponse> startPairing(
+      $grpc.ServiceCall call, $0.StartPairingRequest request);
+
+  $async.Future<$0.GetPairingOfferResponse> getPairingOffer_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.GetPairingOfferRequest> $request) async {
+    return getPairingOffer($call, await $request);
+  }
+
+  $async.Future<$0.GetPairingOfferResponse> getPairingOffer(
+      $grpc.ServiceCall call, $0.GetPairingOfferRequest request);
+
+  $async.Future<$0.ApprovePairingResponse> approvePairing_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.ApprovePairingRequest> $request) async {
+    return approvePairing($call, await $request);
+  }
+
+  $async.Future<$0.ApprovePairingResponse> approvePairing(
+      $grpc.ServiceCall call, $0.ApprovePairingRequest request);
+
+  $async.Future<$0.TakePairingApprovalResponse> takePairingApproval_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.TakePairingApprovalRequest> $request) async {
+    return takePairingApproval($call, await $request);
+  }
+
+  $async.Future<$0.TakePairingApprovalResponse> takePairingApproval(
+      $grpc.ServiceCall call, $0.TakePairingApprovalRequest request);
 }

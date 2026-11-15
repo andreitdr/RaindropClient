@@ -1039,6 +1039,343 @@ class RejoinResponse extends $pb.GeneratedMessage {
   Session ensureSession() => $_ensure(0);
 }
 
+/// Asks for a sign-in challenge.
+class BeginAuthRequest extends $pb.GeneratedMessage {
+  factory BeginAuthRequest({
+    $core.String? userId,
+  }) {
+    final result = BeginAuthRequest._();
+    if (userId != null) result.userId = userId;
+    return result;
+  }
+
+  BeginAuthRequest._();
+
+  factory BeginAuthRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BeginAuthRequest()..mergeFromBuffer(data, registry);
+  factory BeginAuthRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BeginAuthRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'BeginAuthRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: BeginAuthRequest.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'userId')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BeginAuthRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BeginAuthRequest copyWith(void Function(BeginAuthRequest) updates) =>
+      super.copyWith((message) => updates(message as BeginAuthRequest))
+          as BeginAuthRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use BeginAuthRequest() / BeginAuthRequest.new instead')
+  static BeginAuthRequest create() => BeginAuthRequest._();
+  static $pb.GeneratedMessage $_createMessage() => BeginAuthRequest._();
+  @$core.override
+  BeginAuthRequest createEmptyInstance() => BeginAuthRequest._();
+  @$core.pragma('dart2js:noInline')
+  static BeginAuthRequest getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<BeginAuthRequest>(
+          BeginAuthRequest.$_createMessage);
+  static BeginAuthRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get userId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set userId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasUserId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearUserId() => $_clearField(1);
+}
+
+/// The challenge to sign.
+class BeginAuthResponse extends $pb.GeneratedMessage {
+  factory BeginAuthResponse({
+    $core.List<$core.int>? nonce,
+    $1.Timestamp? expiresAt,
+  }) {
+    final result = BeginAuthResponse._();
+    if (nonce != null) result.nonce = nonce;
+    if (expiresAt != null) result.expiresAt = expiresAt;
+    return result;
+  }
+
+  BeginAuthResponse._();
+
+  factory BeginAuthResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BeginAuthResponse()..mergeFromBuffer(data, registry);
+  factory BeginAuthResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BeginAuthResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'BeginAuthResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: BeginAuthResponse.$_createMessage)
+    ..a<$core.List<$core.int>>(
+        1, _omitFieldNames ? '' : 'nonce', $pb.PbFieldType.OY)
+    ..aOM<$1.Timestamp>(2, _omitFieldNames ? '' : 'expiresAt',
+        subBuilder: $1.Timestamp.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BeginAuthResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BeginAuthResponse copyWith(void Function(BeginAuthResponse) updates) =>
+      super.copyWith((message) => updates(message as BeginAuthResponse))
+          as BeginAuthResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use BeginAuthResponse() / BeginAuthResponse.new instead')
+  static BeginAuthResponse create() => BeginAuthResponse._();
+  static $pb.GeneratedMessage $_createMessage() => BeginAuthResponse._();
+  @$core.override
+  BeginAuthResponse createEmptyInstance() => BeginAuthResponse._();
+  @$core.pragma('dart2js:noInline')
+  static BeginAuthResponse getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<BeginAuthResponse>(
+          BeginAuthResponse.$_createMessage);
+  static BeginAuthResponse? _defaultInstance;
+
+  /// 32 random bytes, usable once.
+  @$pb.TagNumber(1)
+  $core.List<$core.int> get nonce => $_getN(0);
+  @$pb.TagNumber(1)
+  set nonce($core.List<$core.int> value) => $_setBytes(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasNonce() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearNonce() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $1.Timestamp get expiresAt => $_getN(1);
+  @$pb.TagNumber(2)
+  set expiresAt($1.Timestamp value) => $_setField(2, value);
+  @$pb.TagNumber(2)
+  $core.bool hasExpiresAt() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearExpiresAt() => $_clearField(2);
+  @$pb.TagNumber(2)
+  $1.Timestamp ensureExpiresAt() => $_ensure(1);
+}
+
+/// Signs in with a device key.
+class CompleteAuthRequest extends $pb.GeneratedMessage {
+  factory CompleteAuthRequest({
+    $core.String? userId,
+    $core.String? deviceId,
+    $core.List<$core.int>? nonce,
+    $core.List<$core.int>? signature,
+    $core.List<$core.int>? certificate,
+    $core.String? username,
+    $core.String? authenticatorCode,
+  }) {
+    final result = CompleteAuthRequest._();
+    if (userId != null) result.userId = userId;
+    if (deviceId != null) result.deviceId = deviceId;
+    if (nonce != null) result.nonce = nonce;
+    if (signature != null) result.signature = signature;
+    if (certificate != null) result.certificate = certificate;
+    if (username != null) result.username = username;
+    if (authenticatorCode != null) result.authenticatorCode = authenticatorCode;
+    return result;
+  }
+
+  CompleteAuthRequest._();
+
+  factory CompleteAuthRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      CompleteAuthRequest()..mergeFromBuffer(data, registry);
+  factory CompleteAuthRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      CompleteAuthRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'CompleteAuthRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: CompleteAuthRequest.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'userId')
+    ..aOS(2, _omitFieldNames ? '' : 'deviceId')
+    ..a<$core.List<$core.int>>(
+        3, _omitFieldNames ? '' : 'nonce', $pb.PbFieldType.OY)
+    ..a<$core.List<$core.int>>(
+        4, _omitFieldNames ? '' : 'signature', $pb.PbFieldType.OY)
+    ..a<$core.List<$core.int>>(
+        5, _omitFieldNames ? '' : 'certificate', $pb.PbFieldType.OY)
+    ..aOS(6, _omitFieldNames ? '' : 'username')
+    ..aOS(7, _omitFieldNames ? '' : 'authenticatorCode')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CompleteAuthRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CompleteAuthRequest copyWith(void Function(CompleteAuthRequest) updates) =>
+      super.copyWith((message) => updates(message as CompleteAuthRequest))
+          as CompleteAuthRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core
+      .Deprecated('Use CompleteAuthRequest() / CompleteAuthRequest.new instead')
+  static CompleteAuthRequest create() => CompleteAuthRequest._();
+  static $pb.GeneratedMessage $_createMessage() => CompleteAuthRequest._();
+  @$core.override
+  CompleteAuthRequest createEmptyInstance() => CompleteAuthRequest._();
+  @$core.pragma('dart2js:noInline')
+  static CompleteAuthRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<CompleteAuthRequest>(
+          CompleteAuthRequest.$_createMessage);
+  static CompleteAuthRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get userId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set userId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasUserId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearUserId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get deviceId => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set deviceId($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasDeviceId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearDeviceId() => $_clearField(2);
+
+  /// The nonce BeginAuth returned for this user_id.
+  @$pb.TagNumber(3)
+  $core.List<$core.int> get nonce => $_getN(2);
+  @$pb.TagNumber(3)
+  set nonce($core.List<$core.int> value) => $_setBytes(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasNonce() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearNonce() => $_clearField(3);
+
+  /// Ed25519 by the device's signature key over
+  /// "raindrop/auth/v1\n" ‖ u16 length of the server's identity key ‖ that key ‖ nonce.
+  @$pb.TagNumber(4)
+  $core.List<$core.int> get signature => $_getN(3);
+  @$pb.TagNumber(4)
+  set signature($core.List<$core.int> value) => $_setBytes(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasSignature() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearSignature() => $_clearField(4);
+
+  /// The device certificate, signed by the account's identity key. Needed the first time this
+  /// device signs in here; ignored once the device is registered.
+  @$pb.TagNumber(5)
+  $core.List<$core.int> get certificate => $_getN(4);
+  @$pb.TagNumber(5)
+  set certificate($core.List<$core.int> value) => $_setBytes(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasCertificate() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearCertificate() => $_clearField(5);
+
+  /// The username to claim. Needed when the UUID has no account yet; ignored otherwise.
+  @$pb.TagNumber(6)
+  $core.String get username => $_getSZ(5);
+  @$pb.TagNumber(6)
+  set username($core.String value) => $_setString(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasUsername() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearUsername() => $_clearField(6);
+
+  /// A 6-digit authenticator code, or one of the backup codes. Needed when the device is new to an
+  /// account that has an authenticator; ignored otherwise.
+  @$pb.TagNumber(7)
+  $core.String get authenticatorCode => $_getSZ(6);
+  @$pb.TagNumber(7)
+  set authenticatorCode($core.String value) => $_setString(6, value);
+  @$pb.TagNumber(7)
+  $core.bool hasAuthenticatorCode() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearAuthenticatorCode() => $_clearField(7);
+}
+
+/// The new session, already bound to the device.
+class CompleteAuthResponse extends $pb.GeneratedMessage {
+  factory CompleteAuthResponse({
+    Session? session,
+  }) {
+    final result = CompleteAuthResponse._();
+    if (session != null) result.session = session;
+    return result;
+  }
+
+  CompleteAuthResponse._();
+
+  factory CompleteAuthResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      CompleteAuthResponse()..mergeFromBuffer(data, registry);
+  factory CompleteAuthResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      CompleteAuthResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'CompleteAuthResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: CompleteAuthResponse.$_createMessage)
+    ..aOM<Session>(1, _omitFieldNames ? '' : 'session',
+        subBuilder: Session.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CompleteAuthResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CompleteAuthResponse copyWith(void Function(CompleteAuthResponse) updates) =>
+      super.copyWith((message) => updates(message as CompleteAuthResponse))
+          as CompleteAuthResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use CompleteAuthResponse() / CompleteAuthResponse.new instead')
+  static CompleteAuthResponse create() => CompleteAuthResponse._();
+  static $pb.GeneratedMessage $_createMessage() => CompleteAuthResponse._();
+  @$core.override
+  CompleteAuthResponse createEmptyInstance() => CompleteAuthResponse._();
+  @$core.pragma('dart2js:noInline')
+  static CompleteAuthResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<CompleteAuthResponse>(
+          CompleteAuthResponse.$_createMessage);
+  static CompleteAuthResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  Session get session => $_getN(0);
+  @$pb.TagNumber(1)
+  set session(Session value) => $_setField(1, value);
+  @$pb.TagNumber(1)
+  $core.bool hasSession() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearSession() => $_clearField(1);
+  @$pb.TagNumber(1)
+  Session ensureSession() => $_ensure(0);
+}
+
 /// Ends the calling session.
 class LogoutRequest extends $pb.GeneratedMessage {
   factory LogoutRequest() => LogoutRequest._();

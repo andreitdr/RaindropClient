@@ -4,6 +4,7 @@
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
 import 'api/attachment.dart';
+import 'api/identity.dart';
 import 'api/session.dart';
 import 'api/video.dart';
 
@@ -79,6 +80,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CryptoFailureKind dco_decode_crypto_failure_kind(dynamic raw);
 
   @protected
+  DerivedAccount dco_decode_derived_account(dynamic raw);
+
+  @protected
   DeviceIdentity dco_decode_device_identity(dynamic raw);
 
   @protected
@@ -109,6 +113,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw);
 
   @protected
+  List<PinnedIdentity> dco_decode_list_pinned_identity(dynamic raw);
+
+  @protected
   List<int> dco_decode_list_prim_u_32_loose(dynamic raw);
 
   @protected
@@ -119,6 +126,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+
+  @protected
+  NewRecovery dco_decode_new_recovery(dynamic raw);
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
@@ -140,6 +150,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Uint8List? dco_decode_opt_list_prim_u_8_strict(dynamic raw);
+
+  @protected
+  PairingOffer dco_decode_pairing_offer(dynamic raw);
+
+  @protected
+  PairingOfferInfo dco_decode_pairing_offer_info(dynamic raw);
 
   @protected
   PendingCommit dco_decode_pending_commit(dynamic raw);
@@ -254,6 +270,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  DerivedAccount sse_decode_derived_account(SseDeserializer deserializer);
+
+  @protected
   DeviceIdentity sse_decode_device_identity(SseDeserializer deserializer);
 
   @protected
@@ -288,6 +307,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<PinnedIdentity> sse_decode_list_pinned_identity(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<int> sse_decode_list_prim_u_32_loose(SseDeserializer deserializer);
 
   @protected
@@ -298,6 +322,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
+  NewRecovery sse_decode_new_recovery(SseDeserializer deserializer);
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
@@ -327,6 +354,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Uint8List? sse_decode_opt_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
+  PairingOffer sse_decode_pairing_offer(SseDeserializer deserializer);
+
+  @protected
+  PairingOfferInfo sse_decode_pairing_offer_info(SseDeserializer deserializer);
 
   @protected
   PendingCommit sse_decode_pending_commit(SseDeserializer deserializer);
@@ -463,6 +496,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_derived_account(
+    DerivedAccount self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_device_identity(
     DeviceIdentity self,
     SseSerializer serializer,
@@ -505,6 +544,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_pinned_identity(
+    List<PinnedIdentity> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_u_32_loose(
     List<int> self,
     SseSerializer serializer,
@@ -524,6 +569,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     Uint8List self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_new_recovery(NewRecovery self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
@@ -561,6 +609,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_opt_list_prim_u_8_strict(
     Uint8List? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_pairing_offer(PairingOffer self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_pairing_offer_info(
+    PairingOfferInfo self,
     SseSerializer serializer,
   );
 

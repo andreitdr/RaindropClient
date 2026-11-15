@@ -1,22 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/widgets/adaptive.dart';
+import '../../identity/controllers/identity_controller.dart';
 import '../controllers/connect_server_flow.dart';
 
 /// Step 1 of adding a server: host, port, and a local nickname. Submitting
-/// probes the server (`ServerService.GetServerInfo`) and asks what this brand-new
-/// GUID means there (`UserService.GetUserStatus`) before handing off to
-/// [ServerAuthScreen] for registration, login, or rejoin.
-class ConnectServerScreen extends StatefulWidget {
+/// probes the server (`ServerService.GetServerInfo`), derives this person's
+/// account there, and asks what the server knows of it
+/// (`UserService.GetUserStatus`) before handing off to [ServerAuthScreen],
+/// which signs this device in — asking for a username only when the account
+/// is new.
+class ConnectServerScreen extends ConsumerStatefulWidget {
   const ConnectServerScreen({super.key});
 
   @override
-  State<ConnectServerScreen> createState() => _ConnectServerScreenState();
+  ConsumerState<ConnectServerScreen> createState() =>
+      _ConnectServerScreenState();
 }
 
-class _ConnectServerScreenState extends State<ConnectServerScreen> {
+class _ConnectServerScreenState extends ConsumerState<ConnectServerScreen> {
   final _formKey = GlobalKey<FormState>();
   final _hostController = TextEditingController();
   final _portController = TextEditingController(text: '5001');
@@ -44,10 +49,19 @@ class _ConnectServerScreenState extends State<ConnectServerScreen> {
     final displayName = _nameController.text.trim().isEmpty
         ? host
         : _nameController.text.trim();
-    final flow = ConnectServerFlow(host: host, port: port);
+    final identity = await ref.read(identityProvider.future);
+    if (identity == null) return;
+    final flow = ConnectServerFlow(host: host, port: port, identity: identity);
 
     try {
       await flow.probe();
+      if (flow.alreadyAdded(ref)) {
+        throw const ApiException(
+          409,
+          'already_added',
+          'This server is already in your list. Pick it from the server rail.',
+        );
+      }
       final status = await flow.checkStatus();
       if (!mounted) return;
       await context.push(
@@ -57,14 +71,14 @@ class _ConnectServerScreenState extends State<ConnectServerScreen> {
       if (!mounted) return;
       setState(() => _connecting = false);
     } on ApiException catch (e) {
-      flow.dispose();
+      await flow.dispose(ref);
       if (!mounted) return;
       setState(() {
         _connecting = false;
         _error = e.message;
       });
     } catch (e) {
-      flow.dispose();
+      await flow.dispose(ref);
       if (!mounted) return;
       setState(() {
         _connecting = false;

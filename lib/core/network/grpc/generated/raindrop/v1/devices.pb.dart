@@ -1695,6 +1695,1353 @@ class TakeDeviceLinkApprovalResponse extends $pb.GeneratedMessage {
   void clearApproval() => $_clearField(1);
 }
 
+/// Replaces the identity vault.
+class PutIdentityVaultRequest extends $pb.GeneratedMessage {
+  factory PutIdentityVaultRequest({
+    $core.String? lookupId,
+    $core.List<$core.int>? sealedRoot,
+    $core.List<$core.int>? vault,
+  }) {
+    final result = PutIdentityVaultRequest._();
+    if (lookupId != null) result.lookupId = lookupId;
+    if (sealedRoot != null) result.sealedRoot = sealedRoot;
+    if (vault != null) result.vault = vault;
+    return result;
+  }
+
+  PutIdentityVaultRequest._();
+
+  factory PutIdentityVaultRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PutIdentityVaultRequest()..mergeFromBuffer(data, registry);
+  factory PutIdentityVaultRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PutIdentityVaultRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'PutIdentityVaultRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: PutIdentityVaultRequest.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'lookupId')
+    ..a<$core.List<$core.int>>(
+        2, _omitFieldNames ? '' : 'sealedRoot', $pb.PbFieldType.OY)
+    ..a<$core.List<$core.int>>(
+        3, _omitFieldNames ? '' : 'vault', $pb.PbFieldType.OY)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PutIdentityVaultRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PutIdentityVaultRequest copyWith(
+          void Function(PutIdentityVaultRequest) updates) =>
+      super.copyWith((message) => updates(message as PutIdentityVaultRequest))
+          as PutIdentityVaultRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use PutIdentityVaultRequest() / PutIdentityVaultRequest.new instead')
+  static PutIdentityVaultRequest create() => PutIdentityVaultRequest._();
+  static $pb.GeneratedMessage $_createMessage() => PutIdentityVaultRequest._();
+  @$core.override
+  PutIdentityVaultRequest createEmptyInstance() => PutIdentityVaultRequest._();
+  @$core.pragma('dart2js:noInline')
+  static PutIdentityVaultRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<PutIdentityVaultRequest>(
+          PutIdentityVaultRequest.$_createMessage);
+  static PutIdentityVaultRequest? _defaultInstance;
+
+  /// 32 lower-case hex characters, derived from the recovery key and this server's identity key.
+  @$pb.TagNumber(1)
+  $core.String get lookupId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set lookupId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasLookupId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearLookupId() => $_clearField(1);
+
+  /// The root secret sealed under the recovery key. Opaque.
+  @$pb.TagNumber(2)
+  $core.List<$core.int> get sealedRoot => $_getN(1);
+  @$pb.TagNumber(2)
+  set sealedRoot($core.List<$core.int> value) => $_setBytes(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasSealedRoot() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearSealedRoot() => $_clearField(2);
+
+  /// The vault, sealed under the root. Opaque.
+  @$pb.TagNumber(3)
+  $core.List<$core.int> get vault => $_getN(2);
+  @$pb.TagNumber(3)
+  set vault($core.List<$core.int> value) => $_setBytes(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasVault() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearVault() => $_clearField(3);
+}
+
+/// When it was stored.
+class PutIdentityVaultResponse extends $pb.GeneratedMessage {
+  factory PutIdentityVaultResponse({
+    $1.Timestamp? updatedAt,
+  }) {
+    final result = PutIdentityVaultResponse._();
+    if (updatedAt != null) result.updatedAt = updatedAt;
+    return result;
+  }
+
+  PutIdentityVaultResponse._();
+
+  factory PutIdentityVaultResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PutIdentityVaultResponse()..mergeFromBuffer(data, registry);
+  factory PutIdentityVaultResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PutIdentityVaultResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'PutIdentityVaultResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: PutIdentityVaultResponse.$_createMessage)
+    ..aOM<$1.Timestamp>(1, _omitFieldNames ? '' : 'updatedAt',
+        subBuilder: $1.Timestamp.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PutIdentityVaultResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PutIdentityVaultResponse copyWith(
+          void Function(PutIdentityVaultResponse) updates) =>
+      super.copyWith((message) => updates(message as PutIdentityVaultResponse))
+          as PutIdentityVaultResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use PutIdentityVaultResponse() / PutIdentityVaultResponse.new instead')
+  static PutIdentityVaultResponse create() => PutIdentityVaultResponse._();
+  static $pb.GeneratedMessage $_createMessage() => PutIdentityVaultResponse._();
+  @$core.override
+  PutIdentityVaultResponse createEmptyInstance() =>
+      PutIdentityVaultResponse._();
+  @$core.pragma('dart2js:noInline')
+  static PutIdentityVaultResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<PutIdentityVaultResponse>(
+          PutIdentityVaultResponse.$_createMessage);
+  static PutIdentityVaultResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $1.Timestamp get updatedAt => $_getN(0);
+  @$pb.TagNumber(1)
+  set updatedAt($1.Timestamp value) => $_setField(1, value);
+  @$pb.TagNumber(1)
+  $core.bool hasUpdatedAt() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearUpdatedAt() => $_clearField(1);
+  @$pb.TagNumber(1)
+  $1.Timestamp ensureUpdatedAt() => $_ensure(0);
+}
+
+/// Asks for the caller's identity vault.
+class GetIdentityVaultRequest extends $pb.GeneratedMessage {
+  factory GetIdentityVaultRequest() => GetIdentityVaultRequest._();
+
+  GetIdentityVaultRequest._();
+
+  factory GetIdentityVaultRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetIdentityVaultRequest()..mergeFromBuffer(data, registry);
+  factory GetIdentityVaultRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetIdentityVaultRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GetIdentityVaultRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: GetIdentityVaultRequest.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetIdentityVaultRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetIdentityVaultRequest copyWith(
+          void Function(GetIdentityVaultRequest) updates) =>
+      super.copyWith((message) => updates(message as GetIdentityVaultRequest))
+          as GetIdentityVaultRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use GetIdentityVaultRequest() / GetIdentityVaultRequest.new instead')
+  static GetIdentityVaultRequest create() => GetIdentityVaultRequest._();
+  static $pb.GeneratedMessage $_createMessage() => GetIdentityVaultRequest._();
+  @$core.override
+  GetIdentityVaultRequest createEmptyInstance() => GetIdentityVaultRequest._();
+  @$core.pragma('dart2js:noInline')
+  static GetIdentityVaultRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<GetIdentityVaultRequest>(
+          GetIdentityVaultRequest.$_createMessage);
+  static GetIdentityVaultRequest? _defaultInstance;
+}
+
+/// The vault, if there is one.
+class GetIdentityVaultResponse extends $pb.GeneratedMessage {
+  factory GetIdentityVaultResponse({
+    $core.String? lookupId,
+    $core.List<$core.int>? sealedRoot,
+    $core.List<$core.int>? vault,
+    $1.Timestamp? updatedAt,
+  }) {
+    final result = GetIdentityVaultResponse._();
+    if (lookupId != null) result.lookupId = lookupId;
+    if (sealedRoot != null) result.sealedRoot = sealedRoot;
+    if (vault != null) result.vault = vault;
+    if (updatedAt != null) result.updatedAt = updatedAt;
+    return result;
+  }
+
+  GetIdentityVaultResponse._();
+
+  factory GetIdentityVaultResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetIdentityVaultResponse()..mergeFromBuffer(data, registry);
+  factory GetIdentityVaultResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetIdentityVaultResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GetIdentityVaultResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: GetIdentityVaultResponse.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'lookupId')
+    ..a<$core.List<$core.int>>(
+        2, _omitFieldNames ? '' : 'sealedRoot', $pb.PbFieldType.OY)
+    ..a<$core.List<$core.int>>(
+        3, _omitFieldNames ? '' : 'vault', $pb.PbFieldType.OY)
+    ..aOM<$1.Timestamp>(4, _omitFieldNames ? '' : 'updatedAt',
+        subBuilder: $1.Timestamp.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetIdentityVaultResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetIdentityVaultResponse copyWith(
+          void Function(GetIdentityVaultResponse) updates) =>
+      super.copyWith((message) => updates(message as GetIdentityVaultResponse))
+          as GetIdentityVaultResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use GetIdentityVaultResponse() / GetIdentityVaultResponse.new instead')
+  static GetIdentityVaultResponse create() => GetIdentityVaultResponse._();
+  static $pb.GeneratedMessage $_createMessage() => GetIdentityVaultResponse._();
+  @$core.override
+  GetIdentityVaultResponse createEmptyInstance() =>
+      GetIdentityVaultResponse._();
+  @$core.pragma('dart2js:noInline')
+  static GetIdentityVaultResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<GetIdentityVaultResponse>(
+          GetIdentityVaultResponse.$_createMessage);
+  static GetIdentityVaultResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get lookupId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set lookupId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasLookupId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearLookupId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.List<$core.int> get sealedRoot => $_getN(1);
+  @$pb.TagNumber(2)
+  set sealedRoot($core.List<$core.int> value) => $_setBytes(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasSealedRoot() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearSealedRoot() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.List<$core.int> get vault => $_getN(2);
+  @$pb.TagNumber(3)
+  set vault($core.List<$core.int> value) => $_setBytes(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasVault() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearVault() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $1.Timestamp get updatedAt => $_getN(3);
+  @$pb.TagNumber(4)
+  set updatedAt($1.Timestamp value) => $_setField(4, value);
+  @$pb.TagNumber(4)
+  $core.bool hasUpdatedAt() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearUpdatedAt() => $_clearField(4);
+  @$pb.TagNumber(4)
+  $1.Timestamp ensureUpdatedAt() => $_ensure(3);
+}
+
+/// Asks for a sealed root by its lookup id.
+class GetSealedRootRequest extends $pb.GeneratedMessage {
+  factory GetSealedRootRequest({
+    $core.String? lookupId,
+  }) {
+    final result = GetSealedRootRequest._();
+    if (lookupId != null) result.lookupId = lookupId;
+    return result;
+  }
+
+  GetSealedRootRequest._();
+
+  factory GetSealedRootRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetSealedRootRequest()..mergeFromBuffer(data, registry);
+  factory GetSealedRootRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetSealedRootRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GetSealedRootRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: GetSealedRootRequest.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'lookupId')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetSealedRootRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetSealedRootRequest copyWith(void Function(GetSealedRootRequest) updates) =>
+      super.copyWith((message) => updates(message as GetSealedRootRequest))
+          as GetSealedRootRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use GetSealedRootRequest() / GetSealedRootRequest.new instead')
+  static GetSealedRootRequest create() => GetSealedRootRequest._();
+  static $pb.GeneratedMessage $_createMessage() => GetSealedRootRequest._();
+  @$core.override
+  GetSealedRootRequest createEmptyInstance() => GetSealedRootRequest._();
+  @$core.pragma('dart2js:noInline')
+  static GetSealedRootRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<GetSealedRootRequest>(
+          GetSealedRootRequest.$_createMessage);
+  static GetSealedRootRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get lookupId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set lookupId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasLookupId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearLookupId() => $_clearField(1);
+}
+
+/// The sealed root.
+class GetSealedRootResponse extends $pb.GeneratedMessage {
+  factory GetSealedRootResponse({
+    $core.List<$core.int>? sealedRoot,
+  }) {
+    final result = GetSealedRootResponse._();
+    if (sealedRoot != null) result.sealedRoot = sealedRoot;
+    return result;
+  }
+
+  GetSealedRootResponse._();
+
+  factory GetSealedRootResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetSealedRootResponse()..mergeFromBuffer(data, registry);
+  factory GetSealedRootResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetSealedRootResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GetSealedRootResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: GetSealedRootResponse.$_createMessage)
+    ..a<$core.List<$core.int>>(
+        1, _omitFieldNames ? '' : 'sealedRoot', $pb.PbFieldType.OY)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetSealedRootResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetSealedRootResponse copyWith(
+          void Function(GetSealedRootResponse) updates) =>
+      super.copyWith((message) => updates(message as GetSealedRootResponse))
+          as GetSealedRootResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use GetSealedRootResponse() / GetSealedRootResponse.new instead')
+  static GetSealedRootResponse create() => GetSealedRootResponse._();
+  static $pb.GeneratedMessage $_createMessage() => GetSealedRootResponse._();
+  @$core.override
+  GetSealedRootResponse createEmptyInstance() => GetSealedRootResponse._();
+  @$core.pragma('dart2js:noInline')
+  static GetSealedRootResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<GetSealedRootResponse>(
+          GetSealedRootResponse.$_createMessage);
+  static GetSealedRootResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.List<$core.int> get sealedRoot => $_getN(0);
+  @$pb.TagNumber(1)
+  set sealedRoot($core.List<$core.int> value) => $_setBytes(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasSealedRoot() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearSealedRoot() => $_clearField(1);
+}
+
+/// Sets the account's authenticator.
+class EnrollAuthenticatorRequest extends $pb.GeneratedMessage {
+  factory EnrollAuthenticatorRequest({
+    $core.List<$core.int>? secret,
+    $core.String? code,
+    $core.Iterable<$core.String>? backupCodes,
+  }) {
+    final result = EnrollAuthenticatorRequest._();
+    if (secret != null) result.secret = secret;
+    if (code != null) result.code = code;
+    if (backupCodes != null) result.backupCodes.addAll(backupCodes);
+    return result;
+  }
+
+  EnrollAuthenticatorRequest._();
+
+  factory EnrollAuthenticatorRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      EnrollAuthenticatorRequest()..mergeFromBuffer(data, registry);
+  factory EnrollAuthenticatorRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      EnrollAuthenticatorRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'EnrollAuthenticatorRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: EnrollAuthenticatorRequest.$_createMessage)
+    ..a<$core.List<$core.int>>(
+        1, _omitFieldNames ? '' : 'secret', $pb.PbFieldType.OY)
+    ..aOS(2, _omitFieldNames ? '' : 'code')
+    ..pPS(3, _omitFieldNames ? '' : 'backupCodes')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  EnrollAuthenticatorRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  EnrollAuthenticatorRequest copyWith(
+          void Function(EnrollAuthenticatorRequest) updates) =>
+      super.copyWith(
+              (message) => updates(message as EnrollAuthenticatorRequest))
+          as EnrollAuthenticatorRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use EnrollAuthenticatorRequest() / EnrollAuthenticatorRequest.new instead')
+  static EnrollAuthenticatorRequest create() => EnrollAuthenticatorRequest._();
+  static $pb.GeneratedMessage $_createMessage() =>
+      EnrollAuthenticatorRequest._();
+  @$core.override
+  EnrollAuthenticatorRequest createEmptyInstance() =>
+      EnrollAuthenticatorRequest._();
+  @$core.pragma('dart2js:noInline')
+  static EnrollAuthenticatorRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<EnrollAuthenticatorRequest>(
+          EnrollAuthenticatorRequest.$_createMessage);
+  static EnrollAuthenticatorRequest? _defaultInstance;
+
+  /// The TOTP secret (RFC 6238: SHA-1, 30 seconds, 6 digits), 20 to 64 bytes.
+  @$pb.TagNumber(1)
+  $core.List<$core.int> get secret => $_getN(0);
+  @$pb.TagNumber(1)
+  set secret($core.List<$core.int> value) => $_setBytes(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasSecret() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearSecret() => $_clearField(1);
+
+  /// A current code from that secret, proving the authenticator app holds it.
+  @$pb.TagNumber(2)
+  $core.String get code => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set code($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasCode() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearCode() => $_clearField(2);
+
+  /// One-time backup codes, at most 10, each 8 to 32 characters. Stored hashed.
+  @$pb.TagNumber(3)
+  $pb.PbList<$core.String> get backupCodes => $_getList(2);
+}
+
+/// A human-readable confirmation.
+class EnrollAuthenticatorResponse extends $pb.GeneratedMessage {
+  factory EnrollAuthenticatorResponse({
+    $core.String? message,
+  }) {
+    final result = EnrollAuthenticatorResponse._();
+    if (message != null) result.message = message;
+    return result;
+  }
+
+  EnrollAuthenticatorResponse._();
+
+  factory EnrollAuthenticatorResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      EnrollAuthenticatorResponse()..mergeFromBuffer(data, registry);
+  factory EnrollAuthenticatorResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      EnrollAuthenticatorResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'EnrollAuthenticatorResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: EnrollAuthenticatorResponse.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'message')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  EnrollAuthenticatorResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  EnrollAuthenticatorResponse copyWith(
+          void Function(EnrollAuthenticatorResponse) updates) =>
+      super.copyWith(
+              (message) => updates(message as EnrollAuthenticatorResponse))
+          as EnrollAuthenticatorResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use EnrollAuthenticatorResponse() / EnrollAuthenticatorResponse.new instead')
+  static EnrollAuthenticatorResponse create() =>
+      EnrollAuthenticatorResponse._();
+  static $pb.GeneratedMessage $_createMessage() =>
+      EnrollAuthenticatorResponse._();
+  @$core.override
+  EnrollAuthenticatorResponse createEmptyInstance() =>
+      EnrollAuthenticatorResponse._();
+  @$core.pragma('dart2js:noInline')
+  static EnrollAuthenticatorResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<EnrollAuthenticatorResponse>(
+          EnrollAuthenticatorResponse.$_createMessage);
+  static EnrollAuthenticatorResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get message => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set message($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasMessage() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearMessage() => $_clearField(1);
+}
+
+/// Removes the account's authenticator.
+class DisableAuthenticatorRequest extends $pb.GeneratedMessage {
+  factory DisableAuthenticatorRequest() => DisableAuthenticatorRequest._();
+
+  DisableAuthenticatorRequest._();
+
+  factory DisableAuthenticatorRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      DisableAuthenticatorRequest()..mergeFromBuffer(data, registry);
+  factory DisableAuthenticatorRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      DisableAuthenticatorRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'DisableAuthenticatorRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: DisableAuthenticatorRequest.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  DisableAuthenticatorRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  DisableAuthenticatorRequest copyWith(
+          void Function(DisableAuthenticatorRequest) updates) =>
+      super.copyWith(
+              (message) => updates(message as DisableAuthenticatorRequest))
+          as DisableAuthenticatorRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use DisableAuthenticatorRequest() / DisableAuthenticatorRequest.new instead')
+  static DisableAuthenticatorRequest create() =>
+      DisableAuthenticatorRequest._();
+  static $pb.GeneratedMessage $_createMessage() =>
+      DisableAuthenticatorRequest._();
+  @$core.override
+  DisableAuthenticatorRequest createEmptyInstance() =>
+      DisableAuthenticatorRequest._();
+  @$core.pragma('dart2js:noInline')
+  static DisableAuthenticatorRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<DisableAuthenticatorRequest>(
+          DisableAuthenticatorRequest.$_createMessage);
+  static DisableAuthenticatorRequest? _defaultInstance;
+}
+
+/// A human-readable confirmation.
+class DisableAuthenticatorResponse extends $pb.GeneratedMessage {
+  factory DisableAuthenticatorResponse({
+    $core.String? message,
+  }) {
+    final result = DisableAuthenticatorResponse._();
+    if (message != null) result.message = message;
+    return result;
+  }
+
+  DisableAuthenticatorResponse._();
+
+  factory DisableAuthenticatorResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      DisableAuthenticatorResponse()..mergeFromBuffer(data, registry);
+  factory DisableAuthenticatorResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      DisableAuthenticatorResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'DisableAuthenticatorResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: DisableAuthenticatorResponse.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'message')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  DisableAuthenticatorResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  DisableAuthenticatorResponse copyWith(
+          void Function(DisableAuthenticatorResponse) updates) =>
+      super.copyWith(
+              (message) => updates(message as DisableAuthenticatorResponse))
+          as DisableAuthenticatorResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use DisableAuthenticatorResponse() / DisableAuthenticatorResponse.new instead')
+  static DisableAuthenticatorResponse create() =>
+      DisableAuthenticatorResponse._();
+  static $pb.GeneratedMessage $_createMessage() =>
+      DisableAuthenticatorResponse._();
+  @$core.override
+  DisableAuthenticatorResponse createEmptyInstance() =>
+      DisableAuthenticatorResponse._();
+  @$core.pragma('dart2js:noInline')
+  static DisableAuthenticatorResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<DisableAuthenticatorResponse>(
+          DisableAuthenticatorResponse.$_createMessage);
+  static DisableAuthenticatorResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get message => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set message($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasMessage() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearMessage() => $_clearField(1);
+}
+
+/// Asks about the account's authenticator.
+class GetAuthenticatorStatusRequest extends $pb.GeneratedMessage {
+  factory GetAuthenticatorStatusRequest() => GetAuthenticatorStatusRequest._();
+
+  GetAuthenticatorStatusRequest._();
+
+  factory GetAuthenticatorStatusRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetAuthenticatorStatusRequest()..mergeFromBuffer(data, registry);
+  factory GetAuthenticatorStatusRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetAuthenticatorStatusRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GetAuthenticatorStatusRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: GetAuthenticatorStatusRequest.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetAuthenticatorStatusRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetAuthenticatorStatusRequest copyWith(
+          void Function(GetAuthenticatorStatusRequest) updates) =>
+      super.copyWith(
+              (message) => updates(message as GetAuthenticatorStatusRequest))
+          as GetAuthenticatorStatusRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use GetAuthenticatorStatusRequest() / GetAuthenticatorStatusRequest.new instead')
+  static GetAuthenticatorStatusRequest create() =>
+      GetAuthenticatorStatusRequest._();
+  static $pb.GeneratedMessage $_createMessage() =>
+      GetAuthenticatorStatusRequest._();
+  @$core.override
+  GetAuthenticatorStatusRequest createEmptyInstance() =>
+      GetAuthenticatorStatusRequest._();
+  @$core.pragma('dart2js:noInline')
+  static GetAuthenticatorStatusRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<GetAuthenticatorStatusRequest>(
+          GetAuthenticatorStatusRequest.$_createMessage);
+  static GetAuthenticatorStatusRequest? _defaultInstance;
+}
+
+/// Whether there is one.
+class GetAuthenticatorStatusResponse extends $pb.GeneratedMessage {
+  factory GetAuthenticatorStatusResponse({
+    $core.bool? enabled,
+    $core.int? backupCodesLeft,
+  }) {
+    final result = GetAuthenticatorStatusResponse._();
+    if (enabled != null) result.enabled = enabled;
+    if (backupCodesLeft != null) result.backupCodesLeft = backupCodesLeft;
+    return result;
+  }
+
+  GetAuthenticatorStatusResponse._();
+
+  factory GetAuthenticatorStatusResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetAuthenticatorStatusResponse()..mergeFromBuffer(data, registry);
+  factory GetAuthenticatorStatusResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetAuthenticatorStatusResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GetAuthenticatorStatusResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: GetAuthenticatorStatusResponse.$_createMessage)
+    ..aOB(1, _omitFieldNames ? '' : 'enabled')
+    ..aI(2, _omitFieldNames ? '' : 'backupCodesLeft')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetAuthenticatorStatusResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetAuthenticatorStatusResponse copyWith(
+          void Function(GetAuthenticatorStatusResponse) updates) =>
+      super.copyWith(
+              (message) => updates(message as GetAuthenticatorStatusResponse))
+          as GetAuthenticatorStatusResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use GetAuthenticatorStatusResponse() / GetAuthenticatorStatusResponse.new instead')
+  static GetAuthenticatorStatusResponse create() =>
+      GetAuthenticatorStatusResponse._();
+  static $pb.GeneratedMessage $_createMessage() =>
+      GetAuthenticatorStatusResponse._();
+  @$core.override
+  GetAuthenticatorStatusResponse createEmptyInstance() =>
+      GetAuthenticatorStatusResponse._();
+  @$core.pragma('dart2js:noInline')
+  static GetAuthenticatorStatusResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<GetAuthenticatorStatusResponse>(
+          GetAuthenticatorStatusResponse.$_createMessage);
+  static GetAuthenticatorStatusResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.bool get enabled => $_getBF(0);
+  @$pb.TagNumber(1)
+  set enabled($core.bool value) => $_setBool(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasEnabled() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearEnabled() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.int get backupCodesLeft => $_getIZ(1);
+  @$pb.TagNumber(2)
+  set backupCodesLeft($core.int value) => $_setSignedInt32(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasBackupCodesLeft() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearBackupCodesLeft() => $_clearField(2);
+}
+
+/// Starts a pairing.
+class StartPairingRequest extends $pb.GeneratedMessage {
+  factory StartPairingRequest({
+    $core.List<$core.int>? offer,
+  }) {
+    final result = StartPairingRequest._();
+    if (offer != null) result.offer = offer;
+    return result;
+  }
+
+  StartPairingRequest._();
+
+  factory StartPairingRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      StartPairingRequest()..mergeFromBuffer(data, registry);
+  factory StartPairingRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      StartPairingRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'StartPairingRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: StartPairingRequest.$_createMessage)
+    ..a<$core.List<$core.int>>(
+        1, _omitFieldNames ? '' : 'offer', $pb.PbFieldType.OY)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  StartPairingRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  StartPairingRequest copyWith(void Function(StartPairingRequest) updates) =>
+      super.copyWith((message) => updates(message as StartPairingRequest))
+          as StartPairingRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core
+      .Deprecated('Use StartPairingRequest() / StartPairingRequest.new instead')
+  static StartPairingRequest create() => StartPairingRequest._();
+  static $pb.GeneratedMessage $_createMessage() => StartPairingRequest._();
+  @$core.override
+  StartPairingRequest createEmptyInstance() => StartPairingRequest._();
+  @$core.pragma('dart2js:noInline')
+  static StartPairingRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<StartPairingRequest>(
+          StartPairingRequest.$_createMessage);
+  static StartPairingRequest? _defaultInstance;
+
+  /// The new device's pairing offer: opaque, at most 1 KiB.
+  @$pb.TagNumber(1)
+  $core.List<$core.int> get offer => $_getN(0);
+  @$pb.TagNumber(1)
+  set offer($core.List<$core.int> value) => $_setBytes(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasOffer() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearOffer() => $_clearField(1);
+}
+
+/// The pairing to show in the pairing code.
+class StartPairingResponse extends $pb.GeneratedMessage {
+  factory StartPairingResponse({
+    $core.String? pairingId,
+    $core.String? takeToken,
+    $1.Timestamp? expiresAt,
+  }) {
+    final result = StartPairingResponse._();
+    if (pairingId != null) result.pairingId = pairingId;
+    if (takeToken != null) result.takeToken = takeToken;
+    if (expiresAt != null) result.expiresAt = expiresAt;
+    return result;
+  }
+
+  StartPairingResponse._();
+
+  factory StartPairingResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      StartPairingResponse()..mergeFromBuffer(data, registry);
+  factory StartPairingResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      StartPairingResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'StartPairingResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: StartPairingResponse.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'pairingId')
+    ..aOS(2, _omitFieldNames ? '' : 'takeToken')
+    ..aOM<$1.Timestamp>(3, _omitFieldNames ? '' : 'expiresAt',
+        subBuilder: $1.Timestamp.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  StartPairingResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  StartPairingResponse copyWith(void Function(StartPairingResponse) updates) =>
+      super.copyWith((message) => updates(message as StartPairingResponse))
+          as StartPairingResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use StartPairingResponse() / StartPairingResponse.new instead')
+  static StartPairingResponse create() => StartPairingResponse._();
+  static $pb.GeneratedMessage $_createMessage() => StartPairingResponse._();
+  @$core.override
+  StartPairingResponse createEmptyInstance() => StartPairingResponse._();
+  @$core.pragma('dart2js:noInline')
+  static StartPairingResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<StartPairingResponse>(
+          StartPairingResponse.$_createMessage);
+  static StartPairingResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get pairingId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set pairingId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasPairingId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearPairingId() => $_clearField(1);
+
+  /// Kept by the new device and sent back to collect the approval.
+  @$pb.TagNumber(2)
+  $core.String get takeToken => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set takeToken($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasTakeToken() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearTakeToken() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $1.Timestamp get expiresAt => $_getN(2);
+  @$pb.TagNumber(3)
+  set expiresAt($1.Timestamp value) => $_setField(3, value);
+  @$pb.TagNumber(3)
+  $core.bool hasExpiresAt() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearExpiresAt() => $_clearField(3);
+  @$pb.TagNumber(3)
+  $1.Timestamp ensureExpiresAt() => $_ensure(2);
+}
+
+/// Fetches a pairing's offer.
+class GetPairingOfferRequest extends $pb.GeneratedMessage {
+  factory GetPairingOfferRequest({
+    $core.String? pairingId,
+  }) {
+    final result = GetPairingOfferRequest._();
+    if (pairingId != null) result.pairingId = pairingId;
+    return result;
+  }
+
+  GetPairingOfferRequest._();
+
+  factory GetPairingOfferRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetPairingOfferRequest()..mergeFromBuffer(data, registry);
+  factory GetPairingOfferRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetPairingOfferRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GetPairingOfferRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: GetPairingOfferRequest.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'pairingId')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetPairingOfferRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetPairingOfferRequest copyWith(
+          void Function(GetPairingOfferRequest) updates) =>
+      super.copyWith((message) => updates(message as GetPairingOfferRequest))
+          as GetPairingOfferRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use GetPairingOfferRequest() / GetPairingOfferRequest.new instead')
+  static GetPairingOfferRequest create() => GetPairingOfferRequest._();
+  static $pb.GeneratedMessage $_createMessage() => GetPairingOfferRequest._();
+  @$core.override
+  GetPairingOfferRequest createEmptyInstance() => GetPairingOfferRequest._();
+  @$core.pragma('dart2js:noInline')
+  static GetPairingOfferRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<GetPairingOfferRequest>(
+          GetPairingOfferRequest.$_createMessage);
+  static GetPairingOfferRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get pairingId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set pairingId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasPairingId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearPairingId() => $_clearField(1);
+}
+
+/// The offer, for checking against the pairing code's commitment.
+class GetPairingOfferResponse extends $pb.GeneratedMessage {
+  factory GetPairingOfferResponse({
+    $core.List<$core.int>? offer,
+  }) {
+    final result = GetPairingOfferResponse._();
+    if (offer != null) result.offer = offer;
+    return result;
+  }
+
+  GetPairingOfferResponse._();
+
+  factory GetPairingOfferResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetPairingOfferResponse()..mergeFromBuffer(data, registry);
+  factory GetPairingOfferResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetPairingOfferResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GetPairingOfferResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: GetPairingOfferResponse.$_createMessage)
+    ..a<$core.List<$core.int>>(
+        1, _omitFieldNames ? '' : 'offer', $pb.PbFieldType.OY)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetPairingOfferResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetPairingOfferResponse copyWith(
+          void Function(GetPairingOfferResponse) updates) =>
+      super.copyWith((message) => updates(message as GetPairingOfferResponse))
+          as GetPairingOfferResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use GetPairingOfferResponse() / GetPairingOfferResponse.new instead')
+  static GetPairingOfferResponse create() => GetPairingOfferResponse._();
+  static $pb.GeneratedMessage $_createMessage() => GetPairingOfferResponse._();
+  @$core.override
+  GetPairingOfferResponse createEmptyInstance() => GetPairingOfferResponse._();
+  @$core.pragma('dart2js:noInline')
+  static GetPairingOfferResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<GetPairingOfferResponse>(
+          GetPairingOfferResponse.$_createMessage);
+  static GetPairingOfferResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.List<$core.int> get offer => $_getN(0);
+  @$pb.TagNumber(1)
+  set offer($core.List<$core.int> value) => $_setBytes(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasOffer() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearOffer() => $_clearField(1);
+}
+
+/// Approves a pairing.
+class ApprovePairingRequest extends $pb.GeneratedMessage {
+  factory ApprovePairingRequest({
+    $core.String? pairingId,
+    $core.List<$core.int>? approval,
+  }) {
+    final result = ApprovePairingRequest._();
+    if (pairingId != null) result.pairingId = pairingId;
+    if (approval != null) result.approval = approval;
+    return result;
+  }
+
+  ApprovePairingRequest._();
+
+  factory ApprovePairingRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ApprovePairingRequest()..mergeFromBuffer(data, registry);
+  factory ApprovePairingRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ApprovePairingRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ApprovePairingRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: ApprovePairingRequest.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'pairingId')
+    ..a<$core.List<$core.int>>(
+        2, _omitFieldNames ? '' : 'approval', $pb.PbFieldType.OY)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ApprovePairingRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ApprovePairingRequest copyWith(
+          void Function(ApprovePairingRequest) updates) =>
+      super.copyWith((message) => updates(message as ApprovePairingRequest))
+          as ApprovePairingRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use ApprovePairingRequest() / ApprovePairingRequest.new instead')
+  static ApprovePairingRequest create() => ApprovePairingRequest._();
+  static $pb.GeneratedMessage $_createMessage() => ApprovePairingRequest._();
+  @$core.override
+  ApprovePairingRequest createEmptyInstance() => ApprovePairingRequest._();
+  @$core.pragma('dart2js:noInline')
+  static ApprovePairingRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ApprovePairingRequest>(
+          ApprovePairingRequest.$_createMessage);
+  static ApprovePairingRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get pairingId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set pairingId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasPairingId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearPairingId() => $_clearField(1);
+
+  /// Sealed to the new device; at most 512 KiB.
+  @$pb.TagNumber(2)
+  $core.List<$core.int> get approval => $_getN(1);
+  @$pb.TagNumber(2)
+  set approval($core.List<$core.int> value) => $_setBytes(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasApproval() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearApproval() => $_clearField(2);
+}
+
+/// A human-readable confirmation.
+class ApprovePairingResponse extends $pb.GeneratedMessage {
+  factory ApprovePairingResponse({
+    $core.String? message,
+  }) {
+    final result = ApprovePairingResponse._();
+    if (message != null) result.message = message;
+    return result;
+  }
+
+  ApprovePairingResponse._();
+
+  factory ApprovePairingResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ApprovePairingResponse()..mergeFromBuffer(data, registry);
+  factory ApprovePairingResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ApprovePairingResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ApprovePairingResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: ApprovePairingResponse.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'message')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ApprovePairingResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ApprovePairingResponse copyWith(
+          void Function(ApprovePairingResponse) updates) =>
+      super.copyWith((message) => updates(message as ApprovePairingResponse))
+          as ApprovePairingResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use ApprovePairingResponse() / ApprovePairingResponse.new instead')
+  static ApprovePairingResponse create() => ApprovePairingResponse._();
+  static $pb.GeneratedMessage $_createMessage() => ApprovePairingResponse._();
+  @$core.override
+  ApprovePairingResponse createEmptyInstance() => ApprovePairingResponse._();
+  @$core.pragma('dart2js:noInline')
+  static ApprovePairingResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ApprovePairingResponse>(
+          ApprovePairingResponse.$_createMessage);
+  static ApprovePairingResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get message => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set message($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasMessage() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearMessage() => $_clearField(1);
+}
+
+/// Collects a pairing's approval.
+class TakePairingApprovalRequest extends $pb.GeneratedMessage {
+  factory TakePairingApprovalRequest({
+    $core.String? pairingId,
+    $core.String? takeToken,
+  }) {
+    final result = TakePairingApprovalRequest._();
+    if (pairingId != null) result.pairingId = pairingId;
+    if (takeToken != null) result.takeToken = takeToken;
+    return result;
+  }
+
+  TakePairingApprovalRequest._();
+
+  factory TakePairingApprovalRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      TakePairingApprovalRequest()..mergeFromBuffer(data, registry);
+  factory TakePairingApprovalRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      TakePairingApprovalRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'TakePairingApprovalRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: TakePairingApprovalRequest.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'pairingId')
+    ..aOS(2, _omitFieldNames ? '' : 'takeToken')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  TakePairingApprovalRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  TakePairingApprovalRequest copyWith(
+          void Function(TakePairingApprovalRequest) updates) =>
+      super.copyWith(
+              (message) => updates(message as TakePairingApprovalRequest))
+          as TakePairingApprovalRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use TakePairingApprovalRequest() / TakePairingApprovalRequest.new instead')
+  static TakePairingApprovalRequest create() => TakePairingApprovalRequest._();
+  static $pb.GeneratedMessage $_createMessage() =>
+      TakePairingApprovalRequest._();
+  @$core.override
+  TakePairingApprovalRequest createEmptyInstance() =>
+      TakePairingApprovalRequest._();
+  @$core.pragma('dart2js:noInline')
+  static TakePairingApprovalRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<TakePairingApprovalRequest>(
+          TakePairingApprovalRequest.$_createMessage);
+  static TakePairingApprovalRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get pairingId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set pairingId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasPairingId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearPairingId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get takeToken => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set takeToken($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasTakeToken() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearTakeToken() => $_clearField(2);
+}
+
+/// The approval, once a paired device has given it.
+class TakePairingApprovalResponse extends $pb.GeneratedMessage {
+  factory TakePairingApprovalResponse({
+    $core.List<$core.int>? approval,
+  }) {
+    final result = TakePairingApprovalResponse._();
+    if (approval != null) result.approval = approval;
+    return result;
+  }
+
+  TakePairingApprovalResponse._();
+
+  factory TakePairingApprovalResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      TakePairingApprovalResponse()..mergeFromBuffer(data, registry);
+  factory TakePairingApprovalResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      TakePairingApprovalResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'TakePairingApprovalResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: TakePairingApprovalResponse.$_createMessage)
+    ..a<$core.List<$core.int>>(
+        1, _omitFieldNames ? '' : 'approval', $pb.PbFieldType.OY)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  TakePairingApprovalResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  TakePairingApprovalResponse copyWith(
+          void Function(TakePairingApprovalResponse) updates) =>
+      super.copyWith(
+              (message) => updates(message as TakePairingApprovalResponse))
+          as TakePairingApprovalResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use TakePairingApprovalResponse() / TakePairingApprovalResponse.new instead')
+  static TakePairingApprovalResponse create() =>
+      TakePairingApprovalResponse._();
+  static $pb.GeneratedMessage $_createMessage() =>
+      TakePairingApprovalResponse._();
+  @$core.override
+  TakePairingApprovalResponse createEmptyInstance() =>
+      TakePairingApprovalResponse._();
+  @$core.pragma('dart2js:noInline')
+  static TakePairingApprovalResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<TakePairingApprovalResponse>(
+          TakePairingApprovalResponse.$_createMessage);
+  static TakePairingApprovalResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.List<$core.int> get approval => $_getN(0);
+  @$pb.TagNumber(1)
+  set approval($core.List<$core.int> value) => $_setBytes(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasApproval() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearApproval() => $_clearField(1);
+}
+
 const $core.bool _omitFieldNames =
     $core.bool.fromEnvironment('protobuf.omit_field_names');
 const $core.bool _omitMessageNames =

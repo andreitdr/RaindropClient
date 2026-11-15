@@ -4,17 +4,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/server_profile.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/widgets/adaptive.dart';
+import '../../identity/widgets/lock_gate.dart';
 import '../../voice/controllers/voice_call_controller.dart';
 import '../controllers/servers_controller.dart';
 import '../controllers/session_controller.dart';
 
-/// Leaves [server] for good: asks for the password (the server demands it
-/// for a leave) and whether to keep the account, calls
+/// Leaves [server] for good: asks whether to keep the account, has the
+/// person unlock this device (there is no password to confirm with; the
+/// server takes the session being bound to one of their devices), calls
 /// `UserService.LeaveServer`, then forgets the server on this device.
 ///
 /// Like the channel-name dialog, it stays open while the request is in
-/// flight and when it fails, so a wrong password is shown under the field
-/// rather than closing the dialog.
+/// flight and when it fails, so a refusal is shown rather than closing the
+/// dialog.
 Future<void> showLeaveServerDialog(
   BuildContext context,
   ServerProfile server,
@@ -33,19 +35,12 @@ class _LeaveServerDialog extends ConsumerStatefulWidget {
 }
 
 class _LeaveServerDialogState extends ConsumerState<_LeaveServerDialog> {
-  final _password = TextEditingController();
   bool _eraseAccount = false;
   bool _submitting = false;
   String? _error;
 
-  @override
-  void dispose() {
-    _password.dispose();
-    super.dispose();
-  }
-
   Future<void> _submit() async {
-    if (_submitting || _password.text.isEmpty) return;
+    if (_submitting) return;
     setState(() {
       _submitting = true;
       _error = null;
@@ -61,10 +56,20 @@ class _LeaveServerDialogState extends ConsumerState<_LeaveServerDialog> {
           setState(() {
             _submitting = false;
             _error =
-                'You are signed out of this server. Sign in again to leave '
+                'This device is not signed in to this server. Sign in to leave '
                 'it, or remove it from this device.';
           });
         }
+        return;
+      }
+
+      if (!mounted ||
+          !await confirmUnlock(
+            context,
+            ref,
+            reason: 'Leave ${widget.server.displayName}',
+          )) {
+        if (mounted) setState(() => _submitting = false);
         return;
       }
 
@@ -75,16 +80,14 @@ class _LeaveServerDialogState extends ConsumerState<_LeaveServerDialog> {
 
       await ref
           .read(serverSessionProvider(serverId).notifier)
-          .leave(password: _password.text, preserveData: !_eraseAccount);
+          .leave(preserveData: !_eraseAccount);
       await ref.read(serversControllerProvider.notifier).remove(serverId);
       if (mounted) Navigator.pop(context);
     } on ApiException catch (e) {
       if (mounted) {
         setState(() {
           _submitting = false;
-          _error = e.code == 'invalid_credentials'
-              ? 'That password is not right.'
-              : e.message;
+          _error = e.message;
         });
       }
     }
@@ -103,7 +106,7 @@ class _LeaveServerDialogState extends ConsumerState<_LeaveServerDialog> {
           children: [
             Text(
               _eraseAccount
-                  ? 'Your username and password are erased on the server right '
+                  ? 'Your username is erased on the server right '
                         'away. Messages you sent stay, shown as from an unknown '
                         'member.'
                   : 'The server keeps your account, inactive, for as long as '
@@ -116,17 +119,6 @@ class _LeaveServerDialogState extends ConsumerState<_LeaveServerDialog> {
               style: TextStyle(color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 16),
-            TextField(
-              controller: _password,
-              autofocus: true,
-              obscureText: true,
-              enabled: !_submitting,
-              textInputAction: TextInputAction.done,
-              decoration: const InputDecoration(labelText: 'Password'),
-              onChanged: (_) => setState(() => _error = null),
-              onSubmitted: (_) => _submit(),
-            ),
-            const SizedBox(height: 8),
             SwitchListTile.adaptive(
               value: _eraseAccount,
               onChanged: _submitting
@@ -149,7 +141,7 @@ class _LeaveServerDialogState extends ConsumerState<_LeaveServerDialog> {
         ),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: scheme.error),
-          onPressed: _submitting || _password.text.isEmpty ? null : _submit,
+          onPressed: _submitting ? null : _submit,
           child: _submitting
               ? const AdaptiveActivityIndicator(size: 18)
               : const Text('Leave server'),

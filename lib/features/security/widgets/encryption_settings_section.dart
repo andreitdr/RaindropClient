@@ -3,14 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/network/api_exception.dart';
-import '../../../core/platform/platform_info.dart';
 import '../../../core/widgets/adaptive.dart';
 import '../controllers/device_setup_controller.dart';
-import 'link_code_scanner.dart';
-import 'recovery_words_dialog.dart';
 
-/// The Encryption section of Settings for one server: this device, the
-/// account's other devices, linking a new one, and the recovery key.
+/// The Encryption section of Settings for one server: this device and the
+/// account's other devices there. Pairing a device, the recovery words and
+/// the authenticator belong to the person rather than to a server, and live
+/// in `IdentitySettingsSection`.
 class EncryptionSettingsSection extends ConsumerWidget {
   const EncryptionSettingsSection({
     super.key,
@@ -115,19 +114,6 @@ class _ReadyBody extends ConsumerWidget {
               ),
           ],
         ),
-        const Divider(height: 1),
-        ListTile(
-          leading: const Icon(Icons.add_link),
-          title: const Text('Link a new device'),
-          subtitle: const Text('Enter the code the new device shows'),
-          onTap: () => _link(context, ref),
-        ),
-        ListTile(
-          leading: const Icon(Icons.key),
-          title: const Text('New recovery key'),
-          subtitle: const Text('Replaces your current recovery key'),
-          onTap: () => _newRecoveryKey(context, ref),
-        ),
       ],
     );
   }
@@ -154,90 +140,6 @@ class _ReadyBody extends ConsumerWidget {
     if (!confirmed) return;
     try {
       await revokeDevice(ref, serverId, deviceId);
-    } on ApiException catch (e) {
-      if (context.mounted) _snack(context, e.message);
-    }
-  }
-
-  Future<void> _link(BuildContext context, WidgetRef ref) async {
-    final controller = TextEditingController();
-    final code = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Link a new device'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              controller: controller,
-              autofocus: !canScanCodes,
-              decoration: const InputDecoration(
-                labelText: 'Link code',
-                hintText: 'RDL1-…',
-              ),
-            ),
-            if (canScanCodes) ...[
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.qr_code_scanner),
-                label: const Text('Scan the code'),
-                onPressed: () async {
-                  final scanned = await scanLinkCode(context);
-                  if (scanned != null && context.mounted) {
-                    Navigator.pop(context, scanned);
-                  }
-                },
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Link'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (code == null || code.trim().isEmpty) return;
-
-    try {
-      await ref.read(deviceSetupProvider(serverId).notifier).approveLink(code);
-      if (context.mounted) _snack(context, 'The new device is being linked.');
-      ref.invalidate(ownDevicesProvider(serverId));
-    } on CryptoException catch (e) {
-      if (!context.mounted) return;
-      _snack(
-        context,
-        e.kind == CryptoErrorKind.verification
-            ? 'That code does not match the device asking to link. Do not '
-                  'link it: check the code, or start again on the new device.'
-            : e.message,
-      );
-    } on ApiException catch (e) {
-      if (context.mounted) _snack(context, e.message);
-    }
-  }
-
-  Future<void> _newRecoveryKey(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showAdaptiveConfirm(
-      context,
-      title: 'Make a new recovery key?',
-      message: 'Your old recovery key will stop working.',
-      confirmLabel: 'Continue',
-    );
-    if (!confirmed) return;
-    try {
-      final words = await ref
-          .read(deviceSetupProvider(serverId).notifier)
-          .newRecoveryKey();
-      if (context.mounted) await showRecoveryWordsDialog(context, words);
     } on ApiException catch (e) {
       if (context.mounted) _snack(context, e.message);
     }

@@ -1,144 +1,124 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:uuid/uuid.dart';
+import 'dart:typed_data';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/crypto/crypto_store.dart';
+import '../../../core/crypto/identity_crypto.dart';
 import '../../../core/models/server_profile.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/raindrop_channel.dart';
 import '../../../core/network/server_trust.dart';
 import '../../../core/network/users_api.dart';
+import '../../../core/storage/identity_store.dart';
 import '../../../core/storage/secure_store.dart';
+import '../../identity/device_sign_in.dart';
+import '../../security/controllers/device_setup_controller.dart';
 import '../../servers/controllers/servers_controller.dart';
 import '../../servers/controllers/session_controller.dart';
 
 /// Drives one "add a server" wizard from first contact through to a stored,
-/// authenticated session. Deliberately not a Riverpod provider itself — it's
-/// a short-lived object owned by the connect/auth screens, created fresh
-/// each time the user starts adding a server and discarded once they finish
-/// or back out.
+/// signed-in session. Deliberately not a Riverpod provider itself — it's
+/// a short-lived object owned by the connect screens, created fresh each time
+/// the user starts adding a server and discarded once they finish or back
+/// out.
+///
+/// There is nothing to type but the address, and a username the first time:
+/// the account on a server is derived from the person's root secret and the
+/// server's own identity key, so the same person adding the same server from
+/// any of their devices — or adding it back after removing it — arrives at
+/// the same account.
 class ConnectServerFlow {
-  ConnectServerFlow({required this.host, required this.port})
-    : _guid = const Uuid().v4(),
-      _pinnedFingerprint = null;
-
-  ConnectServerFlow._existing({
+  ConnectServerFlow({
     required this.host,
     required this.port,
-    required String initialGuid,
-    required this._pinnedFingerprint,
-  }) : _guid = initialGuid;
-
-  /// Rebuilds a flow for a server already in `ServersController`, e.g. when
-  /// a stored session token has expired and the user needs to log back in.
-  /// Unlike the fresh-connect constructor, this pins strictly from the start
-  /// — a mismatch here is treated as a real certificate change, not TOFU.
-  static Future<ConnectServerFlow> forExisting(ServerProfile profile) async {
-    final pinned = await const SecureStore().pinnedFingerprint(profile.id);
-    return ConnectServerFlow._existing(
-      host: profile.host,
-      port: profile.port,
-      initialGuid: profile.id,
-      pinnedFingerprint: pinned,
-    );
-  }
+    required this.identity,
+  });
 
   final String host;
   final int port;
 
-  /// This client's identity on the server being connected to. Generated up
-  /// front — "a client holds a separate GUID per server", per the server's
-  /// own design. It doubles as the local `ServerProfile.id`.
-  ///
-  /// Not final: logging in with a username hands back the UUID the account
-  /// already has on this server, and the flow adopts it in place of the one
-  /// it generated. Nothing has been keyed off the generated GUID until
-  /// [persist] runs, so swapping it before then is safe.
-  String get guid => _guid;
-
-  String _guid;
-
-  final String? _pinnedFingerprint;
+  /// The person signing in.
+  final ClientIdentity identity;
 
   late final RaindropChannel client = RaindropChannel.forServer(
     host: host,
     port: port,
-    pinnedFingerprint: _pinnedFingerprint,
   );
   late final UsersApi usersApi = UsersApi(client);
 
   ServerInfo? _probed;
+  String? _guid;
+  bool _persisted = false;
+  bool _madeKeys = false;
 
-  /// Fetches the server's identity. On a first connection the certificate is
-  /// taken on trust, so this at least checks the server's story is
-  /// consistent: the fingerprint it advertises is the certificate the
-  /// handshake presented, and its identity key signed that certificate.
+  /// The account this person has on the server: derived by [probe], and also
+  /// the local `ServerProfile.id`.
+  String get guid =>
+      _guid ?? (throw StateError('probe() has not completed yet.'));
+
+  Uint8List get _serverKey => _probed!.identityKey!;
+
+  /// Fetches the server's identity and derives the account from it. On a
+  /// first connection the certificate is taken on trust, so this at least
+  /// checks the server's story is consistent: the fingerprint it advertises
+  /// is the certificate the handshake presented, and its identity key signed
+  /// that certificate.
   Future<ServerInfo> probe() async {
     final info = await usersApi.serverInfo();
     final presented = client.pinner.observedFingerprint;
     if (presented != null && !ServerTrust.isConsistent(info, presented)) {
       throw ApiException.certificateMismatch();
     }
+    final key = info.identityKey;
+    if (key == null) {
+      // The account is derived from this key and the sign-in signature covers
+      // it; without one there is nothing to derive from.
+      throw const ApiException(
+        0,
+        'auth_unavailable',
+        'This server has no identity key, so this app cannot sign in to it. '
+            'Ask whoever runs it to update the server.',
+      );
+    }
+    _guid = await IdentityCrypto.accountId(identity.root, key);
     return _probed = info;
   }
+
+  /// Whether this device already lists the server [probe] found.
+  bool alreadyAdded(WidgetRef ref) =>
+      ref.read(serversControllerProvider).any((s) => s.id == guid);
 
   Future<UserStateResult> checkStatus() => usersApi.status(guid);
 
   Future<UsernameAvailability> usernameAvailable(String username) =>
       usersApi.usernameAvailable(username);
 
-  Future<SessionResult> register({
-    required String username,
-    required String password,
-  }) => usersApi.register(userId: guid, username: username, password: password);
-
-  Future<SessionResult> login({required String password}) =>
-      usersApi.login(userId: guid, password: password);
-
-  Future<SessionResult> rejoin({required String password}) =>
-      usersApi.rejoin(userId: guid, password: password);
-
-  /// Logs in to an account that already exists here, found by username —
-  /// the way back in for a client that no longer holds the account's UUID,
-  /// e.g. after the server was removed from this device. The account's own
-  /// UUID replaces this flow's generated one, so everything [persist] keys
-  /// off it (the pinned certificate, the session token, the crypto store)
-  /// belongs to the account that just logged in.
-  Future<SessionResult> loginWithUsername(
+  /// Signs this device in. [username] registers the account when the server
+  /// has none for this person; [authenticatorCode] is for a device that is
+  /// new to an account with an authenticator and does not hold its secret
+  /// (see [needsAuthenticatorCode]).
+  Future<SessionResult> signIn(
     WidgetRef ref, {
-    required String username,
-    required String password,
-  }) async =>
-      _adopt(ref, await usersApi.login(username: username, password: password));
-
-  /// The same, for an account that left with its data preserved.
-  Future<SessionResult> rejoinWithUsername(
-    WidgetRef ref, {
-    required String username,
-    required String password,
-  }) async => _adopt(
-    ref,
-    await usersApi.rejoin(username: username, password: password),
-  );
-
-  /// Takes on the UUID the server answered with, refusing if this device is
-  /// already connected to that account — adopting it would overwrite the
-  /// existing profile's session and pinned certificate.
-  SessionResult _adopt(WidgetRef ref, SessionResult session) {
-    final existing = ref.read(serversControllerProvider);
-    if (existing.any((s) => s.id == session.user.userId)) {
-      throw const ApiException(
-        409,
-        'already_added',
-        'This account is already added on this device. '
-            'Switch to it from the server list instead.',
-      );
-    }
-    _guid = session.user.userId;
-    return session;
+    String? username,
+    String? authenticatorCode,
+  }) async {
+    // Through the provider, not a store of this flow's own: the session that
+    // follows opens the same file, and one store must have one owner.
+    final engine = await ref.read(cryptoEngineProvider(guid).future);
+    _madeKeys = true;
+    return signInWithDevice(
+      api: usersApi,
+      engine: engine,
+      identity: identity,
+      serverKey: _serverKey,
+      username: username,
+      typedCode: authenticatorCode,
+    );
   }
 
-  /// Pins the certificate fingerprint observed during this flow (only if
-  /// nothing was pinned for this GUID before), stores the new session token,
-  /// and registers the server with the rest of the app.
+  /// Pins the certificate fingerprint and identity key observed during this
+  /// flow, stores the new session token, and registers the server with the
+  /// rest of the app.
   Future<void> persist(
     WidgetRef ref, {
     required SessionResult session,
@@ -167,8 +147,8 @@ class ConnectServerFlow {
       displayName: displayName,
     );
     // Handed over before the server is listed, so the session provider's
-    // first build with this profile takes this session instead of restoring
-    // a second one from the token just saved.
+    // first build with this profile takes this session instead of opening a
+    // second one.
     ref
         .read(serverSessionProvider(guid).notifier)
         .adopt(
@@ -179,9 +159,26 @@ class ConnectServerFlow {
             currentUser: session.user,
           ),
         );
+    _persisted = true;
     ref.read(serversControllerProvider.notifier).add(profile);
     ref.read(activeServerIdProvider.notifier).select(guid);
   }
 
-  void dispose() => client.close();
+  /// Closes the flow. When it was abandoned after making this device's keys
+  /// for the server, those keys go too: nothing lists the server, so nothing
+  /// would ever use or delete them.
+  Future<void> dispose(WidgetRef ref) async {
+    if (_persisted) return;
+    final guid = _guid;
+    if (guid != null && _madeKeys && !alreadyAdded(ref)) {
+      try {
+        (await ref.read(cryptoEngineProvider(guid).future)).dispose();
+      } on Object {
+        // It never opened; there is still a file and a key to remove.
+      }
+      ref.invalidate(cryptoEngineProvider(guid));
+      await const CryptoStores().delete(guid);
+    }
+    client.close();
+  }
 }

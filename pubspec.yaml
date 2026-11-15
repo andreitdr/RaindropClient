@@ -46,6 +46,7 @@ dependencies:
     path: native/raindrop_camera_effects
   shared_preferences: ^2.5.5
   uuid: ^4.6.0
+  local_auth: ^3.0.2
 
 dev_dependencies:
   flutter_test:

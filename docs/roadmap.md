@@ -57,8 +57,12 @@ the **app**; the other two projects keep their own, and a gap here is often a ga
   in for it.
 
 ### Account and moderation UI
-- **Changing your username or password.** `UsersApi.changeUsername` and `changePassword` are wrapped
-  and tested, but no screen calls them. [Network layer](network-layer.md)
+- **Changing your username.** `UsersApi.changeUsername` is wrapped and tested, but no screen calls it.
+  (There are no passwords to change — see [Identity](identity.md).) [Network layer](network-layer.md)
+- **Identity, still to do.** Replacing the root after a device is stolen unlocked; carrying pinned
+  ("verified") identities in the vault; a prompt on paired devices when a new one starts pairing;
+  removing a paired device from the device list; biometric unlock is not yet checked on Android, iOS
+  or Windows hardware. [Identity](identity.md#limits)
 - **Role and permission editing.** `RolesApi` only reads the caller's own roles; the server's full
   role API (create, update, assign, the permission catalogue) has no UI, so roles are granted from the
   server's console. [Server roles doc](../../RaindropServer/docs/roles-and-permissions.md)

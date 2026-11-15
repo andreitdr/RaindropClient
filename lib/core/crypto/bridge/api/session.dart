@@ -68,6 +68,14 @@ abstract class CryptoSession implements RustOpaqueInterface {
     required String deviceId,
   });
 
+  /// This device's identity on the server whose identity key is `server_key`, derived from the
+  /// person's root secret. `user_id` in the result is the account to register or sign in to.
+  Future<DeviceIdentity> createIdentityFromRoot({
+    required List<int> root,
+    required List<int> serverKey,
+    required String deviceId,
+  });
+
   Future<void> deleteGroup({required List<int> groupId});
 
   Future<DeviceIdentity?> device();
@@ -80,6 +88,9 @@ abstract class CryptoSession implements RustOpaqueInterface {
   });
 
   Future<PlatformInt64> epoch({required List<int> groupId});
+
+  /// Every pinned identity, for the vault. `first_seen_unix` is not carried and comes back 0.
+  Future<List<PinnedIdentity>> exportPins();
 
   Future<Uint8List> exportSecret({
     required List<int> groupId,
@@ -101,6 +112,9 @@ abstract class CryptoSession implements RustOpaqueInterface {
   Future<Uint8List> groupInfo({required List<int> groupId});
 
   Future<bool> hasGroup({required List<int> groupId});
+
+  /// Takes pins from the vault; a user this device has already pinned is left as it is.
+  Future<void> importPins({required List<PinnedIdentity> pins});
 
   Future<ExternalJoin> joinByExternalCommit({required List<int> groupInfo});
 
@@ -164,6 +178,12 @@ abstract class CryptoSession implements RustOpaqueInterface {
   Future<SealedBackup> sealBackupWithRecoveryKey();
 
   Future<PendingCommit> selfUpdate({required List<int> groupId});
+
+  /// Signs the server's sign-in challenge (its identity key and nonce) with this device's key.
+  Future<Uint8List> signAuthChallenge({
+    required List<int> serverKey,
+    required List<int> nonce,
+  });
 
   /// Signs a message attestation over `canonical` with this device's key.
   Future<Uint8List> signMessageAttestation({required List<int> canonical});

@@ -5,12 +5,13 @@ import '../../../core/models/server_profile.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/widgets/adaptive.dart';
 import '../controllers/session_controller.dart';
+import 'remove_server.dart';
 
 /// Shown in the chat pane, beside the server rail, when restoring the session
 /// for [profile] failed without the server saying anything about it: the
 /// server did not answer, or something else went wrong on the way. The stored
 /// token is untouched, so a retry that gets through signs straight back in —
-/// unlike [ReauthPrompt], which is for a session the server has ended.
+/// unlike `SignInPane`, which is for a server that answered and refused.
 ///
 /// It names the address, because an address that has gone stale (a home
 /// server whose IP changed) looks exactly like a server that is down.
@@ -56,8 +57,7 @@ class ServerUnreachablePane extends ConsumerWidget {
                     network
                         ? 'Nothing answered at $address. Check your '
                               'connection, that the server is running, and '
-                              'that its address has not changed. You are '
-                              'still signed in.'
+                              'that its address has not changed.'
                         : '$error',
                     style: theme.textTheme.bodyMedium,
                   ),
@@ -74,6 +74,13 @@ class ServerUnreachablePane extends ConsumerWidget {
                             child: AdaptiveActivityIndicator(size: 18),
                           )
                         : const Text('Try again'),
+                  ),
+                  const SizedBox(height: 8),
+                  // A server that is gone for good never answers, so taking
+                  // it off this device cannot depend on it answering.
+                  TextButton(
+                    onPressed: () => confirmRemoveServer(context, ref, profile),
+                    child: const Text('Remove from this device'),
                   ),
                 ],
               ),

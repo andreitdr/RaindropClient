@@ -1,19 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
-import '../../../core/crypto/crypto_engine.dart';
-
-/// Scans the link code a new device shows, and returns it as text. Only
-/// codes that parse as a [DeviceLinkCode] are taken, so a stray QR code in
-/// view is ignored rather than tried.
+/// Scans the code a new device shows, and returns it as text. Only codes
+/// [accepts] recognises are taken, so a stray QR code in view is ignored
+/// rather than tried.
 ///
 /// Scanning is a convenience: the code is exactly what the new device shows
-/// as text, and its commitment is what protects the link either way.
-Future<String?> scanLinkCode(BuildContext context) => Navigator.of(context)
-    .push<String>(MaterialPageRoute(builder: (_) => const _LinkCodeScanner()));
+/// as text, and its commitment is what protects the pairing either way.
+Future<String?> scanCode(
+  BuildContext context, {
+  required bool Function(String text) accepts,
+}) => Navigator.of(context).push<String>(
+  MaterialPageRoute(builder: (_) => _LinkCodeScanner(accepts: accepts)),
+);
 
 class _LinkCodeScanner extends StatefulWidget {
-  const _LinkCodeScanner();
+  const _LinkCodeScanner({required this.accepts});
+
+  final bool Function(String text) accepts;
 
   @override
   State<_LinkCodeScanner> createState() => _LinkCodeScannerState();
@@ -35,7 +39,7 @@ class _LinkCodeScannerState extends State<_LinkCodeScanner> {
     if (_done) return;
     for (final barcode in capture.barcodes) {
       final text = barcode.rawValue;
-      if (text != null && DeviceLinkCode.tryParse(text) != null) {
+      if (text != null && widget.accepts(text)) {
         _done = true;
         Navigator.of(context).pop(text);
         return;
@@ -46,7 +50,7 @@ class _LinkCodeScannerState extends State<_LinkCodeScanner> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan the link code')),
+      appBar: AppBar(title: const Text('Scan the code')),
       body: Stack(
         children: [
           MobileScanner(

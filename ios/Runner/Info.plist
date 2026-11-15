@@ -24,6 +24,8 @@
 	<string>com.raindrop.raindropClient.RaindropBroadcast</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Raindrop uses the camera to scan the code another of your devices shows, to link it securely.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Raindrop uses Face ID to check it is you before it signs in to your servers.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Raindrop uses the microphone so you can talk in voice channels.</string>
 	<!-- Attaching a photo or video to a message. Picking a file from Files needs no

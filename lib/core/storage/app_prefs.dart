@@ -26,6 +26,9 @@ class AppPrefs {
   // hidden camera lives here too now): renaming the key would silently throw
   // away every volume anybody has ever set.
   static const _kMemberAudio = 'voice.member_audio';
+  static const _kIdentityVault = 'identity.vault';
+  static const _kHiddenServers = 'identity.hidden_servers';
+  static const _kDeviceName = 'identity.device_name';
 
   /// The id of the currently selected theme: `"system"`, one of the two
   /// built-in ids (`"light"`/`"dark"`), or a custom theme's generated id.
@@ -91,4 +94,33 @@ class AppPrefs {
 
   Future<void> setMemberAudioJson(Map<String, dynamic> audio) =>
       _prefs.setString(_kMemberAudio, jsonEncode(audio));
+
+  /// The person's vault as this device last merged it (see `Vault`): the
+  /// servers they are on and the devices they have paired. None of it is
+  /// secret — addresses, public keys and device names — and the copy each
+  /// server holds is sealed.
+  Map<String, dynamic> get identityVaultJson {
+    final raw = _prefs.getString(_kIdentityVault);
+    if (raw == null) return {};
+    return (jsonDecode(raw) as Map).cast<String, dynamic>();
+  }
+
+  Future<void> setIdentityVaultJson(Map<String, dynamic> vault) =>
+      _prefs.setString(_kIdentityVault, jsonEncode(vault));
+
+  /// Servers removed from *this* device, as `host:port`. The vault still
+  /// lists them — removing a server here is not leaving it, and the person's
+  /// other devices keep it — so this is what stops the vault putting them
+  /// straight back.
+  Set<String> get hiddenServers =>
+      (_prefs.getStringList(_kHiddenServers) ?? const []).toSet();
+
+  Future<void> setHiddenServers(Set<String> servers) =>
+      _prefs.setStringList(_kHiddenServers, servers.toList()..sort());
+
+  /// What this device calls itself in the person's device list.
+  String? get deviceName => _prefs.getString(_kDeviceName);
+
+  Future<void> setDeviceName(String name) =>
+      _prefs.setString(_kDeviceName, name);
 }

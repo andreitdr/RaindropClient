@@ -37,8 +37,8 @@ per server id:
   (`<app support>/crypto/raindrop-<id>.db`, SQLCipher). The store holds the device's private keys, MLS
   state and decrypted messages; see [End-to-end encryption](crypto.md). If the key is lost while the
   file survives (an Android backup restored onto a new install, a keychain reset), the file can never
-  be opened again, so `CryptoStores.open` discards it and starts a fresh store; the device then goes
-  through encryption setup again. Android excludes `files/crypto/` from backups and device transfers
+  be opened again, so `CryptoStores.open` discards it and starts a fresh store; the device then signs
+  in as a new device of the same account. Android excludes `files/crypto/` from backups and device transfers
   (`res/xml/backup_rules.xml`, `data_extraction_rules.xml`) so a restore does not bring one back.
 
 `.forgetServer(serverId)` removes them all at once (and `ServersController.remove` also deletes the
@@ -46,9 +46,20 @@ crypto store itself through `CryptoStores.delete`) — called whenever a server 
 `ServersController` (see [Servers & sessions](servers-and-sessions.md)) or when
 [settings](settings.md#connected-servers) drops a connected server.
 
+## `IdentityStore` — the person's identity
+
+[`identity_store.dart`](../lib/core/storage/identity_store.dart), the same keystore under `client.*`
+keys: the root secret, the recovery seed, the authenticator secret, this install's id and the app-PIN
+lock. They belong to the person, not to a server, so `forgetServer` never touches them. See
+[Identity](identity.md#what-a-device-holds).
+
+`AppPrefs` gained three related, non-secret keys: `identity.vault` (the merged vault — addresses,
+public keys, device names), `identity.hidden_servers` (servers removed from this device, so the vault
+does not restore them) and `identity.device_name`.
+
 ## What's *not* in `SecureStore`
 
-A server's per-client **GUID is not a secret** — the server hands out `PublicUserProfile.userId` to
+A server's account **id is not a secret** — the server hands out `PublicUserProfile.userId` to
 any authenticated caller who asks (see the server's
 [Users doc](../../RaindropServer/docs/users.md#user-api)). So it lives as `ServerProfile.id` in plain
 `AppPrefs`, and doubles as that server's storage namespace key for both `AppPrefs` and `SecureStore` —

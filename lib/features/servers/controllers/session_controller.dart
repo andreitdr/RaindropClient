@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/server_profile.dart';
@@ -13,7 +15,10 @@ import '../../../core/network/server_trust.dart';
 import '../../../core/network/text_messages_api.dart';
 import '../../../core/network/users_api.dart';
 import '../../../core/network/voice_api.dart';
+import '../../../core/storage/identity_store.dart';
 import '../../../core/storage/secure_store.dart';
+import '../../identity/device_sign_in.dart';
+import '../../security/controllers/device_setup_controller.dart';
 import 'servers_controller.dart';
 
 /// A live, authenticated connection to one server: its profile, the pinned
@@ -45,10 +50,21 @@ class ServerSession {
   late final AttachmentsApi attachmentsApi = AttachmentsApi(client);
 }
 
-/// Resolves whether we already have a valid session for a connected server
-/// (token in SecureStore, verified with `UserService.GetMe`), one per
-/// [ServerProfile.id]. `null` means "not signed in here" — the shell routes
-/// to the onboarding login/register flow for that server instead.
+/// Why a server's session could not be opened without the person's help, by
+/// server id: an authenticator code is wanted, or the account is gone. Set
+/// by [ServerSessionController] whenever it settles on `null`, and read by
+/// the pane that takes the chat's place then.
+final signInFailureProvider = StateProvider.family<ApiException?, String>(
+  (ref, serverId) => null,
+);
+
+/// The session for a connected server, one per [ServerProfile.id].
+///
+/// A stored token is tried first (`UserService.GetMe`). When there is none,
+/// or the server has forgotten it — sessions lapse, and a restarted server
+/// forgets them all — this device signs in again with its device key, and
+/// nobody is asked anything. `null` is left for the cases that genuinely
+/// need the person: see [signInFailureProvider].
 final serverSessionProvider =
     AsyncNotifierProvider.family<
       ServerSessionController,
@@ -82,23 +98,16 @@ class ServerSessionController
       return handedOver;
     }
 
-    final token = await _secureStore.sessionToken(serverId);
-    if (token == null) return null;
-
     var fingerprint = await _secureStore.pinnedFingerprint(serverId);
 
     try {
-      return await _restore(profile, token, fingerprint);
+      return await _open(profile, fingerprint);
     } on ApiException catch (e) {
-      if (e.code == 'invalid_session') {
-        await _secureStore.clearSessionToken(serverId);
-        return null;
-      }
-      // Not reaching the server says nothing about the session: keep the
-      // token and fail, so the shell offers a retry instead of a password
-      // prompt that claims the session expired.
+      // Not reaching the server says nothing about the session: fail, so the
+      // shell offers a retry (and a way to remove the server) rather than
+      // claiming anything about the account.
       if (e.isNetworkError) rethrow;
-      if (!e.isCertificateMismatch || fingerprint == null) return null;
+      if (!e.isCertificateMismatch || fingerprint == null) return _gaveUp(e);
     }
 
     // The certificate changed. Follow it only if the identity key pinned for
@@ -109,14 +118,117 @@ class ServerSessionController
         host: profile.host,
         port: profile.port,
       );
-      return await _restore(profile, token, fingerprint);
+      return await _open(profile, fingerprint);
     } on ApiException catch (e) {
-      if (e.code == 'invalid_session') {
-        await _secureStore.clearSessionToken(serverId);
-      }
       if (e.isNetworkError) rethrow;
-      return null;
+      return _gaveUp(e);
     }
+  }
+
+  ServerSession? _gaveUp(ApiException reason) {
+    // After the build that is running: providers may not be written to
+    // while another is building.
+    Future.microtask(
+      () => ref.read(signInFailureProvider(arg).notifier).state = reason,
+    );
+    return null;
+  }
+
+  /// The stored session if the server still knows it, else a new one opened
+  /// with this device's key.
+  Future<ServerSession> _open(
+    ServerProfile profile,
+    String? fingerprint, {
+    String? username,
+    String? authenticatorCode,
+  }) async {
+    final token = await _secureStore.sessionToken(profile.id);
+    if (token != null && username == null && authenticatorCode == null) {
+      try {
+        return await _restore(profile, token, fingerprint);
+      } on ApiException catch (e) {
+        if (e.code != 'invalid_session') rethrow;
+        await _secureStore.clearSessionToken(profile.id);
+      }
+    }
+    final session = await _signIn(
+      profile,
+      fingerprint,
+      username: username,
+      authenticatorCode: authenticatorCode,
+    );
+    ref.onDispose(session.client.close);
+    return session;
+  }
+
+  /// Opens a session with the device key (see [signInWithDevice]). The
+  /// caller owns the session's client: [build] closes it with the provider,
+  /// and [adopt] hands it to the build that follows.
+  Future<ServerSession> _signIn(
+    ServerProfile profile,
+    String? fingerprint, {
+    String? username,
+    String? authenticatorCode,
+  }) async {
+    final identity = await const IdentityStore().read();
+    final serverKey = await _secureStore.pinnedIdentityKey(profile.id);
+    if (identity == null || serverKey == null) {
+      throw const ApiException(
+        0,
+        'no_identity',
+        'This device has no identity to sign in with.',
+      );
+    }
+    if (fingerprint != null) {
+      PinRegistry.instance.pin(profile.host, profile.port, fingerprint);
+    }
+
+    final client = RaindropChannel.forServer(
+      host: profile.host,
+      port: profile.port,
+      pinnedFingerprint: fingerprint,
+    );
+    try {
+      final result = await signInWithDevice(
+        api: UsersApi(client),
+        engine: await ref.read(cryptoEngineProvider(profile.id).future),
+        identity: identity,
+        serverKey: serverKey,
+        username: username,
+        typedCode: authenticatorCode,
+      );
+      await _secureStore.saveSessionToken(profile.id, result.token);
+      return ServerSession(
+        profile: profile,
+        client: client,
+        token: result.token,
+        currentUser: result.user,
+      );
+    } on Object {
+      client.close();
+      rethrow;
+    }
+  }
+
+  /// Signs in with what only the person can supply: an [authenticatorCode]
+  /// for a device new to an account that has an authenticator, or a
+  /// [username] to register again on a server that no longer has the
+  /// account. Throws the [ApiException] when it is refused.
+  Future<void> signInWith({String? username, String? authenticatorCode}) async {
+    ServerProfile? profile;
+    for (final s in ref.read(serversControllerProvider)) {
+      if (s.id == arg) profile = s;
+    }
+    if (profile == null) return;
+
+    final session = await _signIn(
+      profile,
+      await _secureStore.pinnedFingerprint(arg),
+      username: username,
+      authenticatorCode: authenticatorCode,
+    );
+    ref.read(signInFailureProvider(arg).notifier).state = null;
+    adopt(session);
   }
 
   Future<ServerSession> _restore(
@@ -189,32 +301,56 @@ class ServerSessionController
     ref.invalidateSelf();
   }
 
-  Future<void> logout() async {
+  /// Ends this device's session, and with [forgetDevice] takes this device
+  /// off the account too — for when the server is being removed from this
+  /// device, whose keys are about to be deleted and would otherwise stay
+  /// listed against the account for good.
+  ///
+  /// Never waits on the server: it may be down, or gone, and removing it from
+  /// this device has to work regardless. The calls are sent and left to
+  /// finish, or not, on their own.
+  Future<void> logout({bool forgetDevice = false}) async {
     final current = state.valueOrNull;
+    await _secureStore.clearSessionToken(arg);
     if (current == null) return;
-    try {
-      await current.usersApi.logout(current.token);
-    } on ApiException {
-      // Best-effort: the token is being discarded locally regardless.
-    }
-    await _secureStore.clearSessionToken(current.profile.id);
     state = const AsyncData(null);
+
+    unawaited(() async {
+      try {
+        if (forgetDevice) {
+          final device = await (await ref.read(
+            cryptoEngineProvider(arg).future,
+          )).device();
+          if (device != null) {
+            // Revoking a device ends its sessions, this one included.
+            await current.e2eeApi
+                .revokeDevice(current.token, device.deviceId)
+                .timeout(_farewellTimeout);
+            return;
+          }
+        }
+        await current.usersApi.logout(current.token).timeout(_farewellTimeout);
+      } on Object {
+        // Best-effort: everything local is being discarded regardless.
+      }
+    }());
   }
+
+  static const _farewellTimeout = Duration(seconds: 5);
 
   /// Leaves the server for good (`UserService.LeaveServer`): the account is
   /// kept, reserved but inactive, until the server's retention runs out when
   /// [preserveData] is set, and erased at once otherwise. Unlike [logout] a
-  /// failure is not swallowed — a wrong password must reach the dialog.
+  /// failure is not swallowed. There is no password to confirm with: the
+  /// server takes the session being bound to one of the person's devices,
+  /// and the dialog asks for this device to be unlocked first.
   /// Forgetting the server locally is the caller's next step.
-  Future<LeaveResult> leave({
-    required String password,
-    required bool preserveData,
-  }) async {
+  Future<LeaveResult> leave({required bool preserveData}) async {
     final current = state.valueOrNull;
     if (current == null) throw StateError('Not signed in to $arg.');
     final result = await current.usersApi.leave(
       current.token,
-      password: password,
+      password: '',
       preserveData: preserveData,
     );
     await _secureStore.clearSessionToken(current.profile.id);

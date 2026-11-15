@@ -258,6 +258,45 @@ class UsersApi {
     )).session,
   );
 
+  /// A one-time nonce for one of [userId]'s devices to sign. The first half
+  /// of signing in without a password.
+  Future<Uint8List> beginAuth(String userId) async => Wire.bytes(
+    (await _channel.call(
+      (o) => _users.beginAuth(pb.BeginAuthRequest(userId: userId), options: o),
+    )).nonce,
+  );
+
+  /// The second half: [signature] is the device key's over the server's
+  /// identity key and [nonce]. [certificate] is needed until the device is
+  /// registered here, [username] when the UUID has no account yet, and
+  /// [authenticatorCode] when the device is new to an account that has an
+  /// authenticator (`authenticator_required`). The session that comes back
+  /// is already bound to the device.
+  Future<SessionResult> completeAuth({
+    required String userId,
+    required String deviceId,
+    required Uint8List nonce,
+    required Uint8List signature,
+    Uint8List? certificate,
+    String? username,
+    String? authenticatorCode,
+  }) async => SessionResult.fromProto(
+    (await _channel.call(
+      (o) => _users.completeAuth(
+        pb.CompleteAuthRequest(
+          userId: userId,
+          deviceId: deviceId,
+          nonce: nonce,
+          signature: signature,
+          certificate: certificate,
+          username: username,
+          authenticatorCode: authenticatorCode,
+        ),
+        options: o,
+      ),
+    )).session,
+  );
+
   Future<void> logout(String token) => _channel.call(
     (o) => _users.logout(pb.LogoutRequest(), options: o),
     token: token,
