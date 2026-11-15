@@ -48,6 +48,15 @@ dependencies:
   uuid: ^4.6.0
   local_auth: ^3.0.2
 
+# local_auth_windows 2.0.2 (the latest) does not compile with Visual Studio 18:
+# it builds with MSVC's removed /await coroutines and returns from a coroutine
+# with `return`. native/local_auth_windows is that release with exactly those
+# two lines fixed; drop this override once a fixed release is published.
+# See native/local_auth_windows/PATCHED.md.
+dependency_overrides:
+  local_auth_windows:
+    path: native/local_auth_windows
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
