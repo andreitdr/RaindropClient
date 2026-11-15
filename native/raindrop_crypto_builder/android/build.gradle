@@ -1,7 +1,7 @@
 // The Android Gradle Plugin builds the native code with the Android NDK.
 
-group 'com.flutter_rust_bridge.raindrop_crypto_ffi'
-version '1.0'
+group = 'com.flutter_rust_bridge.raindrop_crypto_ffi'
+version = '1.0'
 
 buildscript {
     repositories {
@@ -25,28 +25,32 @@ rootProject.allprojects {
 apply plugin: 'com.android.library'
 
 android {
-    if (project.android.hasProperty("namespace")) {
-        namespace 'com.flutter_rust_bridge.raindrop_crypto_ffi'
-    }
+    namespace = 'com.flutter_rust_bridge.raindrop_crypto_ffi'
 
     // Bumping the plugin compileSdkVersion requires all clients of this plugin
     // to bump the version in their app.
-    compileSdkVersion 36
+    compileSdk = 36
 
     // Use the NDK version
     // declared in /android/app/build.gradle file of the Flutter project.
     // Replace it with a version number if this plugin requires a specfic NDK version.
     // (e.g. ndkVersion "23.1.7779620")
-    ndkVersion android.ndkVersion
+    ndkVersion = android.ndkVersion
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        // 17, as the app and the other local plugin: javac warns that 8 is obsolete.
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     defaultConfig {
-        minSdkVersion 19
+        minSdk = 19
     }
+}
+
+// Warnings are errors here too: a release cannot be published while any platform warns.
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += ['-Xlint:all', '-Werror']
 }
 
 apply from: "../cargokit/gradle/plugin.gradle"

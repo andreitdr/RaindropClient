@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.2
 import PackageDescription
 
 // The sources are shared with the other Apple platform: this package's
@@ -32,7 +32,10 @@ let package = Package(
                 .product(name: "WebRTC", package: "flutter_webrtc")
             ],
             cSettings: [
-                .headerSearchPath("include/raindrop_camera_effects")
+                .headerSearchPath("include/raindrop_camera_effects"),
+                // Warnings are errors in this plugin's Objective-C: a release cannot be published
+                // while any platform warns (RaindropClient/docs/ci-and-releases.md). Needs tools 6.2.
+                .treatAllWarnings(as: .error)
             ]
         )
     ]

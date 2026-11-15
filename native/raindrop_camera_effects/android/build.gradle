@@ -2,8 +2,8 @@
 // the processor hook and the local-track registry are its public API, and the
 // app already carries both it and the WebRTC AAR. See ../README.md.
 
-group 'com.raindrop.camera_effects'
-version '1.0'
+group = 'com.raindrop.camera_effects'
+version = '1.0'
 
 buildscript {
     repositories {
@@ -26,19 +26,25 @@ rootProject.allprojects {
 apply plugin: 'com.android.library'
 
 android {
-    namespace 'com.raindrop.camera_effects'
-    compileSdk 36
+    namespace = 'com.raindrop.camera_effects'
+    compileSdk = 36
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     defaultConfig {
         // The same floor flutter_webrtc sets; there is nothing to attach to
         // below it.
-        minSdk 21
+        minSdk = 21
     }
+}
+
+// Warnings are errors in this plugin's Java: a release cannot be published while any platform
+// warns. See RaindropClient/docs/ci-and-releases.md.
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += ['-Xlint:all', '-Werror']
 }
 
 dependencies {

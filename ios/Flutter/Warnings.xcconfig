@@ -1,0 +1,14 @@
+// Warnings are errors in this app's own code: Runner and the RaindropBroadcast extension, both
+// Swift. A release cannot be published while any platform warns; see docs/ci-and-releases.md.
+// Plugins' pods are built under their own settings. Included by Debug.xcconfig, Release.xcconfig and
+// RaindropBroadcast/Broadcast.xcconfig.
+// Swift only: Runner's own code is all Swift. GCC_TREAT_WARNINGS_AS_ERRORS is deliberately not set —
+// clang would apply it while precompiling third-party plugins' generated Swift headers as modules for
+// Runner to import (media_kit_video's and mobile_scanner's warn), failing the build on code that is
+// not ours.
+SWIFT_TREAT_WARNINGS_AS_ERRORS = YES
+// Swift passes -Werror on to clang when it precompiles the plugins' generated Swift headers it imports,
+// and media_kit_video's and mobile_scanner's raise clang's ignored-attributes warning
+// (`__unsafe_unretained` on a CVPixelBufferRef). Keep that one diagnostic a warning; every other
+// warning — and every warning in our Swift — still fails the build.
+OTHER_SWIFT_FLAGS = $(inherited) -Xcc -Wno-error=ignored-attributes

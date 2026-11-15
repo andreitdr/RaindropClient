@@ -85,7 +85,15 @@ dependencies {
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        // Warnings are errors in this app's own Kotlin (plugins' are theirs): a release cannot be
+        // published while any platform warns. See docs/ci-and-releases.md.
+        allWarningsAsErrors = true
     }
+}
+
+// The same for any Java in this module.
+tasks.withType<JavaCompile>().configureEach {
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
 }
 
 flutter {

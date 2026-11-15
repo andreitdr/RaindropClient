@@ -9,3 +9,5 @@
 
 MARKETING_VERSION = $(FLUTTER_BUILD_NAME)
 CURRENT_PROJECT_VERSION = $(FLUTTER_BUILD_NUMBER)
+
+#include "../Flutter/Warnings.xcconfig"

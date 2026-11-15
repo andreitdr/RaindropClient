@@ -126,7 +126,8 @@ is inert everywhere else.
 - `Broadcast.xcconfig` — only Flutter's generated variables, for the two version numbers (an extension
   must carry the same version as its app). Deliberately *not* Flutter's `Debug`/`Release.xcconfig`,
   which also pull in the CocoaPods settings and would link every plugin into a process with 50 MB to
-  live in.
+  live in. It does include `Flutter/Warnings.xcconfig`, so the extension's code fails on warnings as
+  Runner's does.
 
 The target was added to `Runner.xcodeproj` by `tool/ios/add_broadcast_extension.rb`, which is kept as
 the record of what it needed and to run again if the project is ever regenerated. Its *Embed

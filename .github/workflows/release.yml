@@ -19,6 +19,8 @@ env:
   FLUTTER_VERSION: "3.47.2"
 
 jobs:
+  # Every platform must compile with no error and no warning (warnings are errors), and the tests
+  # must pass, or nothing below runs and no release is published.
   ci:
     name: Build and test
     uses: ./.github/workflows/ci.yml
@@ -61,6 +63,12 @@ jobs:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+
+      # The camera-effects plugin's Package.swift needs swift-tools-version 6.2; see ci.yml.
+      - uses: maxim-lobanov/setup-xcode@v1
+        if: matrix.name == 'macos'
+        with:
+          xcode-version: latest-stable
 
       - name: Linux build and packaging tools
         if: matrix.name == 'linux'
@@ -234,13 +242,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" dist/* \
-            --verify-tag \
-            --title "$GITHUB_REF_NAME" \
-            "${notes[@]}"
         # The release notes are the changelog release.sh wrote into the annotated tag (its message minus
         # the subject line). A lightweight tag pushed by hand has none, so GitHub generates notes instead.
+        run: |
           ref="$(gh api "repos/$GH_REPO/git/ref/tags/$GITHUB_REF_NAME")"
           if [ "$(jq -r .object.type <<< "$ref")" = tag ]; then
             gh api "repos/$GH_REPO/git/tags/$(jq -r .object.sha <<< "$ref")" --jq .message | tail -n +3 > notes.md
@@ -250,3 +254,7 @@ jobs:
           else
             notes=(--generate-notes)
           fi
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            "${notes[@]}"

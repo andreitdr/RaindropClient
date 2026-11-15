@@ -24,7 +24,7 @@ The Flutter SDK is on `PATH` (on the reference dev machine it lives at `~/sdks/f
 
 ```bash
 flutter pub get
-flutter analyze
+flutter analyze --fatal-infos --fatal-warnings
 flutter run -d macos      # or: -d windows, -d linux, -d ios, -d android, -d chrome (web is not a target)
 flutter build macos --debug
 ```
@@ -100,6 +100,21 @@ desktop build is.
 until that runs. An Android build needs a Rust target per ABI
 (`rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`). See
 `docs/mobile.md`.
+
+## Warnings are errors; no release with either
+
+**A release cannot be published while any platform has a compilation error, and every warning is an
+error.** `release.yml` packages nothing unless `ci.yml` builds Linux, macOS, Windows, Android and iOS
+and every one of those builds is clean. Each language in this repository is set to fail on its own
+warnings: `flutter analyze --fatal-infos --fatal-warnings` for Dart (run it before pushing, not plain
+`flutter analyze`), `Warnings.xcconfig` under `ios/Flutter/` and `macos/Runner/Configs/` for Swift, `.treatAllWarnings(as: .error)` in the camera-effects `Package.swift` files,
+`allWarningsAsErrors` / `-Werror` in the Gradle files for Kotlin and Java, `/WX` / `-Werror` in the
+CMake files for C++, and RaindropCrypto's workspace lints for the Rust that cargokit builds. When you
+see a warning in this repository's code — a new file, a new plugin of ours, a toolchain bump — fix it
+in the same change; never silence it (`// ignore:`, `@Suppress`, `#pragma`, a removed flag) to get a
+build through. Warnings from third-party plugins are not ours to fix and do not fail the build. Code
+that only one platform compiles is only checked on that platform, so build it there or let CI do it
+before calling it clean. See [`docs/ci-and-releases.md`](docs/ci-and-releases.md).
 
 ## Architecture
 

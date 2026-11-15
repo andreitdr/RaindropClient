@@ -26,6 +26,30 @@ still in progress.
 | `build` | `linux` (`ubuntu-latest`), `macos` (`macos-latest`), `windows` (`windows-latest`), `android` (`ubuntu-latest`), `ios` (`macos-latest`); `fail-fast: false` | `flutter pub get`, `flutter analyze` (on Linux only — it is platform-independent), then `flutter build <platform> --release` (`apk` for Android, `ios --no-codesign` for iOS) |
 | `test` | `ubuntu-latest`, after `build` | `flutter test` — the unit tests. The integration tests skip themselves because `RAINDROP_TEST_SERVER` is unset |
 
+**Warnings are errors, on every platform.** A release cannot be published while any platform has a
+compilation error or a warning: `release.yml` runs this workflow first and packages nothing unless every
+`build` job succeeds, and each of them fails on a warning in this repository's own code:
+
+| Code | Where the rule is set |
+|---|---|
+| Dart | `flutter analyze --fatal-infos --fatal-warnings` in the Linux job (infos — lints, deprecations — fail too) |
+| Rust (the crypto core and camera effects) | `RaindropCrypto`'s `[workspace.lints.rust] warnings = "deny"`, which holds inside cargokit's build for all five targets |
+| Swift, iOS (Runner, RaindropBroadcast) | `SWIFT_TREAT_WARNINGS_AS_ERRORS` in [`ios/Flutter/Warnings.xcconfig`](../ios/Flutter/Warnings.xcconfig), included by `Debug`/`Release.xcconfig` and `Broadcast.xcconfig` |
+| Swift, macOS (Runner) | the same in [`macos/Runner/Configs/Warnings.xcconfig`](../macos/Runner/Configs/Warnings.xcconfig) |
+| Objective-C, camera-effects plugin | `.treatAllWarnings(as: .error)` in both `Package.swift` files (tools 6.2, hence the newest stable Xcode on the Apple runners) |
+| Kotlin / Java, Android app | `allWarningsAsErrors` and `-Xlint:all -Werror` in `android/app/build.gradle.kts` |
+| Java, the two local plugins | `-Xlint:all -Werror` in their `android/build.gradle` |
+| C++, Windows and Linux runners | `/W4 /WX` and `-Wall -Werror` in `apply_standard_settings` (Flutter's template) |
+
+Third-party plugins and pods build under their own settings and still print warnings (OpenGL ES
+deprecations in `media_kit_video`, Java 8 targets, the Kotlin Gradle plugin deprecation); those are
+theirs to fix and do not fail the build. That is also why Runner does not set
+`GCC_TREAT_WARNINGS_AS_ERRORS`: clang would apply it while precompiling plugins' generated Swift
+headers for Runner to import, and `media_kit_video`'s and `mobile_scanner`'s warn. So does the Gradle script deprecation on `android {}` in
+`app/build.gradle.kts`, which goes away only with `android.newDsl=true` — and that waits on the
+plugins that still apply the Kotlin Gradle plugin themselves (`desktop_drop`, `flutter_webrtc`,
+`livekit_client`). Everything that is ours is fixed when it warns, never suppressed.
+
 **Flutter is pinned** (`FLUTTER_VERSION` at the top of both workflows) to the release the app is
 developed with, rather than following the latest stable. A new Flutter can deprecate things, and
 `flutter analyze` treats its deprecation notices as failures. Flutter 3.50 deprecated importing
@@ -75,8 +99,8 @@ Two more gaps worth naming, both local-only on purpose:
 
 Triggered by a pushed version tag matching `v[0-9]+.[0-9]+.[0-9]+`.
 
-1. **`ci`** — reruns `ci.yml` against the tagged commit, so nothing is published that did not build,
-   analyse and pass its tests.
+1. **`ci`** — reruns `ci.yml` against the tagged commit, so nothing is published that did not build
+   on every platform without an error or a warning, analyse clean and pass its tests.
 2. **`package`** — builds `flutter build <platform> --release --build-name <tag without v>` and wraps
    the bundle:
 
