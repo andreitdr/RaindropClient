@@ -20,6 +20,7 @@ class MemberList extends ConsumerWidget {
     required this.serverId,
     required this.currentUserId,
     this.width = 240,
+    this.inEndDrawer = false,
   });
 
   final String serverId;
@@ -28,17 +29,24 @@ class MemberList extends ConsumerWidget {
   /// Set by the layout.
   final double width;
 
+  /// True when this is the narrow layout's right-hand drawer rather than a
+  /// pane in the row. A drawer sits against the screen's trailing edge, so
+  /// it has to keep clear of a notch or rounded corner there (a phone in
+  /// landscape); a pane in the row never touches a screen edge sideways.
+  final bool inEndDrawer;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final membersAsync = ref.watch(membersProvider(serverId));
+    final rtl = Directionality.of(context) == TextDirection.rtl;
 
     return SizedBox(
       width: width,
       child: Panel(
         color: context.surfaces.sidebar,
         child: SafeArea(
-          left: false,
-          right: false,
+          left: inEndDrawer && rtl,
+          right: inEndDrawer && !rtl,
           child: membersAsync.when(
             loading: () => const Center(child: AdaptiveActivityIndicator()),
             error: (err, _) => _RosterError(

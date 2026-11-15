@@ -396,7 +396,8 @@ folder emptied at startup and exit.
 `offline` (the enum `raindrop.v1.Presence` on the wire, turned back into the name by `Wire.presence`). `MembersController` reads it once and then follows `member.joined`/`.renamed`/`.left`/
 `.presence` events (presence is a state, applied as "set"), re-reading after every reconnect and
 polling every fifteen seconds only while the stream is down. It is `autoDispose`, so the pane stops
-following when it is hidden (which it is below 1000px unless toggled on). `ChannelsController`
+following when it is hidden (which it is below 1000px unless toggled on; under 680px it is the right-hand
+drawer, and the shell keeps the roster alive while that layout is up). `ChannelsController`
 follows `channel.*` events the same way and re-reads its list on any role event, since a role change
 can change what this account sees.
 

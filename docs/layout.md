@@ -10,9 +10,10 @@ rearranged by the user: panes reordered and resized, buttons moved between toolb
 and any button hidden. The result is a **local file**, one per install, applied to **every server**
 and never sent anywhere.
 
-It arranges the **wide layout only** (680px and up). The narrow drawer layout keeps its fixed shape,
-though the toolbars it shows (the rail's footer and the user panel, inside the drawer; the chat's top
-bar) still use the saved buttons.
+It arranges the **wide layout only** (680px and up). The narrow drawer layout keeps its fixed shape —
+server rail and channel list in the left drawer, the member list in the right one — though the toolbars
+it shows (the rail's footer and the user panel, inside the drawer; the chat's top bar) still use the
+saved buttons, and a member list hidden in the layout is hidden there too.
 
 ## The model
 
@@ -123,7 +124,9 @@ arranged by the nearest `LayoutScope` — so the editor's preview is the real vi
 **The member list** shows while the chat keeps at least `kMinContentWidth` (440px) beside it — with
 the default widths, a 1000px window, as before this was configurable. Narrower, it folds behind the
 **Members** button (`members.toggle`), wherever that is placed; `revealedPanesProvider` remembers the
-toggle for this run only. With the member list hidden in the layout, the button draws nothing.
+toggle for this run only. Under 680px the member list is always folded, into the narrow layout's
+right-hand drawer, and the same button opens that drawer instead (it opens the enclosing `Scaffold`'s
+end drawer when there is one). With the member list hidden in the layout, the button draws nothing.
 
 ## The editor
 

@@ -19,6 +19,7 @@ import '../../security/widgets/encryption_setup_pane.dart';
 import '../../identity/controllers/identity_controller.dart';
 import '../../identity/screens/welcome_screen.dart';
 import '../../identity/widgets/lock_gate.dart';
+import '../../members/controllers/members_controller.dart';
 import '../../members/widgets/member_list.dart';
 import '../../onboarding/screens/connect_server_screen.dart';
 import '../../servers/widgets/sign_in_pane.dart';
@@ -226,8 +227,10 @@ class _ShellLayoutState extends ConsumerState<_ShellLayout> {
         final membersFit =
             !membersOn ||
             width - othersWidth - (members.width ?? 0) >= kMinContentWidth;
+        // Under the narrow layout the member list is never in the row: it is
+        // the right-hand drawer, which the same button opens.
         final collapsed = {
-          if (!isNarrow && !editing && membersOn && !membersFit)
+          if (!editing && membersOn && (isNarrow || !membersFit))
             MainPanes.members,
         };
 
@@ -270,28 +273,50 @@ class _ShellLayoutState extends ConsumerState<_ShellLayout> {
         };
 
         if (isNarrow) {
-          return Scaffold(
-            key: _scaffoldKey,
-            drawer: Drawer(
-              width: 76 + 240,
-              child: Row(
-                children: [
-                  ServerRail(activeServerId: session.profile.id),
-                  ChannelSidebar(
-                    server: session.profile,
-                    currentUser: session.currentUser,
+          // The member list is the right-hand drawer here — opened by the
+          // Members button or a swipe in from the right edge — unless the
+          // layout hides it, as the wide layout would.
+          final drawerWidth = (width * 0.85).clamp(0.0, 320.0);
+          final membersDrawer = collapsed.contains(MainPanes.members)
+              ? Drawer(
+                  width: drawerWidth,
+                  child: MemberList(
+                    serverId: serverId,
+                    currentUserId: session.currentUser.userId,
+                    width: drawerWidth,
+                    inEndDrawer: true,
                   ),
-                ],
-              ),
-            ),
-            // The sidebar — and the call controls in it — lives in the
-            // drawer here, so a call in progress gets a bar of its own.
-            body: SafeArea(
-              child: Column(
-                children: [
-                  const VoiceConnectionBar(compact: true),
-                  Expanded(child: chat),
-                ],
+                )
+              : null;
+          return scope.withCollapsed(
+            collapsed,
+            child: _KeepRosterWarm(
+              serverId: membersDrawer == null ? null : serverId,
+              child: Scaffold(
+                key: _scaffoldKey,
+                endDrawer: membersDrawer,
+                drawer: Drawer(
+                  width: 76 + 240,
+                  child: Row(
+                    children: [
+                      ServerRail(activeServerId: session.profile.id),
+                      ChannelSidebar(
+                        server: session.profile,
+                        currentUser: session.currentUser,
+                      ),
+                    ],
+                  ),
+                ),
+                // The sidebar — and the call controls in it — lives in the
+                // drawer here, so a call in progress gets a bar of its own.
+                body: SafeArea(
+                  child: Column(
+                    children: [
+                      const VoiceConnectionBar(compact: true),
+                      Expanded(child: chat),
+                    ],
+                  ),
+                ),
               ),
             ),
           );
@@ -327,6 +352,27 @@ class _ShellLayoutState extends ConsumerState<_ShellLayout> {
         );
       },
     );
+  }
+}
+
+/// Keeps [serverId]'s roster loaded and following the event stream while
+/// [child] is on screen, without rebuilding anything when it changes.
+///
+/// The narrow layout's member list lives in a drawer, which exists only while
+/// it is open; [membersProvider] is auto-disposing, so without this every
+/// open would start from a spinner and read the whole roster again. Null
+/// keeps nothing alive (the layout hides the member list).
+class _KeepRosterWarm extends ConsumerWidget {
+  const _KeepRosterWarm({required this.serverId, required this.child});
+
+  final String? serverId;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final id = serverId;
+    if (id != null) ref.listen(membersProvider(id), (_, _) {});
+    return child;
   }
 }
 

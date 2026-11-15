@@ -24,7 +24,13 @@ seconds stale reads as fine and this is a whole-server query.
 `autoDispose` matters here specifically: the member pane is hidden when the window is too narrow for
 it (1000px at the default widths) unless manually toggled on (see
 [Native feel per platform](native-feel-per-platform.md#the-responsive-shell)), or when the user has
-hidden it in their [layout](layout.md), and a hidden pane has no roster to keep current. A failed re-read leaves the last good roster on screen
+hidden it in their [layout](layout.md), and a hidden pane has no roster to keep current.
+
+The one exception is the **narrow layout** (under 680px — every phone). There the member list is the
+right-hand drawer, which Flutter only builds while it is open, so the roster would otherwise be thrown
+away on every close and read from scratch, behind a spinner, on every open. The shell keeps it alive
+for as long as the narrow layout shows a server (`_KeepRosterWarm` in `home_shell.dart`, a
+`ref.listen` that rebuilds nothing), so the drawer opens on a current roster. A failed re-read leaves the last good roster on screen
 rather than surfacing an error where the list used to be.
 
 ## `PresenceStatus` — client-side mirror of the server enum
@@ -50,6 +56,11 @@ regardless — it has to group under headings either way, and a list that merely
 order is one server-side refactor away from arriving in the wrong one.
 
 ## Rendering
+
+On a phone (any window under 680px) the list is the screen's right-hand drawer — 85% of the width, at
+most 320px — opened by the **Members** button in the top bar or a swipe in from the right edge. In the
+drawer it keeps clear of the screen edge it sits against (`inEndDrawer`, a notch in landscape); as a
+pane in the row it never touches one sideways.
 
 [`MemberList`](../lib/features/members/widgets/member_list.dart) — the rightmost pane: a heading per
 presence group (`ONLINE — 3`), then each member as an avatar (initial letter + a presence dot) and

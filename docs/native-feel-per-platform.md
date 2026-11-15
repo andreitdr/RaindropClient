@@ -63,7 +63,9 @@ Page-transition style and scroll physics (bouncing vs. clamping) come for free f
 
 [`HomeShell`](../lib/features/home/screens/home_shell.dart) is responsive **by width, not by
 platform**: a `LayoutBuilder` collapses the four-pane desktop layout (server rail → channel sidebar →
-chat → optional member list) into a single pane behind a `Drawer` under **680px**. This is what makes
+chat → optional member list) into a single pane under **680px**: the server rail and channel list
+behind a left-hand `Drawer`, the member list behind a right-hand one (the top bar's **Members** button,
+or a swipe in from the right edge). This is what makes
 phones and small windows usable without a separate mobile codebase — the same layout code runs
 everywhere, and the breakpoint (not the OS) decides which arrangement to render.
 

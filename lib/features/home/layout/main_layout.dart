@@ -174,6 +174,10 @@ class _NavButton extends StatelessWidget {
 
 /// Shows or hides the member list — only while the window is too narrow to
 /// show it on its own; otherwise it draws nothing.
+///
+/// Under the narrow (phone) layout the member list is the screen's
+/// right-hand drawer, so there the button opens that drawer; in the wide
+/// layout it folds the member pane in and out of the row.
 class _MembersToggleButton extends ConsumerWidget {
   const _MembersToggleButton({required this.style});
 
@@ -184,11 +188,16 @@ class _MembersToggleButton extends ConsumerWidget {
     final collapsed =
         LayoutScope.maybeOf(context)?.collapsedPanes ?? const <String>{};
     if (!collapsed.contains(MainPanes.members)) return const SizedBox.shrink();
-    final shown = ref.watch(
-      revealedPanesProvider.select((s) => s.contains(MainPanes.members)),
-    );
-    void toggle() =>
-        ref.read(revealedPanesProvider.notifier).toggle(MainPanes.members);
+    final scaffold = Scaffold.maybeOf(context);
+    final inDrawer = scaffold != null && scaffold.hasEndDrawer;
+    final shown =
+        !inDrawer &&
+        ref.watch(
+          revealedPanesProvider.select((s) => s.contains(MainPanes.members)),
+        );
+    void toggle() => inDrawer
+        ? scaffold.openEndDrawer()
+        : ref.read(revealedPanesProvider.notifier).toggle(MainPanes.members);
     final icon = shown ? Icons.people : Icons.people_outline;
     return switch (style) {
       SlotStyle.rail => RailButton(

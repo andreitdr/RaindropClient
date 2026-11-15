@@ -220,6 +220,9 @@ one, not to recite the API.
 
 - [Native feel per platform](native-feel-per-platform.md) — the responsive shell and the adaptive
   controls these build on.
+- [Members & presence](members-presence.md#rendering) — on a phone the member list is the right-hand
+  drawer (the top bar's **Members** button, or a swipe from the right edge); nothing about it is
+  phone-specific, it is the narrow layout every window under 680px gets.
 - [Voice](voice.md) — calls in full, of which the background half is here.
 - [Live updates](live-updates.md) — the event stream that `resubscribe()` refreshes.
 - [Roadmap](roadmap.md) — what is still missing.

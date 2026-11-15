@@ -21,7 +21,9 @@ const _fallbackPollInterval = Duration(seconds: 15);
 /// per server id.
 ///
 /// Auto-disposing on purpose: the member pane is hidden below 1000px unless
-/// it is toggled on, and a hidden pane has no roster to keep current.
+/// it is toggled on, and a hidden pane has no roster to keep current. Under
+/// the narrow (phone) layout it is a drawer that exists only while open, so
+/// the shell keeps the roster alive there itself (`_KeepRosterWarm`).
 final membersProvider = AsyncNotifierProvider.autoDispose
     .family<MembersController, List<Member>, String>(MembersController.new);
 
