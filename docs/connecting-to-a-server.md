@@ -55,8 +55,13 @@ On success, `flow.persist(ref, session: ..., displayName: ...)`:
    next step, so the session provider's first build takes this session rather than opening a second.
 4. Registers the server with `ServersController` and makes it the active server.
 
-A flow abandoned after it made this device's keys deletes them (`flow.dispose(ref)`): nothing lists the
-server, so nothing would ever use or remove them.
+A flow abandoned after it made this device's keys deletes them (`flow.dispose(container)`): nothing
+lists the server, so nothing would ever use or remove them. It takes the app's `ProviderContainer`, not a
+screen's `WidgetRef`, because it runs as the screen goes away — `ServerAuthScreen` calls it from its own
+`dispose`, where its `ref` can no longer be used — and keeps going after awaits the screen does not live
+through. Each screen captures the container with `ProviderScope.containerOf` while it is still mounted.
+`test/features/onboarding/server_auth_screen_test.dart` backs out of the join screen and checks the keys
+are deleted without an error.
 
 ## Afterwards
 

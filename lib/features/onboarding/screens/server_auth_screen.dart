@@ -50,9 +50,14 @@ class _ServerAuthScreenState extends ConsumerState<ServerAuthScreen> {
   /// Whether the account has to be made, and so named.
   bool get _isNew => _state == 'unregistered' || _state == 'erased';
 
+  /// The app's container, captured while mounted: [dispose] hands it to the
+  /// flow, and by then this screen's `ref` can no longer be used.
+  late final ProviderContainer _container;
+
   @override
   void initState() {
     super.initState();
+    _container = ProviderScope.containerOf(context, listen: false);
     if (!_isNew) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _submit());
     }
@@ -64,7 +69,7 @@ class _ServerAuthScreenState extends ConsumerState<ServerAuthScreen> {
     _codeController.dispose();
     // A flow that never signed in takes the keys it made with it; one that
     // did keeps its client alive as the session's.
-    if (!_succeeded) _flow.dispose(ref);
+    if (!_succeeded) _flow.dispose(_container);
     super.dispose();
   }
 

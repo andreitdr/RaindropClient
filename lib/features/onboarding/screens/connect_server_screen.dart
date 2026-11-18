@@ -39,6 +39,8 @@ class _ConnectServerScreenState extends ConsumerState<ConnectServerScreen> {
 
   Future<void> _connect() async {
     if (!_formKey.currentState!.validate()) return;
+    // Taken now: closing the flow may happen after this screen has gone.
+    final container = ProviderScope.containerOf(context, listen: false);
     setState(() {
       _connecting = true;
       _error = null;
@@ -71,14 +73,14 @@ class _ConnectServerScreenState extends ConsumerState<ConnectServerScreen> {
       if (!mounted) return;
       setState(() => _connecting = false);
     } on ApiException catch (e) {
-      await flow.dispose(ref);
+      await flow.dispose(container);
       if (!mounted) return;
       setState(() {
         _connecting = false;
         _error = e.message;
       });
     } catch (e) {
-      await flow.dispose(ref);
+      await flow.dispose(container);
       if (!mounted) return;
       setState(() {
         _connecting = false;

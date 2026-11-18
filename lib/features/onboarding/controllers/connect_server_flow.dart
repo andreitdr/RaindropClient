@@ -1,5 +1,4 @@
-import 'dart:typed_data';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/crypto/crypto_store.dart';
@@ -32,6 +31,7 @@ class ConnectServerFlow {
     required this.host,
     required this.port,
     required this.identity,
+    this.stores = const CryptoStores(),
   });
 
   final String host;
@@ -39,6 +39,10 @@ class ConnectServerFlow {
 
   /// The person signing in.
   final ClientIdentity identity;
+
+  /// Where this device's per-server keys live; [dispose] deletes the ones an
+  /// abandoned flow made.
+  final CryptoStores stores;
 
   late final RaindropChannel client = RaindropChannel.forServer(
     host: host,
@@ -86,7 +90,10 @@ class ConnectServerFlow {
 
   /// Whether this device already lists the server [probe] found.
   bool alreadyAdded(WidgetRef ref) =>
-      ref.read(serversControllerProvider).any((s) => s.id == guid);
+      _listedIn(ref.read(serversControllerProvider));
+
+  bool _listedIn(List<ServerProfile> servers) =>
+      servers.any((s) => s.id == guid);
 
   Future<UserStateResult> checkStatus() => usersApi.status(guid);
 
@@ -164,20 +171,36 @@ class ConnectServerFlow {
     ref.read(activeServerIdProvider.notifier).select(guid);
   }
 
+  /// Puts the flow where an abandoned sign-in leaves it — the account
+  /// derived and this device's keys made — without a server.
+  @visibleForTesting
+  void debugKeysMadeFor(String guid) {
+    _guid = guid;
+    _madeKeys = true;
+  }
+
   /// Closes the flow. When it was abandoned after making this device's keys
   /// for the server, those keys go too: nothing lists the server, so nothing
   /// would ever use or delete them.
-  Future<void> dispose(WidgetRef ref) async {
+  ///
+  /// Takes the app's [ProviderContainer] rather than a screen's `WidgetRef`:
+  /// it runs as the screen goes away — from its `dispose`, when that ref is
+  /// already unusable — and carries on after awaits the screen does not live
+  /// through. Capture it with `ProviderScope.containerOf` while the screen is
+  /// still mounted.
+  Future<void> dispose(ProviderContainer container) async {
     if (_persisted) return;
     final guid = _guid;
-    if (guid != null && _madeKeys && !alreadyAdded(ref)) {
+    if (guid != null &&
+        _madeKeys &&
+        !_listedIn(container.read(serversControllerProvider))) {
       try {
-        (await ref.read(cryptoEngineProvider(guid).future)).dispose();
+        (await container.read(cryptoEngineProvider(guid).future)).dispose();
       } on Object {
         // It never opened; there is still a file and a key to remove.
       }
-      ref.invalidate(cryptoEngineProvider(guid));
-      await const CryptoStores().delete(guid);
+      container.invalidate(cryptoEngineProvider(guid));
+      await stores.delete(guid);
     }
     client.close();
   }
