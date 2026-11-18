@@ -71,7 +71,7 @@ everywhere, and the breakpoint (not the OS) decides which arrangement to render.
 
 Above 680px the panes' order and widths come from the user's saved [layout](layout.md). Whether the
 member list shows by itself is derived from those widths: it shows while the chat keeps at least
-**440px** (`kMinContentWidth`) beside it — a 1000px window at the default widths — and otherwise folds
+**440px** (`kMinContentWidth`) beside it — a 1056px window at the default widths — and otherwise folds
 behind the **Members** button, wherever the layout put it. See [Members & presence](members-presence.md).
 
 ## What is *not* shared

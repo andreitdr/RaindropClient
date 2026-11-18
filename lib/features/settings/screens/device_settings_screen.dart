@@ -13,6 +13,7 @@ import '../../identity/controllers/vault_sync.dart';
 import '../../servers/controllers/servers_controller.dart';
 import '../../servers/widgets/server_actions.dart';
 import '../../voice/widgets/voice_settings_section.dart';
+import '../widgets/settings_app_bar.dart';
 import '../widgets/settings_section_label.dart';
 import 'layout_editor_screen.dart';
 
@@ -38,7 +39,7 @@ class DeviceSettingsScreen extends ConsumerWidget {
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: settingsAppBar(context, title: const Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

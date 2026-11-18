@@ -3,8 +3,10 @@ import 'package:go_router/go_router.dart';
 import '../../features/home/screens/home_shell.dart';
 import '../../features/onboarding/screens/connect_server_screen.dart';
 import '../../features/onboarding/screens/server_auth_screen.dart';
+import '../../features/settings/screens/device_settings_screen.dart';
+import '../../features/settings/screens/identity_settings_screen.dart';
 import '../../features/settings/screens/layout_editor_screen.dart';
-import '../../features/settings/screens/settings_screen.dart';
+import '../../features/settings/screens/server_settings_screen.dart';
 import '../../features/settings/screens/theme_editor_screen.dart';
 import '../theme/theme_definition.dart';
 
@@ -28,7 +30,11 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: '/settings',
-      builder: (context, state) => const SettingsScreen(),
+      builder: (context, state) => const DeviceSettingsScreen(),
+    ),
+    GoRoute(
+      path: '/settings/identity',
+      builder: (context, state) => const IdentitySettingsScreen(),
     ),
     GoRoute(
       path: '/settings/layout',
@@ -45,6 +51,11 @@ final appRouter = GoRouter(
           editing: extra.editing,
         );
       },
+    ),
+    GoRoute(
+      path: '/servers/:serverId/settings',
+      builder: (context, state) =>
+          ServerSettingsScreen(serverId: state.pathParameters['serverId']!),
     ),
   ],
 );

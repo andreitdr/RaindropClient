@@ -93,8 +93,8 @@ listening to, not one held to your ear. A wired or Bluetooth headset still wins 
 It rides in the **call bar** (`VoiceSelfControls`, beside mute and deafen), which on a phone is the
 thin strip above the chat whenever a call is up — the moment the choice matters. It is registered as a
 [layout](layout.md) button too (`MainButtons.speakerphone`), so it can be put in a toolbar, but it is
-deliberately *not* in the shipped layout: the sidebar's user panel is 240px wide and a fourth button
-there leaves no room for the name beside it. The button draws nothing off a phone — the same trick the
+deliberately *not* in the shipped layout: the user panel's row of buttons under the name already holds
+four, and a fifth would not fit the channel list's narrowest width. The button draws nothing off a phone — the same trick the
 members toggle uses — so placing it costs desktop nothing.
 
 ## Sharing the screen

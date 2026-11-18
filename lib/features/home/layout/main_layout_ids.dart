@@ -14,7 +14,7 @@ abstract final class MainSlots {
   /// Under the server list in the rail.
   static const railFooter = 'rail.footer';
 
-  /// Beside the signed-in user at the foot of the channel sidebar.
+  /// Under the signed-in user's name at the foot of the channel sidebar.
   static const userPanel = 'user.trailing';
 
   /// The right end of the chat (or voice) pane's top bar.

@@ -8,19 +8,16 @@ import '../../../core/layout/layout_slot.dart';
 import '../../../core/widgets/panel.dart';
 import '../../home/layout/main_layout_ids.dart';
 import '../controllers/servers_controller.dart';
-import 'leave_server_dialog.dart';
-import 'remove_server.dart';
+import 'server_actions.dart';
 
 /// The leftmost rail of the Discord-style shell: one circular avatar per
-/// connected server, and below them the rail's layout slot — by default an
-/// "add server" button and the settings button. Server switching stays a
-/// single tap regardless of how deep the user is in a channel or DM, matching
-/// the pattern this layout is known for. The rail is on screen for every
-/// server, signed in or not, which is why settings live here by default
-/// rather than in a server's own sidebar.
+/// connected server, and below them the rail's layout slot — by default the
+/// "add server" button. Server switching stays a single tap regardless of how
+/// deep the user is in a channel or DM, matching the pattern this layout is
+/// known for.
 ///
-/// Right-click (long-press on touch) on a server opens its menu: leave it,
-/// or just remove it from this device.
+/// Right-click (long-press on touch) on a server opens its menu: its
+/// settings, leave it, or just remove it from this device.
 class ServerRail extends ConsumerWidget {
   const ServerRail({super.key, required this.activeServerId});
 
@@ -55,7 +52,7 @@ class ServerRail extends ConsumerWidget {
                   ],
                 ),
               ),
-              // "Add a server" and Settings by default; the layout decides.
+              // "Add a server" by default; the layout decides.
               const LayoutSlot(
                 MainSlots.railFooter,
                 style: SlotStyle.rail,
@@ -70,8 +67,6 @@ class ServerRail extends ConsumerWidget {
     );
   }
 }
-
-enum _ServerAction { leave, remove }
 
 class _ServerAvatar extends ConsumerWidget {
   const _ServerAvatar({
@@ -90,43 +85,16 @@ class _ServerAvatar extends ConsumerWidget {
     Offset globalPosition,
   ) async {
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    final scheme = Theme.of(context).colorScheme;
-
-    final action = await showMenu<_ServerAction>(
+    final action = await showMenu<ServerAction>(
       context: context,
       position: RelativeRect.fromRect(
         globalPosition & Size.zero,
         Offset.zero & overlay.size,
       ),
-      items: [
-        PopupMenuItem(
-          value: _ServerAction.leave,
-          child: ListTile(
-            leading: Icon(Icons.logout, color: scheme.error),
-            title: Text('Leave server', style: TextStyle(color: scheme.error)),
-            contentPadding: EdgeInsets.zero,
-            dense: true,
-          ),
-        ),
-        const PopupMenuItem(
-          value: _ServerAction.remove,
-          child: ListTile(
-            leading: Icon(Icons.remove_circle_outline),
-            title: Text('Remove from this device'),
-            contentPadding: EdgeInsets.zero,
-            dense: true,
-          ),
-        ),
-      ],
+      items: serverActionItems(context),
     );
     if (action == null || !context.mounted) return;
-
-    switch (action) {
-      case _ServerAction.leave:
-        await showLeaveServerDialog(context, server);
-      case _ServerAction.remove:
-        await confirmRemoveServer(context, ref, server);
-    }
+    await runServerAction(context, ref, server, action);
   }
 
   @override

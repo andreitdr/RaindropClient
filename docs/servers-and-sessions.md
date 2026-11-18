@@ -90,21 +90,25 @@ Mutating methods:
 
 [`server_rail.dart`](../lib/features/servers/widgets/server_rail.dart) — the leftmost pane of the
 shell: one circular avatar (initial letter of `displayName`) per connected server, then the
-`rail.footer` [layout slot](layout.md) — by default an "add server" button that pushes `/connect` and
-a settings button that pushes `/settings`, but the user may move, add or remove them. Tapping a server
+`rail.footer` [layout slot](layout.md) — by default an "add server" button that pushes `/connect`, but
+the user may move, add or remove buttons there. Tapping a server
 calls `activeServerIdProvider.notifier.select`. Switching servers is always a single tap, regardless
 of how deep the user is in a channel — the same pattern Discord-style clients are known for.
 
 The rail is the **one pane that is on screen for every server, signed in or not** — `HomeShell`'s
-`_SignedOutLayout` keeps it beside `SignInPane` and `ServerUnreachablePane`, and the narrow layout puts it in the drawer — which
-is why settings hang off it rather than off a server's own sidebar, where they were unreachable on a
-server this device is signed out of. The sidebar's own gear and header still push `/settings` too;
-they are shortcuts, not the only way in.
+`_SignedOutLayout` keeps it beside `SignInPane` and `ServerUnreachablePane`, and the narrow layout puts
+it in the drawer — which is why a server's menu (and its *Server settings*) hangs off its avatar.
+User settings sit beside the person's name in the channel list by default; the two signed-out panes,
+which have no channel list beside them, link to them instead. See [Settings](settings.md).
 
 ### Leaving or removing a server
 
 Right-click (long-press on touch) a server avatar for its menu, the same gesture the channel tiles
-use (see [Channels](channels.md)):
+use (see [Channels](channels.md)). Its entries come from
+[`server_actions.dart`](../lib/features/servers/widgets/server_actions.dart), which the server list in
+Device settings and the Server settings page use too:
+
+- **Server settings** opens `/servers/<id>/settings` (see [Settings](settings.md#serversettingsscreen)).
 
 - **Leave server** opens [`leave_server_dialog.dart`](../lib/features/servers/widgets/leave_server_dialog.dart):
   an "Erase my account" switch, off by default, which is `preserveData` inverted — off leaves the
@@ -114,7 +118,8 @@ use (see [Channels](channels.md)):
   `serverSessionProvider(id).notifier.leave(...)`, then `ServersController.remove(id)`.
 - **Remove from this device** — `confirmRemoveServer`
   ([`remove_server.dart`](../lib/features/servers/widgets/remove_server.dart)), the one implementation
-  behind the rail's menu, the Settings row, `ServerUnreachablePane` and `SignInPane`. It is local and
+  behind the rail's menu, Device settings' server list, Server settings, `ServerUnreachablePane` and
+  `SignInPane`. It is local and
   works with the server down or gone: `logout(forgetDevice: true)`, then `ServersController.remove`,
   which also records the server in `AppPrefs.hiddenServers` so the [vault](identity.md#the-vault) does
   not put it back. **The account is not deleted**: it stays on the server, where only this person's
@@ -125,4 +130,4 @@ use (see [Channels](channels.md)):
 - [Connecting to a server](connecting-to-a-server.md) — how a `ServerSession` first comes into being.
 - [Storage](storage.md) — `AppPrefs` (server list, last-active id) vs. `SecureStore` (fingerprint,
   token).
-- [Settings](settings.md) — where a connected server is renamed or removed.
+- [Settings](settings.md) — Server settings, and the server list in Device settings.

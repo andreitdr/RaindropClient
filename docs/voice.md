@@ -761,8 +761,8 @@ units mistake, and why the cap is 2.
   so an existing user's saved `layout.json` will not gain it — the in-call controls are where it is
   always reachable. See [Layout](layout.md). The share button (`MainButtons.screenShare`,
   `VoiceScreenShareButton`) is in the registry, so it can be placed in a toolbar from the layout
-  editor, but **not in the default layout**: the user panel under your name already holds four
-  buttons in a 240-wide sidebar. It is always in the in-call controls.
+  editor, but **not in the default layout**: the user panel's row under your name already holds four
+  buttons, and a fifth would not fit the channel list's narrowest width. It is always in the in-call controls.
 
 - **The share picker** (`screen_share_picker.dart`, `showScreenSharePicker`) opens from the share
   button. **Screens** and **Windows**, each a grid of live thumbnails from `openScreenSources()`

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/crypto/crypto_store.dart';
 import '../../../core/models/server_profile.dart';
@@ -179,6 +180,12 @@ class _SignInPaneState extends ConsumerState<SignInPane> {
                         : () =>
                               confirmRemoveServer(context, ref, widget.profile),
                     child: const Text('Remove from this device'),
+                  ),
+                  // No channel list here, so no button beside the person's
+                  // name: this is the way to this device's settings.
+                  TextButton(
+                    onPressed: () => context.push('/settings'),
+                    child: const Text('User settings'),
                   ),
                 ],
               ),

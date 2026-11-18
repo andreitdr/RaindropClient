@@ -26,20 +26,21 @@ saved buttons, and a member list hidden in the layout is hidden there too.
 | Pane | Rule | Its toolbar (`PaneRule.slot`) |
 |---|---|---|
 | `servers` (rail) | Required. Fixed at 76px: its server icons are a fixed size. | `rail.footer` |
-| `channels` | Required. 180–400px. | `user.trailing` |
+| `channels` | Required. 220–440px, 300 by default (`kChannelsDefaultWidth`): wide enough for a 25-character username, on its own row above the user panel's buttons, to show whole. | `user.trailing` |
 | `content` (chat / voice view) | Required. Fills the rest. | `topBar.trailing` |
 | `members` | Can be hidden. 180–400px. | none — it takes no buttons |
 
 | Slot | Where | Default buttons |
 |---|---|---|
-| `rail.footer` | Under the server list, drawn as large round rail buttons | `server.add`, `app.settings` |
-| `user.trailing` | Beside the signed-in user, foot of the channel list | `voice.mute`, `voice.deafen`, `app.settings` |
+| `rail.footer` | Under the server list, drawn as large round rail buttons | `server.add` |
+| `user.trailing` | Under the signed-in user's name, foot of the channel list | `voice.mute`, `voice.deafen`, `voice.camera`, `app.settings` |
 | `topBar.trailing` | Right end of the chat/voice pane's top bar | `members.toggle` |
 
 The rail, channel list and chat can move but never be hidden: they are how servers, channels and
-messages are reached. **Settings** (`app.settings`) must stay in at least one slot, since the editor
-is behind it. The same button may sit in several slots (Settings does by default), but a slot never
-lists one twice.
+messages are reached. **User settings** (`app.settings`, opening [Device settings](settings.md)) must
+stay in at least one slot, since the editor is behind it; by default it is only beside the user. The
+same button may sit in several slots, but a slot never lists one twice. A server's own settings are
+not a slot button: they open from the server's name and the rail's server menu.
 
 Ids are open strings, defined in [`main_layout_ids.dart`](../lib/features/home/layout/main_layout_ids.dart).
 They are written to disk: add new ones, never rename these.
@@ -81,7 +82,7 @@ directory as the crypto stores), pretty-printed JSON:
   "panes": [
     { "id": "members", "width": 260.0, "visible": true },
     { "id": "servers", "width": 76.0, "visible": true },
-    { "id": "channels", "width": 240.0, "visible": true },
+    { "id": "channels", "width": 300.0, "visible": true },
     { "id": "content", "visible": true }
   ],
   "slots": {
@@ -122,7 +123,7 @@ Loaded before `runApp` like `AppPrefs` ([Architecture overview](architecture-ove
 arranged by the nearest `LayoutScope` — so the editor's preview is the real view, not a mock-up.
 
 **The member list** shows while the chat keeps at least `kMinContentWidth` (440px) beside it — with
-the default widths, a 1000px window, as before this was configurable. Narrower, it folds behind the
+the default widths, a 1056px window. Narrower, it folds behind the
 **Members** button (`members.toggle`), wherever that is placed; `revealedPanesProvider` remembers the
 toggle for this run only. Under 680px the member list is always folded, into the narrow layout's
 right-hand drawer, and the same button opens that drawer instead (it opens the enclosing `Scaffold`'s

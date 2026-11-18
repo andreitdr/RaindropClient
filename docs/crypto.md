@@ -130,7 +130,7 @@ with it, because the server forgets session bindings when sessions end. The serv
   `canScanCodes` says the camera can do it: iOS, Android and macOS, each with a camera permission
   string. The device refuses an offer that does not match the code, which is what stops a server
   substituting keys, however the code was entered.
-- **Settings → Encryption** (`EncryptionSettingsSection`, for the active server):
+- **Server settings → Encryption** (`EncryptionSettingsSection`, for that server — see [Settings](settings.md#serversettingsscreen)):
   - this device and the identity fingerprint
   - the account's devices, each removable
   - *Link a new device*

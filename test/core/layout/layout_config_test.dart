@@ -11,9 +11,7 @@ const rules = mainLayoutRules;
 LayoutConfig normalized([LayoutConfig config = mainDefaultLayout]) =>
     config.normalize(rules);
 
-List<String> order(LayoutConfig config) => [
-  for (final p in config.panes) p.id,
-];
+List<String> order(LayoutConfig config) => [for (final p in config.panes) p.id];
 
 void main() {
   group('defaults', () {
@@ -26,13 +24,11 @@ void main() {
         MainPanes.members,
       ]);
       expect(layout.pane(MainPanes.servers)!.width, 76);
-      expect(layout.pane(MainPanes.channels)!.width, 240);
+      expect(layout.pane(MainPanes.channels)!.width, 300);
       expect(layout.pane(MainPanes.content)!.width, isNull);
       expect(layout.pane(MainPanes.members)!.width, 240);
-      expect(layout.slot(MainSlots.railFooter), [
-        MainButtons.addServer,
-        MainButtons.settings,
-      ]);
+      // Settings sit beside the user only: they are this device's.
+      expect(layout.slot(MainSlots.railFooter), [MainButtons.addServer]);
       expect(layout.slot(MainSlots.userPanel), [
         MainButtons.mute,
         MainButtons.deafen,
@@ -66,10 +62,7 @@ void main() {
 
     test('a wrong shape is a FormatException', () {
       expect(() => LayoutConfig.decode('[]'), throwsFormatException);
-      expect(
-        () => LayoutConfig.decode('{"panes": {}}'),
-        throwsFormatException,
-      );
+      expect(() => LayoutConfig.decode('{"panes": {}}'), throwsFormatException);
       expect(
         () => LayoutConfig.decode('{"panes": [{"width": 3}]}'),
         throwsFormatException,
@@ -123,7 +116,7 @@ void main() {
           .resizePane(MainPanes.servers, 300)
           .resizePane(MainPanes.content, 500)
           .normalize(rules);
-      expect(layout.pane(MainPanes.channels)!.width, 180);
+      expect(layout.pane(MainPanes.channels)!.width, 220);
       expect(layout.pane(MainPanes.members)!.width, 400);
       expect(layout.pane(MainPanes.servers)!.width, 76);
       expect(layout.pane(MainPanes.content)!.width, isNull);
@@ -133,7 +126,7 @@ void main() {
       final layout = normalized()
           .resizePane(MainPanes.channels, double.nan)
           .normalize(rules);
-      expect(layout.pane(MainPanes.channels)!.width, 240);
+      expect(layout.pane(MainPanes.channels)!.width, 300);
     });
 
     test('required panes cannot be hidden; the member list can', () {
@@ -149,16 +142,13 @@ void main() {
       final layout = normalized()
           // Settings is the last of the user panel's four.
           .removeButton(MainSlots.userPanel, 3)
-          .removeButton(MainSlots.railFooter, 1)
           .normalize(rules);
-      expect(layout.slot(MainSlots.railFooter), [
-        MainButtons.addServer,
-        MainButtons.settings,
-      ]);
+      expect(layout.slot(MainSlots.railFooter), [MainButtons.addServer]);
       expect(layout.slot(MainSlots.userPanel), [
         MainButtons.mute,
         MainButtons.deafen,
         MainButtons.camera,
+        MainButtons.settings,
       ]);
     });
 
@@ -168,10 +158,7 @@ void main() {
         slots: {MainSlots.topBar: []},
       ).normalize(rules);
       expect(layout.slot(MainSlots.topBar), isEmpty);
-      expect(layout.slot(MainSlots.railFooter), [
-        MainButtons.addServer,
-        MainButtons.settings,
-      ]);
+      expect(layout.slot(MainSlots.railFooter), [MainButtons.addServer]);
     });
 
     test('a slot never lists a button twice', () {
@@ -233,7 +220,7 @@ void main() {
         fromSlot: MainSlots.railFooter,
         fromIndex: 0,
       );
-      expect(layout.slot(MainSlots.railFooter), [MainButtons.settings]);
+      expect(layout.slot(MainSlots.railFooter), isEmpty);
       expect(layout.slot(MainSlots.topBar), [
         MainButtons.addServer,
         MainButtons.members,
@@ -266,7 +253,7 @@ void main() {
         MainButtons.members,
         MainButtons.settings,
       ]);
-      expect(copied.buttonCount(MainButtons.settings), 3);
+      expect(copied.buttonCount(MainButtons.settings), 2);
 
       final again = copied.placeButton(
         MainButtons.settings,
@@ -280,13 +267,16 @@ void main() {
     });
 
     test('the last Settings button cannot be removed', () {
-      final one = normalized().removeButton(MainSlots.userPanel, 3);
-      expect(rules.canRemoveButton(one, MainSlots.railFooter, 1), isFalse);
-      expect(rules.canRemoveButton(one, MainSlots.railFooter, 0), isTrue);
-      expect(
-        rules.canRemoveButton(normalized(), MainSlots.railFooter, 1),
-        isTrue,
+      // The default has one, the last of the user panel's four.
+      final one = normalized();
+      expect(rules.canRemoveButton(one, MainSlots.userPanel, 3), isFalse);
+      expect(rules.canRemoveButton(one, MainSlots.userPanel, 0), isTrue);
+      final two = one.placeButton(
+        MainButtons.settings,
+        slotId: MainSlots.railFooter,
+        index: 1,
       );
+      expect(rules.canRemoveButton(two, MainSlots.userPanel, 3), isTrue);
     });
   });
 

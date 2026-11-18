@@ -1,16 +1,25 @@
 # Settings
 
-Feature folder: [`lib/features/settings/`](../lib/features/settings/). Routes: `/settings`,
-`/settings/layout` and `/settings/theme-editor` (see [Routing](routing.md)).
+Feature folder: [`lib/features/settings/`](../lib/features/settings/). Settings are split by what they
+belong to:
 
-`/settings` is reached from the **Settings** button — by default in the server rail (see
-[Servers & sessions](servers-and-sessions.md#server-rail)), which is on screen for every server
-whether or not this device is signed in to it, and in the user panel; the user's [layout](layout.md)
-can move it, but always keeps it somewhere — plus the channel sidebar's header.
+| Page | Route | Screen | Opened from |
+|---|---|---|---|
+| **Device settings** | `/settings` | [`DeviceSettingsScreen`](../lib/features/settings/screens/device_settings_screen.dart) | the **User settings** button beside the person's name (and wherever else the [layout](layout.md) puts it); the *User settings* link on `SignInPane` and `ServerUnreachablePane` |
+| **Identity & devices** | `/settings/identity` | [`IdentitySettingsScreen`](../lib/features/settings/screens/identity_settings_screen.dart) | Device settings |
+| **Server settings** | `/servers/:serverId/settings` | [`ServerSettingsScreen`](../lib/features/settings/screens/server_settings_screen.dart) | the server's name above its channel list; *Server settings* in the rail's server menu; a row of Device settings' server list |
 
-## `SettingsScreen`
+Plus `/settings/layout` and `/settings/theme-editor` (see [Routing](routing.md)).
 
-[`settings_screen.dart`](../lib/features/settings/screens/settings_screen.dart) has these sections:
+The **User settings** button (`app.settings` in the [layout](layout.md)) sits by default only in the
+user panel at the foot of the channel list — not in the rail any more. The layout still requires it
+in at least one slot, and a saved layout that has it in the rail keeps it there. With no channel list
+on screen — a server signed out or unreachable — the user panel is not there either, so
+`SignInPane` and `ServerUnreachablePane` carry a *User settings* link of their own.
+
+## `DeviceSettingsScreen`
+
+Everything that belongs to this device, whichever server is open:
 
 ### Theme
 
@@ -48,15 +57,39 @@ with a reason where effects cannot run (Windows and Linux, or a build with no se
 effect, never whether the camera is on: mute and deafen are states that carry over from one call to
 the next, and a camera is not. See [Voice](voice.md#camera).
 
-### Connected servers
+### Identity & devices
 
-Lists every server from `serversControllerProvider` (see [Servers & sessions](servers-and-sessions.md))
-with its `host:port`. Leaving a server for good is the rail's right-click menu, not this list — see
-[Servers & sessions](servers-and-sessions.md#leaving-or-removing-a-server). The logout icon on each row: confirms, then calls
-`serverSessionProvider(serverId).notifier.logout()` followed by
-`serversControllerProvider.notifier.remove(serverId)` — **this only forgets the server locally**
-(including its saved session and pinned certificate fingerprint); it does not delete the user's
-account on the server.
+One row — this device's name and how many other devices are paired — opening `/settings/identity`.
+It has a page of its own because it belongs to the person rather than to this device or a server.
+
+### Servers on this device
+
+Every server from `serversControllerProvider` (see [Servers & sessions](servers-and-sessions.md)) with
+its `host:port`. Tapping a row opens that server's settings; its ⋮ menu offers **Leave server** and
+**Remove from this device** — the same entries, and the same code, as the rail's server menu
+([`server_actions.dart`](../lib/features/servers/widgets/server_actions.dart); see
+[Leaving or removing a server](servers-and-sessions.md#leaving-or-removing-a-server)).
+
+## `IdentitySettingsScreen`
+
+A page around [`IdentitySettingsSection`](../lib/features/identity/widgets/identity_settings_section.dart):
+this device (renamable) and the other paired devices, pairing a device, new recovery words, the
+authenticator, and how this device is unlocked. See [Identity](identity.md).
+
+## `ServerSettingsScreen`
+
+What belongs to one server, for the server in its route — not the active one, so it can be opened for
+any server from the rail or the device's server list. It needs no session, so it opens for a server
+that is down or signed out too.
+
+- A header with the server's name and `host:port`.
+- **Encryption** — [`EncryptionSettingsSection`](../lib/features/security/widgets/encryption_settings_section.dart)
+  for that server: says so when the server offers no end-to-end encryption, when this device is not
+  set up there yet, or when it cannot be read; otherwise this device and the account's other devices
+  there. See [Crypto](crypto.md).
+- **Leave this server** — *Leave server* (`showLeaveServerDialog`) and *Remove from this device*
+  (`confirmRemoveServer`). Once the server is gone from `serversControllerProvider` — from here or
+  anywhere else — the page closes itself.
 
 ## `ThemeEditorScreen`
 
@@ -69,7 +102,7 @@ Takes two navigation `extra` arguments (see [Routing](routing.md)):
 - `starting` — the `AppThemeDefinition` to pre-fill every field from.
 - `editing` — `null` when creating a brand-new theme (name defaults to `"<starting name> copy"`), or
   the existing custom theme being edited in place. **Editing a built-in theme is impossible by
-  construction**: `SettingsScreen` never sets `editing` for a built-in row, so saving from that state
+  construction**: `DeviceSettingsScreen` never sets `editing` for a built-in row, so saving from that state
   always creates a new custom theme rather than mutating `light.json`/`dark.json`.
 
 Saving calls `ThemeCatalogController.addOrUpdate(...)`, which persists to
@@ -78,5 +111,6 @@ Saving calls `ThemeCatalogController.addOrUpdate(...)`, which persists to
 ## Related
 
 - [Theming](theming.md) — the full theme model this screen edits.
-- [Servers & sessions](servers-and-sessions.md) — what "removing" a server actually clears.
+- [Servers & sessions](servers-and-sessions.md) — what leaving and "removing" a server actually clear.
+- [Identity](identity.md) — what the Identity & devices page manages.
 - [Storage](storage.md) — where settings data is persisted.

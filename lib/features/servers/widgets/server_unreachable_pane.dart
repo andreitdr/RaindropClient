@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/models/server_profile.dart';
 import '../../../core/network/api_exception.dart';
@@ -81,6 +82,12 @@ class ServerUnreachablePane extends ConsumerWidget {
                   TextButton(
                     onPressed: () => confirmRemoveServer(context, ref, profile),
                     child: const Text('Remove from this device'),
+                  ),
+                  // No channel list here, so no button beside the person's
+                  // name: this is the way to this device's settings.
+                  TextButton(
+                    onPressed: () => context.push('/settings'),
+                    child: const Text('User settings'),
                   ),
                 ],
               ),

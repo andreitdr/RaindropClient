@@ -41,8 +41,7 @@ Widget pane(BuildContext context, PaneLayout pane, void Function() onTap) =>
         ),
         if (pane.id == MainPanes.servers)
           const LayoutSlot(MainSlots.railFooter, axis: Axis.vertical),
-        if (pane.id == MainPanes.content)
-          const LayoutSlot(MainSlots.topBar),
+        if (pane.id == MainPanes.content) const LayoutSlot(MainSlots.topBar),
       ],
     );
 
@@ -52,7 +51,17 @@ void main() {
     required bool editing,
     required void Function() onPaneTap,
   }) async {
-    var config = mainDefaultLayout;
+    // Settings in the rail as well as beside the user (where the default
+    // puts it): this harness only draws the rail's and the top bar's slots.
+    // Wide enough for the default panes with room left for the chat.
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    var config = mainDefaultLayout.placeButton(
+      MainButtons.settings,
+      slotId: MainSlots.railFooter,
+      index: 1,
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -64,9 +73,8 @@ void main() {
                   ? LayoutEditing(
                       rules: mainLayoutRules,
                       edit: (update) => setState(
-                        () => config = update(config).normalize(
-                          mainLayoutRules,
-                        ),
+                        () =>
+                            config = update(config).normalize(mainLayoutRules),
                       ),
                       decoratePane: (context, pane, index, child) =>
                           LayoutEditBarrier(child: child),

@@ -87,7 +87,7 @@ Two invariants `ThemeCatalogController` protects:
 - **Editing a built-in theme forks it into a new custom one** rather than mutating the shipped JSON in
   place — the editor always assigns a fresh id when starting from a built-in theme.
 - **Deleting a custom theme that's currently active falls back to `kSystemThemeId`** (handled in
-  `SettingsScreen._deleteTheme`), so the app never ends up pointed at a theme id that no longer exists.
+  `DeviceSettingsScreen._deleteTheme`), so the app never ends up pointed at a theme id that no longer exists.
 
 ## Related
 

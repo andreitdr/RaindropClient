@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -296,7 +298,9 @@ class _ShellLayoutState extends ConsumerState<_ShellLayout> {
                 key: _scaffoldKey,
                 endDrawer: membersDrawer,
                 drawer: Drawer(
-                  width: 76 + 240,
+                  // As wide as on the desktop, short of the whole screen: a
+                  // strip of the chat stays visible to tap the drawer shut.
+                  width: math.min(76 + kChannelsDefaultWidth, width - 56),
                   child: Row(
                     children: [
                       ServerRail(activeServerId: session.profile.id),

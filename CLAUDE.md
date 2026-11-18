@@ -163,11 +163,11 @@ core/
 features/
   identity/   — the person's one identity: IdentityController, AppLock + LockGate (unlocking),
                 signInWithDevice, the Vault and its sync, pairing, the welcome / pair / recover
-                screens, Settings → Identity & devices
+                screens, the Identity & devices section
   onboarding/ — ConnectServerFlow + the connect and sign-in screens
   servers/    — ServersController (the local server list), ServerSession, serverEventsProvider +
                 LiveSync (following the event stream), the per-server UUID→name lookup cache, the
-                left-hand server rail
+                left-hand server rail and each server's menu (server_actions: settings, leave, remove)
   channels/   — the server's channel list + the sidebar that renders it
   chat/       — ChatController (send, follow the event stream, page back), AttachmentTransfers
                 (upload/open encrypted files) + the chat pane, its composer and attachment previews
@@ -178,9 +178,10 @@ features/
   security/   — end-to-end encryption: DeviceSetupController (confirm this device's registration,
                 sync the vault, enrol the authenticator), ChannelGroups (each channel's MLS group: join, catch up, Welcomes, key
                 packages, roster reconcile, encrypt/decrypt), the setup pane that takes the chat pane
-                when this device has no keys, the recovery-words dialog, Settings → Encryption
-  settings/   — appearance (theme), the layout editor, voice & video, encryption, and
-                connected-server management
+                when this device has no keys, the recovery-words dialog, the Encryption section
+  settings/   — Device settings (/settings: theme, layout editor, voice & video, the servers on
+                this device), Identity & devices (/settings/identity), and Server settings
+                (/servers/:serverId/settings: that server's encryption, leaving it)
   home/       — HomeShell/MainView, which assemble the above into the responsive shell, and
                 layout/ — the main view's pane/slot/button ids, defaults, rules and button registry
 ```
@@ -226,7 +227,7 @@ Full detail: [`docs/layout.md`](docs/layout.md). The wide main view is arranged 
 to every server. The ids, defaults, rules and the button registry live in `features/home/layout/`;
 `core/` knows them only as open strings and keeps unknown ones. Every layout goes through
 `LayoutConfig.normalize` (load, import, each edit, save). Rail, channel list and chat are required;
-Settings must stay in some slot. The editor (Settings → Customize layout, `/settings/layout`) renders
+User settings must stay in some slot. The editor (Settings → Customize layout, `/settings/layout`) renders
 the real `MainView` over a draft, made inert by `LayoutEditBarrier` except over slots. A new toolbar
 button is an entry in `mainLayoutButtons`, not a widget hard-coded into a pane.
 
@@ -287,13 +288,20 @@ removed) lands on `SignInPane`, via `signInFailureProvider`. A session's token l
 `SecureStore`; the identity lives in `IdentityStore` (`client.*` keys, untouched by removing a server);
 `AppPrefs` holds the non-secret server list, the merged vault and UI settings.
 
-**Leaving is the server rail's right-click menu** (`features/servers/widgets/`): "Leave server" asks
+**Leaving is the server rail's right-click menu** (`features/servers/widgets/server_actions.dart`,
+shared with Server settings and Device settings' server list): "Leave server" asks
 whether to erase the account and has the person unlock the device (`UserService.LeaveServer`,
 `preserveData` inverted), hangs up a call on that server, then forgets the server locally. "Remove from
 this device" (`confirmRemoveServer`, also on the unreachable and sign-in panes and in Settings) is
 local and never waits on the server, so it works for one that is down or gone; the account stays on the
-server, reachable only by the person's paired devices or recovery words. The rail also carries the
-settings button by default, since it is the one pane shown for every server signed in or not.
+server, reachable only by the person's paired devices or recovery words.
+
+**Settings are split** ([`docs/settings.md`](docs/settings.md)): **Device settings** (`/settings`) are
+this device's — theme, layout, voice & video, a link to Identity & devices, and the servers it is in —
+and open from the User settings button beside the person's name (by default only there, not in the
+rail). **Server settings** (`/servers/:serverId/settings`) are one server's — its encryption and the
+ways out — and open from the server's name above its channel list or the rail's server menu. A
+signed-out or unreachable server shows no channel list, so its pane links to User settings itself.
 
 Alongside the fingerprint, the client pins the server's **identity key** (`core/network/server_trust.dart`).
 When a pinned certificate stops matching, session restore follows the change only if that pinned key
@@ -396,7 +404,7 @@ folder emptied at startup and exit.
 `offline` (the enum `raindrop.v1.Presence` on the wire, turned back into the name by `Wire.presence`). `MembersController` reads it once and then follows `member.joined`/`.renamed`/`.left`/
 `.presence` events (presence is a state, applied as "set"), re-reading after every reconnect and
 polling every fifteen seconds only while the stream is down. It is `autoDispose`, so the pane stops
-following when it is hidden (which it is below 1000px unless toggled on; under 680px it is the right-hand
+following when it is hidden (which it is below 1056px unless toggled on; under 680px it is the right-hand
 drawer, and the shell keeps the roster alive while that layout is up). `ChannelsController`
 follows `channel.*` events the same way and re-reads its list on any role event, since a role change
 can change what this account sees.

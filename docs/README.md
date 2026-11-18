@@ -41,7 +41,7 @@ The sibling checkouts are not optional: `native/raindrop_crypto_builder` builds
 | [Members & presence](members-presence.md) | The roster pane, presence grouping, pushed presence |
 | [Voice](voice.md) | Voice channels: joining a call, mute/deafen, per-member volume and mute, mute for everyone, the LiveKit engine and its pinning |
 | [Layout](layout.md) | The customizable main view: pane order/widths, buttons in slots, the layout file, the layout editor |
-| [Settings](settings.md) | Theme selection/editor, the layout editor, voice & audio, encryption (devices, linking, recovery key), connected-server management |
+| [Settings](settings.md) | Device settings (theme and its editor, the layout editor, voice & video, the servers on this device), Identity & devices, and each server's settings (encryption, leaving) |
 | [Network layer](network-layer.md) | gRPC: `RaindropChannel`, the generated code and how to regenerate it, `ApiException`, `CertificatePinner`, the per-service API wrappers |
 | [Storage](storage.md) | `AppPrefs` vs. `SecureStore` — what goes where and why |
 | [End-to-end encryption](crypto.md) | The Rust MLS core in [`../RaindropCrypto`](../../RaindropCrypto/docs/README.md), the bridge and its build glue, `CryptoEngine`, the encrypted store |

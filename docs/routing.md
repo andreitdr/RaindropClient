@@ -9,9 +9,11 @@
 | `/` | [`HomeShell`](architecture-overview.md) | — |
 | `/connect` | [`ConnectServerScreen`](connecting-to-a-server.md) | — |
 | `/connect/auth` | [`ServerAuthScreen`](connecting-to-a-server.md) | `ConnectHandoff` — `(flow: ConnectServerFlow, status: UserStateResult, displayName: String)` |
-| `/settings` | [`SettingsScreen`](settings.md) | — |
+| `/settings` | [`DeviceSettingsScreen`](settings.md#devicesettingsscreen) | — |
+| `/settings/identity` | [`IdentitySettingsScreen`](settings.md#identitysettingsscreen) | — |
 | `/settings/layout` | [`LayoutEditorScreen`](layout.md#the-editor) | — |
 | `/settings/theme-editor` | [`ThemeEditorScreen`](settings.md) | `(starting: AppThemeDefinition, editing: AppThemeDefinition?)` |
+| `/servers/:serverId/settings` | [`ServerSettingsScreen`](settings.md#serversettingsscreen) | — (the server id is in the path) |
 
 ## Why routes are shallow
 

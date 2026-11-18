@@ -22,7 +22,7 @@ The roster is re-read after every reconnect. While the stream is down it falls b
 seconds stale reads as fine and this is a whole-server query.
 
 `autoDispose` matters here specifically: the member pane is hidden when the window is too narrow for
-it (1000px at the default widths) unless manually toggled on (see
+it (1056px at the default widths) unless manually toggled on (see
 [Native feel per platform](native-feel-per-platform.md#the-responsive-shell)), or when the user has
 hidden it in their [layout](layout.md), and a hidden pane has no roster to keep current.
 

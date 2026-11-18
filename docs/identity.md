@@ -122,14 +122,14 @@ The new device opens it, adopts the identity, and `adoptServers` adds every serv
 the identity — **without** the authenticator secret, which the words must not be able to reach — and
 adds that server; its vault brings the rest.
 
-Settings → New recovery words makes a new key; each server's sealed root is replaced as the vault next
+Settings → Identity & devices → New recovery words makes a new key; each server's sealed root is replaced as the vault next
 syncs with it, and until then the old words still open that server's copy.
 
 ## Authenticator
 
 Optional, and recommended: with it, the recovery words alone cannot add a device.
 
-- **Set up** (Settings → Authenticator): a new 20-byte secret is shown as an `otpauth://` QR code and
+- **Set up** (Settings → Identity & devices → Authenticator): a new 20-byte secret is shown as an `otpauth://` QR code and
   base32 key; the person types a code to prove their app has it; the secret and ten one-time backup
   codes are enrolled on every server reachable now. The backup codes are shown once.
 - **A server joined or reached later** is enrolled by `DeviceSetupController` when its session opens

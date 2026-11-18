@@ -9,16 +9,22 @@ import '../../../core/widgets/rail_button.dart';
 import '../../voice/widgets/voice_controls.dart';
 import 'main_layout_ids.dart';
 
+/// The channel list's width as it ships: wide enough for a username of 25
+/// characters, on its own row in the user panel, to show whole.
+const kChannelsDefaultWidth = 300.0;
+
 /// The main view as it ships — and as it looked before it could be changed.
 const mainDefaultLayout = LayoutConfig(
   panes: [
     PaneLayout(id: MainPanes.servers, width: 76),
-    PaneLayout(id: MainPanes.channels, width: 240),
+    PaneLayout(id: MainPanes.channels, width: kChannelsDefaultWidth),
     PaneLayout(id: MainPanes.content),
     PaneLayout(id: MainPanes.members, width: 240),
   ],
   slots: {
-    MainSlots.railFooter: [MainButtons.addServer, MainButtons.settings],
+    // Settings sit beside the person's name: they are this device's, not a
+    // server's. A server's own settings open from its name.
+    MainSlots.railFooter: [MainButtons.addServer],
     // Not the speaker button, though it is in the registry for anybody who
     // wants it here: at this pane's width a fourth button leaves no room for
     // the name beside it. On a phone it rides in the call bar instead, which
@@ -40,8 +46,9 @@ const mainDefaultLayout = LayoutConfig(
 ///   can go.
 /// - A button dropped anywhere on a pane joins that pane's toolbar; the
 ///   member list has none, so it takes no buttons.
-/// - The rail keeps its width (its server icons are a fixed size); the two
-///   side panes resize between 180 and 400; the chat takes what is left.
+/// - The rail keeps its width (its server icons are a fixed size); the
+///   channel list resizes between 220 and 440, the member list between 180
+///   and 400; the chat takes what is left.
 /// - Settings must stay in at least one slot: the layout editor is behind it.
 const mainLayoutRules = LayoutRules(
   defaults: mainDefaultLayout,
@@ -50,8 +57,8 @@ const mainLayoutRules = LayoutRules(
     MainPanes.channels: PaneRule(
       required: true,
       slot: MainSlots.userPanel,
-      minWidth: 180,
-      maxWidth: 400,
+      minWidth: 220,
+      maxWidth: 440,
     ),
     MainPanes.content: PaneRule(
       required: true,
@@ -64,7 +71,7 @@ const mainLayoutRules = LayoutRules(
 );
 
 /// The narrowest the chat is let get before the member list folds away
-/// behind its button (at the default widths: a 1000px window, as before).
+/// behind its button (at the default widths: a 1056px window).
 const kMinContentWidth = 440.0;
 
 /// What the layout editor calls each pane.
@@ -91,12 +98,12 @@ final mainLayoutButtons = <String, LayoutButtonSpec>{
   ),
   MainButtons.settings: LayoutButtonSpec(
     id: MainButtons.settings,
-    label: 'Settings',
+    label: 'User settings',
     icon: Icons.settings_outlined,
     build: (context, style) => _NavButton(
       style: style,
       icon: Icons.settings_outlined,
-      tooltip: 'Settings',
+      tooltip: 'User settings',
       route: '/settings',
     ),
   ),

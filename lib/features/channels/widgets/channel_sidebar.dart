@@ -12,6 +12,7 @@ import '../../../core/widgets/adaptive.dart';
 import '../../../core/widgets/panel.dart';
 import '../../home/layout/main_layout_ids.dart';
 import '../../servers/controllers/server_permissions.dart';
+import '../../servers/widgets/server_actions.dart';
 import '../../voice/controllers/voice_roster_controller.dart';
 import '../../voice/widgets/voice_controls.dart';
 import '../../voice/widgets/voice_participant_tile.dart';
@@ -304,7 +305,7 @@ class _SidebarHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => context.push('/settings'),
+      onTap: () => context.push(serverSettingsRoute(server.id)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
@@ -317,7 +318,7 @@ class _SidebarHeader extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            const Icon(Icons.expand_more, size: 20),
+            const Icon(Icons.settings_outlined, size: 18),
           ],
         ),
       ),
@@ -623,53 +624,69 @@ class _UserPanel extends StatelessWidget {
       right: false,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Row(
+        // The name has a row of its own, so the buttons beside it never cut
+        // it short: at the column's default width a username of 25
+        // characters shows whole. Longer ones (the server allows 32) still
+        // end in an ellipsis rather than pushing the buttons off.
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Stack(
+            Row(
               children: [
-                CircleAvatar(
-                  radius: 16,
-                  backgroundColor: scheme.primary,
-                  child: Text(
-                    currentUser.username.substring(0, 1).toUpperCase(),
-                    style: TextStyle(
-                      color: scheme.onPrimary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-                Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: context.surfaces.onlineIndicator,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: context.surfaces.sidebar,
-                        width: 2,
+                Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 16,
+                      backgroundColor: scheme.primary,
+                      child: Text(
+                        currentUser.username.substring(0, 1).toUpperCase(),
+                        style: TextStyle(
+                          color: scheme.onPrimary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
                       ),
+                    ),
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: context.surfaces.onlineIndicator,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: context.surfaces.sidebar,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    currentUser.username,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                currentUser.username,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-              ),
+            // Under the name, lined up with it. Mute, deafen, camera and
+            // User settings by default; the layout decides.
+            const Padding(
+              padding: EdgeInsets.only(left: 36, top: 4),
+              child: LayoutSlot(MainSlots.userPanel),
             ),
-            // Mute, deafen and Settings by default; the layout decides.
-            const LayoutSlot(MainSlots.userPanel),
           ],
         ),
       ),
