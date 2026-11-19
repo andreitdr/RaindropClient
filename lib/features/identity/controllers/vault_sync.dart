@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -12,6 +14,7 @@ import '../../../core/theme/theme_controller.dart';
 import '../../servers/controllers/servers_controller.dart';
 import '../../servers/controllers/session_controller.dart';
 import '../models/vault.dart';
+import 'cloud_backup.dart';
 import 'identity_controller.dart';
 
 /// The person's vault as this device last merged it.
@@ -136,6 +139,9 @@ class VaultController extends Notifier<Vault> {
               authenticatorIdOf(identity.authenticatorSecret)) {
         await ref.read(identityProvider.notifier).setAuthenticator(null);
       }
+
+      // A server joined since: the platform backup lists it too.
+      unawaited(ref.read(cloudBackupProvider.notifier).refresh());
 
       if (remote != null &&
           remote.sameAs(merged) &&

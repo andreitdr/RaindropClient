@@ -59,11 +59,11 @@ the **app**; the other two projects keep their own, and a gap here is often a ga
 ### Account and moderation UI
 - **Changing your username.** `UsersApi.changeUsername` is wrapped and tested, but no screen calls it.
   (There are no passwords to change — see [Identity](identity.md).) [Network layer](network-layer.md)
-- **Account recovery, still to do.** An opt-in copy of the identity in iCloud Keychain / Google Block
-  Store; the server owner letting a new identity reclaim an account when everything was lost. Done:
-  typing the words back, the emergency kit, the check and its reminders, new backup codes, and getting
-  in with only the words after a wait the person's other devices can stop.
-  [Identity](identity.md#waiting-out-a-lost-authenticator)
+- **Account recovery, still to do.** The server owner letting a new identity reclaim an account when
+  everything was lost. Done: typing the words back, the emergency kit, the check and its reminders, new
+  backup codes, getting in with only the words after a wait the person's other devices can stop, and an
+  opt-in copy of the identity in iCloud Keychain / Google Block Store (not checked on real accounts
+  yet). [Identity](identity.md#cloud-backup)
 - **Identity, still to do.** Replacing the root after a device is stolen unlocked; carrying pinned
   ("verified") identities in the vault; a prompt on paired devices when a new one starts pairing;
   removing a paired device from the device list; biometric unlock is not yet checked on Android, iOS

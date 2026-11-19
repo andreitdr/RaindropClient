@@ -17,7 +17,7 @@ import io.flutter.plugin.common.MethodChannel
  *
  * Everything else is plugins; this exists only because Android has no
  * plugin-free way to run a microphone in the background, or to capture the
- * screen from there. See
+ * screen from there — and to reach Block Store ([BlockStoreChannel]). See
  * [CallForegroundService] for why a service is needed at all, and
  * `core/voice/call_session_host.dart` for the Dart end of this channel.
  */
@@ -30,6 +30,7 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        BlockStoreChannel.register(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
 
         val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
 

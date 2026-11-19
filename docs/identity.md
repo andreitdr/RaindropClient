@@ -30,10 +30,12 @@ everything else behind [`LockGate`](../lib/features/identity/widgets/lock_gate.d
 
 ## First run
 
-`WelcomeScreen` offers three ways to get an identity:
+`WelcomeScreen` offers three ways to get an identity — four, when a
+[cloud backup](#cloud-backup) is there to restore, which then comes first:
 
 - **I'm new** — `IdentityController.create()` makes a root and a recovery key and shows the 24 words
-  once (`showRecoveryWordsDialog`, see [Keeping the words](#keeping-the-words)).
+  once (`showRecoveryWordsDialog`, see [Keeping the words](#keeping-the-words)); on Apple devices and
+  Android it then offers the cloud backup.
 - **I use Raindrop on another device** — [pairing](#pairing-a-device).
 - **Use my recovery words** — [recovery](#recovery-words).
 
@@ -206,12 +208,47 @@ which the account's other devices are told about and can stop.
   are asked — signing in to every server just to look would show the person online everywhere — and the
   one on screen always has one.
 
+## Cloud backup
+
+Opt-in, and off until the person turns it on: a copy of the identity in **iCloud Keychain** (iOS,
+macOS) or **Google's Block Store** (Android), both end-to-end encrypted, which a new phone or computer
+signed in to the same Apple or Google account brings back — no recovery words. The trade is said
+plainly wherever it is offered (`cloudBackupExplanation`): the identity becomes as safe as that
+account. Windows and Linux have nowhere to keep one; Identity & devices says so.
+
+- **What is kept** ([`IdentityBackup`](../lib/features/identity/models/identity_backup.dart)): a
+  version byte and JSON holding the root, the recovery seed, and the vault's servers with their pins —
+  as many as fit Block Store's 4 KB per entry, most recently changed first (one reachable server is
+  enough; its vault brings the rest). **Never the authenticator secret**: like the words, a restored
+  device still needs a code, a backup code or [the wait](#waiting-out-a-lost-authenticator).
+- **Where** ([`CloudBackupStore`](../lib/core/storage/cloud_backup_store.dart), chosen by
+  `cloudBackupPlatform` in `platform_info.dart`):
+  - Apple: a synchronizable keychain item (`raindrop.identity_backup`, flutter_secure_storage with
+    `synchronizable: true`), kept apart from the device-only `client.*` items. Syncing needs iCloud
+    Keychain on and a build signed with a team; an unsigned debug build is refused, which shows as
+    *unavailable*.
+  - Android: one Block Store entry (`com.raindrop.identity_backup`) through `MainActivity`'s
+    `raindrop/block_store` channel (`BlockStoreChannel.kt`,
+    `play-services-auth-blockstore`). **Nothing is written unless Block Store would encrypt it end to
+    end** (Android 9+ with a screen lock); the channel refuses, and the controller reports
+    *needs a screen lock*. Restored when a new phone is set up from the Google Account.
+- **The controller** ([`cloudBackupProvider`](../lib/features/identity/controllers/cloud_backup.dart)):
+  `off`, `on` (it holds this identity's root), `otherIdentity` (another root — turning it on replaces
+  it, and says so), `needsScreenLock`, `unavailable`, `unsupported`. `enable` (after the explanation
+  and an unlock), `disable` (deletes it, here and at the platform's next sync everywhere), and
+  `refresh` — after each vault sync and new recovery words, writing only what changed; on an Android
+  phone whose screen lock went, it deletes the backup rather than let it be uploaded in the clear.
+- **Restoring** (`restorableBackupProvider`, `restoreFromBackup`): `WelcomeScreen` offers *Restore from
+  iCloud Keychain* (or the Google Account) first; the identity is adopted and the listed servers added
+  as a synced vault would add them.
+
 ## Limits
 
 - Losing every device **and** the recovery words loses the identity. Losing every device and the
   authenticator **and** its backup codes means [a wait](#waiting-out-a-lost-authenticator) before the
-  words add a device (none at all on a server whose owner switched it off). A platform-synced copy of
-  the identity and the server owner reclaiming an account are planned; see the [roadmap](roadmap.md).
+  words add a device (none at all on a server whose owner switched it off). The
+  [cloud backup](#cloud-backup), when on, stands in for the words; the server owner reclaiming an
+  account is planned — see the [roadmap](roadmap.md).
 - A device that stops a wait only reaches the servers it has a session with; a wait on a server none of
   the person's devices has opened since runs its course unseen.
 - Every paired device holds the root. Removing a device from a server stops its sessions there, but a
@@ -225,7 +262,8 @@ which the account's other devices are told about and can stop.
 
 `test/features/identity/identity_logic_test.dart` (authenticator codes against RFC 6238, the pairing
 code, vault merging, the pairing payload), `recovery_check_test.dart` (typing the words back, the
-reminder schedule, the emergency kit, the stored wait), `identity_screens_test.dart` (the sign-in pane's
+reminder schedule, the emergency kit, the stored wait), `cloud_backup_test.dart` (what the backup
+holds and its size limit, when it is written, refreshed and taken back, the restore offer), `identity_screens_test.dart` (the sign-in pane's
 waiting and stopped states) and `test/integration/identity_test.dart`, which runs the
 whole flow — two devices, the vault, recovery with an authenticator and a backup code, a wait that one device
 stops and another sees through, pairing through the relay — against a live server with the real Rust core (`RAINDROP_TEST_SERVER`; see

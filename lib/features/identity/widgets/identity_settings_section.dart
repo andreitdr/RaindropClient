@@ -17,6 +17,7 @@ import '../../security/widgets/recovery_words_dialog.dart';
 import '../../servers/controllers/servers_controller.dart';
 import '../../servers/controllers/session_controller.dart';
 import '../controllers/app_lock.dart';
+import '../controllers/cloud_backup.dart';
 import '../controllers/identity_controller.dart';
 import '../controllers/pairing.dart';
 import '../controllers/vault_sync.dart';
@@ -152,6 +153,7 @@ class IdentitySettingsSection extends ConsumerWidget {
               ),
               onTap: () => _newBackupCodes(context, ref),
             ),
+          const _CloudBackupTile(),
           const _AppLockTile(),
         ],
       ),
@@ -325,10 +327,11 @@ class IdentitySettingsSection extends ConsumerWidget {
       );
     }
     // Each server's copy of the sealed root is replaced with one the new
-    // words open.
+    // words open, and so is the platform backup's copy of the seed.
     for (final session in await _sessions(ref)) {
       await ref.read(vaultProvider.notifier).sync(session);
     }
+    await ref.read(cloudBackupProvider.notifier).refresh();
   }
 
   /// Every server in the vault, as `host:port`, for the emergency kit.
@@ -856,6 +859,107 @@ class _Nudge extends StatelessWidget {
     );
   }
 }
+
+/// The opt-in copy of the identity in iCloud Keychain or Google's Block
+/// Store. Turning it on is a trade the person makes knowingly: no words
+/// needed on a new device, in exchange for trusting that account.
+class _CloudBackupTile extends ConsumerWidget {
+  const _CloudBackupTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final backup = ref.watch(cloudBackupProvider).valueOrNull;
+    if (backup == null) return const SizedBox.shrink();
+    final store = backup.storeName;
+
+    if (backup.status == CloudBackupStatus.unsupported) {
+      return const ListTile(
+        leading: Icon(Icons.cloud_off_outlined),
+        title: Text('Cloud backup'),
+        subtitle: Text(
+          'Not available on Windows or Linux. Your recovery words, and the '
+          'emergency kit, are the way back in here.',
+        ),
+      );
+    }
+
+    final on = backup.status == CloudBackupStatus.on;
+    return ListTile(
+      leading: const Icon(Icons.cloud_outlined),
+      title: Text('Back up to $store'),
+      subtitle: Text(switch (backup.status) {
+        CloudBackupStatus.on =>
+          'On. A new device signed in to the same account gets your '
+              'identity back without the recovery words.',
+        CloudBackupStatus.otherIdentity =>
+          'A different Raindrop identity is backed up there. Turning this '
+              'on replaces it with this one.',
+        CloudBackupStatus.needsScreenLock =>
+          'Set a screen lock on this phone first: without one, Google cannot '
+              'encrypt the backup end to end, so none is kept.',
+        CloudBackupStatus.unavailable =>
+          '$store is not available to Raindrop here'
+              '${backup.problem == null ? '' : ': ${backup.problem}'}.',
+        _ =>
+          'Off. With it on, a new device signed in to the same account gets '
+              'your identity back without the recovery words.',
+      }),
+      trailing: AdaptiveSwitch(
+        value: on,
+        onChanged: (value) => value
+            ? enableCloudBackup(context, ref)
+            : _disable(context, ref, store),
+      ),
+    );
+  }
+
+  Future<void> _disable(
+    BuildContext context,
+    WidgetRef ref,
+    String store,
+  ) async {
+    final confirmed = await showAdaptiveConfirm(
+      context,
+      title: 'Delete the backup?',
+      message:
+          'Your identity is removed from $store, on this device and the '
+          'others signed in to it. Your recovery words still work.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    );
+    if (confirmed) await ref.read(cloudBackupProvider.notifier).disable();
+  }
+}
+
+/// Asks the person to agree to the trade, unlocks, and turns the backup on.
+Future<void> enableCloudBackup(BuildContext context, WidgetRef ref) async {
+  final current = await ref.read(cloudBackupProvider.future);
+  final store = current.storeName;
+  if (!context.mounted) return;
+  final confirmed = await showAdaptiveConfirm(
+    context,
+    title: 'Back up to $store?',
+    message: cloudBackupExplanation(
+      store,
+      replacing: current.status == CloudBackupStatus.otherIdentity,
+    ),
+    confirmLabel: 'Back up',
+  );
+  if (!confirmed || !context.mounted) return;
+  if (!await confirmUnlock(context, ref, reason: 'Back up your identity')) {
+    return;
+  }
+  await ref.read(cloudBackupProvider.notifier).enable();
+}
+
+/// What the person is agreeing to, said the same way wherever it is offered.
+String cloudBackupExplanation(String store, {bool replacing = false}) =>
+    'A copy of your identity is kept in $store, end-to-end encrypted, and a '
+    'new phone or computer signed in to the same account can restore it — '
+    'no recovery words needed. That makes your Raindrop accounts as safe as '
+    'that account: anyone who gets into it can restore your identity too. '
+    'An authenticator, if you set one up, still guards adding the device.'
+    '${replacing ? '\n\nA different Raindrop identity is backed up there now; this replaces it.' : ''}';
 
 /// How this device is unlocked, and changing the PIN where it is a PIN.
 class _AppLockTile extends ConsumerStatefulWidget {

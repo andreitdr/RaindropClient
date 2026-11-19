@@ -80,6 +80,9 @@ dependencies {
     // embedding pulls androidx.core in already; naming it here means this app's own code does not
     // depend on that staying true.
     implementation("androidx.core:core-ktx:1.15.0")
+    // Google's Block Store: the opt-in, end-to-end encrypted copy of the person's identity that a new
+    // phone set up from their Google Account brings back (BlockStoreChannel).
+    implementation("com.google.android.gms:play-services-auth-blockstore:16.4.0")
 }
 
 kotlin {

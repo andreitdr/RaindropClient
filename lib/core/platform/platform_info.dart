@@ -43,6 +43,19 @@ bool get isMobilePlatform =>
     currentPlatform == RaindropPlatform.ios ||
     currentPlatform == RaindropPlatform.android;
 
+/// Where this platform can keep an end-to-end encrypted copy of the
+/// identity that follows the person to a new device: the keychain's iCloud
+/// sync on Apple devices, Google's Block Store on Android, nothing on
+/// Windows and Linux.
+enum CloudBackupPlatform { keychain, blockStore }
+
+CloudBackupPlatform? get cloudBackupPlatform => switch (currentPlatform) {
+  RaindropPlatform.ios ||
+  RaindropPlatform.macos => CloudBackupPlatform.keychain,
+  RaindropPlatform.android => CloudBackupPlatform.blockStore,
+  _ => null,
+};
+
 /// Whether the app can pick which microphone and speakers a call uses. On
 /// phones the OS routes audio (earpiece, speaker, headset) itself, and the
 /// voice library cannot choose a device there.

@@ -75,7 +75,7 @@ its `host:port`. Tapping a row opens that server's settings; its ⋮ menu offers
 A page around [`IdentitySettingsSection`](../lib/features/identity/widgets/identity_settings_section.dart):
 nudges when the recovery words are due a check or this is the only device, this device (renamable) and
 the other paired devices, pairing a device, new recovery words, checking them, the authenticator and new
-backup codes, and how this device is unlocked. See [Identity](identity.md).
+backup codes, the cloud backup (iCloud Keychain / Google), and how this device is unlocked. See [Identity](identity.md).
 
 ## `ServerSettingsScreen`
 

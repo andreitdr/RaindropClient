@@ -3,14 +3,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/widgets/adaptive.dart';
 import '../../security/widgets/recovery_words_dialog.dart';
+import '../controllers/cloud_backup.dart';
 import '../controllers/identity_controller.dart';
+import '../models/identity_backup.dart';
+import '../widgets/identity_settings_section.dart';
 import 'pair_new_device_screen.dart';
 import 'recover_screen.dart';
 
 /// The first thing a fresh install shows: this device needs the person's
 /// identity before it can sign in anywhere. Either they are new and it is
 /// made here, or they have one already and it comes from another of their
-/// devices, or — with every device gone — from their recovery words.
+/// devices, or — with every device gone — from their recovery words. When
+/// iCloud Keychain or Google's Block Store holds a backup of it, restoring
+/// that comes first.
 class WelcomeScreen extends ConsumerStatefulWidget {
   const WelcomeScreen({super.key});
 
@@ -27,16 +32,64 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
       _busy = true;
       _error = null;
     });
+    // The identity is about to exist, so the shell replaces this screen: what
+    // comes after the words goes on the navigator, which outlives it.
+    final navigator = Navigator.of(context);
     try {
       final words = await ref.read(identityProvider.notifier).create();
-      // The identity now exists, so the shell is about to replace this
-      // screen; the words go on the root navigator, above whatever does.
-      if (mounted) await showRecoveryWordsDialog(context, words);
+      if (!mounted) return;
+      // The providers outlive this screen too; its ref does not.
+      final container = ProviderScope.containerOf(context);
+      await showRecoveryWordsDialog(context, words);
+      if (container.read(cloudBackupStoreProvider) != null &&
+          navigator.mounted) {
+        await _offerBackup(navigator.context, container);
+      }
     } on Object catch (e) {
       if (mounted) {
         setState(() {
           _busy = false;
           _error = 'Could not set this device up: $e';
+        });
+      }
+    }
+  }
+
+  /// Offered once, right after the words: the person decides now, while it
+  /// is in front of them, and can change it in Identity & devices later.
+  static Future<void> _offerBackup(
+    BuildContext context,
+    ProviderContainer container,
+  ) async {
+    final current = await container.read(cloudBackupProvider.future);
+    final store = current.storeName;
+    if (current.status == CloudBackupStatus.unavailable || !context.mounted) {
+      return;
+    }
+    final yes = await showAdaptiveConfirm(
+      context,
+      title: 'Also back up to $store?',
+      message: cloudBackupExplanation(
+        store,
+        replacing: current.status == CloudBackupStatus.otherIdentity,
+      ),
+      confirmLabel: 'Back up',
+    );
+    if (yes) await container.read(cloudBackupProvider.notifier).enable();
+  }
+
+  Future<void> _restore(IdentityBackup backup) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await restoreFromBackup(ref, backup);
+    } on Object catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = 'Could not restore your identity: $e';
         });
       }
     }
@@ -49,6 +102,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final restorable = ref.watch(restorableBackupProvider).valueOrNull;
     return Scaffold(
       body: Center(
         child: SingleChildScrollView(
@@ -76,6 +130,21 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                       style: theme.textTheme.bodyMedium,
                     ),
                     const SizedBox(height: 24),
+                    if (restorable != null) ...[
+                      Text(
+                        'Your Raindrop identity is backed up in '
+                        '${restorable.storeName}.',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      FilledButton(
+                        onPressed: _busy
+                            ? null
+                            : () => _restore(restorable.backup),
+                        child: Text('Restore from ${restorable.storeName}'),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     FilledButton(
                       onPressed: _busy ? null : _create,
                       child: _busy

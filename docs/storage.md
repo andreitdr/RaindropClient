@@ -53,9 +53,17 @@ keys: the root secret, the recovery seed, the authenticator secret, this install
 lock. They belong to the person, not to a server, so `forgetServer` never touches them. See
 [Identity](identity.md#what-a-device-holds).
 
-`AppPrefs` gained three related, non-secret keys: `identity.vault` (the merged vault — addresses,
+`AppPrefs` holds the related, non-secret keys: `identity.vault` (the merged vault — addresses,
 public keys, device names), `identity.hidden_servers` (servers removed from this device, so the vault
-does not restore them) and `identity.device_name`.
+does not restore them), `identity.device_name`, and for recovery `identity.recovery_words_set_at`,
+`identity.recovery_checked_at`, `identity.recovery_waits` and `identity.acknowledged_recoveries`.
+
+## `CloudBackupStore` — the opt-in copy that leaves the device
+
+[`cloud_backup_store.dart`](../lib/core/storage/cloud_backup_store.dart): the one thing written to
+storage that syncs off the device on purpose — a synchronizable keychain item on Apple devices
+(iCloud Keychain), a Block Store entry on Android, nothing on Windows and Linux. Only when the person
+turns the [cloud backup](identity.md#cloud-backup) on, and only end-to-end encrypted.
 
 ## What's *not* in `SecureStore`
 
