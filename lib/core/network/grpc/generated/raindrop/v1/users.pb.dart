@@ -1182,6 +1182,7 @@ class CompleteAuthRequest extends $pb.GeneratedMessage {
     $core.List<$core.int>? certificate,
     $core.String? username,
     $core.String? authenticatorCode,
+    $core.String? claimCode,
   }) {
     final result = CompleteAuthRequest._();
     if (userId != null) result.userId = userId;
@@ -1191,6 +1192,7 @@ class CompleteAuthRequest extends $pb.GeneratedMessage {
     if (certificate != null) result.certificate = certificate;
     if (username != null) result.username = username;
     if (authenticatorCode != null) result.authenticatorCode = authenticatorCode;
+    if (claimCode != null) result.claimCode = claimCode;
     return result;
   }
 
@@ -1217,6 +1219,7 @@ class CompleteAuthRequest extends $pb.GeneratedMessage {
         5, _omitFieldNames ? '' : 'certificate', $pb.PbFieldType.OY)
     ..aOS(6, _omitFieldNames ? '' : 'username')
     ..aOS(7, _omitFieldNames ? '' : 'authenticatorCode')
+    ..aOS(8, _omitFieldNames ? '' : 'claimCode')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1312,6 +1315,19 @@ class CompleteAuthRequest extends $pb.GeneratedMessage {
   $core.bool hasAuthenticatorCode() => $_has(6);
   @$pb.TagNumber(7)
   void clearAuthenticatorCode() => $_clearField(7);
+
+  /// A claim code the server's owner issued from the console ("RDC1-<user id>-<secret>", single use,
+  /// a day): a device whose identity is new to the account takes it over. The account's old identity,
+  /// devices, vault and authenticator are reset first, as ResetIdentity resets them, and every member
+  /// is sent identity_reset. For a person who lost every device, the recovery words and any backup.
+  @$pb.TagNumber(8)
+  $core.String get claimCode => $_getSZ(7);
+  @$pb.TagNumber(8)
+  set claimCode($core.String value) => $_setString(7, value);
+  @$pb.TagNumber(8)
+  $core.bool hasClaimCode() => $_has(7);
+  @$pb.TagNumber(8)
+  void clearClaimCode() => $_clearField(8);
 }
 
 /// The new session, already bound to the device.

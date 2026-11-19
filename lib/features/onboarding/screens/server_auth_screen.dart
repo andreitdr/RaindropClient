@@ -7,6 +7,7 @@ import '../../../core/network/users_api.dart';
 import '../../../core/widgets/adaptive.dart';
 import '../../identity/device_sign_in.dart';
 import '../controllers/connect_server_flow.dart';
+import '../models/claim_code.dart';
 
 typedef ConnectHandoff = ({
   ConnectServerFlow flow,
@@ -39,7 +40,12 @@ class _ServerAuthScreenState extends ConsumerState<ServerAuthScreen> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _codeController = TextEditingController();
+  final _claimController = TextEditingController();
   bool _submitting = false;
+
+  /// Taking an account over with a claim code from the server's owner,
+  /// rather than joining under a new username.
+  bool _claiming = false;
   bool _needsCode = false;
   bool _succeeded = false;
   String? _error;
@@ -67,6 +73,7 @@ class _ServerAuthScreenState extends ConsumerState<ServerAuthScreen> {
   void dispose() {
     _usernameController.dispose();
     _codeController.dispose();
+    _claimController.dispose();
     // A flow that never signed in takes the keys it made with it; one that
     // did keeps its client alive as the session's.
     if (!_succeeded) _flow.dispose(_container);
@@ -81,9 +88,20 @@ class _ServerAuthScreenState extends ConsumerState<ServerAuthScreen> {
       _error = null;
     });
     try {
+      if (_claiming) {
+        final claim = ClaimCode.tryParse(_claimController.text);
+        if (claim == null) {
+          setState(() {
+            _submitting = false;
+            _error = 'That is not a claim code. It starts with RDC1-.';
+          });
+          return;
+        }
+        await _flow.useClaim(_container, claim);
+      }
       final session = await _flow.signIn(
         ref,
-        username: _isNew ? _usernameController.text.trim() : null,
+        username: _isNew && !_claiming ? _usernameController.text.trim() : null,
         authenticatorCode: _needsCode ? _codeController.text.trim() : null,
       );
       _succeeded = true;
@@ -149,7 +167,23 @@ class _ServerAuthScreenState extends ConsumerState<ServerAuthScreen> {
                       const SizedBox(height: 20),
                       if (waiting)
                         const Center(child: AdaptiveActivityIndicator()),
-                      if (_isNew)
+                      if (_isNew && _claiming)
+                        TextFormField(
+                          controller: _claimController,
+                          autofocus: true,
+                          enabled: !_submitting,
+                          autocorrect: false,
+                          decoration: const InputDecoration(
+                            labelText: 'Claim code',
+                            helperText: 'From whoever runs this server',
+                          ),
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? 'Required'
+                              : null,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) => _submit(),
+                        ),
+                      if (_isNew && !_claiming)
                         TextFormField(
                           controller: _usernameController,
                           autofocus: true,
@@ -198,13 +232,31 @@ class _ServerAuthScreenState extends ConsumerState<ServerAuthScreen> {
                                   child: AdaptiveActivityIndicator(size: 18),
                                 )
                               : Text(
-                                  _isNew
+                                  _isNew && _claiming
+                                      ? 'Take my account back'
+                                      : _isNew
                                       ? 'Join'
                                       : _needsCode
                                       ? 'Sign in'
                                       : 'Try again',
                                 ),
                         ),
+                        if (_isNew && !_needsCode) ...[
+                          const SizedBox(height: 8),
+                          TextButton(
+                            onPressed: _submitting
+                                ? null
+                                : () => setState(() {
+                                    _claiming = !_claiming;
+                                    _error = null;
+                                  }),
+                            child: Text(
+                              _claiming
+                                  ? 'Join with a new username instead'
+                                  : 'I have a claim code from the owner',
+                            ),
+                          ),
+                        ],
                       ],
                     ],
                   ),
@@ -221,6 +273,13 @@ class _ServerAuthScreenState extends ConsumerState<ServerAuthScreen> {
     if (_needsCode) {
       return 'Your account has an authenticator, and this device is new to '
           'it. Enter a code from your authenticator app.';
+    }
+    if (_isNew && _claiming) {
+      return 'Lost everything — every device, your recovery words? Whoever '
+          'runs this server can give you a claim code to take your account '
+          'back with this identity. Your username and roles stay; messages '
+          'from before cannot be read, and other members see that your '
+          'identity changed.';
     }
     if (_isNew) {
       return 'Pick the name you go by on this server. There is no password: '

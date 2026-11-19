@@ -14,6 +14,7 @@ import '../../identity/device_sign_in.dart';
 import '../../security/controllers/device_setup_controller.dart';
 import '../../servers/controllers/servers_controller.dart';
 import '../../servers/controllers/session_controller.dart';
+import '../models/claim_code.dart';
 
 /// Drives one "add a server" wizard from first contact through to a stored,
 /// signed-in session. Deliberately not a Riverpod provider itself — it's
@@ -52,6 +53,7 @@ class ConnectServerFlow {
 
   ServerInfo? _probed;
   String? _guid;
+  String? _claimCode;
   bool _persisted = false;
   bool _madeKeys = false;
 
@@ -104,6 +106,26 @@ class ConnectServerFlow {
   /// has none for this person; [authenticatorCode] is for a device that is
   /// new to an account with an authenticator and does not hold its secret
   /// (see [needsAuthenticatorCode]).
+  /// Takes over the account a claim code from the server's owner names,
+  /// instead of joining with the account this identity derives: from now on
+  /// [guid] is that account's id, and the next [signIn] presents the code.
+  /// Keys already made for the derived account are deleted first.
+  Future<void> useClaim(ProviderContainer container, ClaimCode claim) async {
+    final derived = _guid;
+    if (derived != null && derived != claim.accountId && _madeKeys) {
+      try {
+        (await container.read(cryptoEngineProvider(derived).future)).dispose();
+      } on Object {
+        // It never opened; the file and key still go.
+      }
+      container.invalidate(cryptoEngineProvider(derived));
+      await stores.delete(derived);
+      _madeKeys = false;
+    }
+    _guid = claim.accountId;
+    _claimCode = claim.text;
+  }
+
   Future<SessionResult> signIn(
     WidgetRef ref, {
     String? username,
@@ -118,8 +140,10 @@ class ConnectServerFlow {
       engine: engine,
       identity: identity,
       serverKey: _serverKey,
-      username: username,
+      accountId: guid,
+      username: _claimCode == null ? username : null,
       typedCode: authenticatorCode,
+      claimCode: _claimCode,
     );
   }
 

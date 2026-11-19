@@ -56,17 +56,29 @@ class MlsCryptoEngine implements CryptoEngine {
   /// key are the ones every other device of theirs derives, the device key
   /// is new, and the device certifies itself. `userId` in the result is the
   /// account to register or sign in to.
+  ///
+  /// [userId], when given, is the account to certify for instead of the one
+  /// the root derives: an account the server's owner let this identity
+  /// reclaim keeps its old id. Giving the derived id changes nothing.
   Future<DeviceKeys> createIdentityFromRoot({
     required Uint8List root,
     required Uint8List serverKey,
     required String deviceId,
+    String? userId,
   }) => _guard(
     () async => _device(
-      await _session.createIdentityFromRoot(
-        root: root,
-        serverKey: serverKey,
-        deviceId: deviceId,
-      ),
+      userId == null
+          ? await _session.createIdentityFromRoot(
+              root: root,
+              serverKey: serverKey,
+              deviceId: deviceId,
+            )
+          : await _session.createIdentityFromRootFor(
+              root: root,
+              serverKey: serverKey,
+              userId: userId,
+              deviceId: deviceId,
+            ),
     ),
   );
 

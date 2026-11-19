@@ -72,6 +72,26 @@ void main() {
   });
 
   group('vault', () {
+    test('carries an account kept by a claim code, and reads an older vault', () {
+      const reclaimed = '0f8fad5b-d9cb-469f-a165-70867728950e';
+      final server = _server('a.example');
+      final withId = VaultServer(
+        host: server.host,
+        port: server.port,
+        displayName: server.displayName,
+        fingerprint: server.fingerprint,
+        identityKey: server.identityKey,
+        updatedAtMs: server.updatedAtMs,
+        accountId: reclaimed,
+      );
+      final read = Vault.tryFromBytes(const Vault().withServer(withId).toBytes())!;
+      expect(read.servers['a.example:5001']!.accountId, reclaimed);
+
+      final json = server.toJson();
+      expect(json.containsKey('accountId'), isFalse);
+      expect(VaultServer.fromJson(json).accountId, isNull);
+    });
+
     test('merging keeps what either side added, and the newer of each', () {
       final phone = const Vault()
           .withServer(_server('a.example'))

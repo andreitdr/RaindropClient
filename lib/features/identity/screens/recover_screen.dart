@@ -83,7 +83,12 @@ class _RecoverScreenState extends ConsumerState<RecoverScreen> {
       // The server goes into the list with the pins this connection made;
       // its session then opens by itself, asking for an authenticator code
       // if the account has one, and its vault brings the other servers.
-      final id = await IdentityCrypto.accountId(root, serverKey);
+      // The vault that came with the root names this server's account — the
+      // root's own, or one the person took over with a claim code.
+      final vault = await _openVault(root, serverKey, sealed.vault);
+      final id =
+          vault?.servers['$host:$port']?.accountId ??
+          await IdentityCrypto.accountId(root, serverKey);
       const secure = SecureStore();
       await secure.pinFingerprint(id, presented);
       await secure.pinIdentityKey(id, serverKey);
@@ -98,7 +103,14 @@ class _RecoverScreenState extends ConsumerState<RecoverScreen> {
       // Every other server the person is on, from the vault that came with
       // the root: they all start signing in now, so a device that has to
       // wait out a lost authenticator waits on all of them at once.
-      await _addVaultServers(root, seed, serverKey, sealed.vault);
+      if (vault != null) {
+        await ref
+            .read(vaultProvider.notifier)
+            .adoptServers(
+              vault,
+              ClientIdentity(root: root, recoverySeed: seed),
+            );
+      }
       if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
     } on ApiException catch (e) {
       _fail(
@@ -120,28 +132,24 @@ class _RecoverScreenState extends ConsumerState<RecoverScreen> {
     }
   }
 
-  Future<void> _addVaultServers(
+  static Future<Vault?> _openVault(
     Uint8List root,
-    Uint8List seed,
     Uint8List serverKey,
     Uint8List? sealedVault,
   ) async {
-    if (sealedVault == null) return;
+    if (sealedVault == null) return null;
     try {
-      final vault = Vault.tryFromBytes(
+      return Vault.tryFromBytes(
         await IdentityCrypto.openVault(
           root: root,
           serverKey: serverKey,
           blob: sealedVault,
         ),
       );
-      if (vault == null) return;
-      await ref
-          .read(vaultProvider.notifier)
-          .adoptServers(vault, ClientIdentity(root: root, recoverySeed: seed));
     } on CryptoException {
       // Sealed under an older root: the first sync with this server brings
       // the servers instead.
+      return null;
     }
   }
 

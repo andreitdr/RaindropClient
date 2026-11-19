@@ -211,6 +211,9 @@ data-carrying enums, so there is still no `build_runner` step.
   It skips itself unless `RAINDROP_TEST_SERVER=host:port` names a server with a fresh database. The
   recovery-wait case also needs `RAINDROP_TEST_SHORT_RECOVERY=1` and a server whose `raindrop.json`
   sets `users.recoveryWaitDays` to seconds' worth (`0.0002` is about 17 s).
+  `test/integration/reclaim_test.dart` takes an account back with a claim code typed into the
+  server's console, so it needs the server started as `tail -f <commands> | dotnet ServerCli.dll >
+  <log>` and `RAINDROP_TEST_CONSOLE=<commands>`, `RAINDROP_TEST_CONSOLE_LOG=<log>`.
   All the integration tests run in parallel against that one server, where by default everybody can
   see every channel, so they only assert about their own channels. Run them together:
 

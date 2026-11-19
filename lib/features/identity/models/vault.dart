@@ -4,8 +4,9 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 
 /// One server the person is on, as every device of theirs needs to know it:
-/// where it is, and the keys to trust it by. The account there is not
-/// listed — each device derives it from the root.
+/// where it is, the keys to trust it by, and the account there. Each device
+/// derives the account from the root — except one the person took over with
+/// a claim code, which kept its old id; [accountId] says which.
 class VaultServer {
   const VaultServer({
     required this.host,
@@ -14,6 +15,7 @@ class VaultServer {
     required this.fingerprint,
     required this.identityKey,
     required this.updatedAtMs,
+    this.accountId,
   });
 
   final String host;
@@ -27,6 +29,10 @@ class VaultServer {
   final Uint8List identityKey;
   final int updatedAtMs;
 
+  /// The account on this server. Null in a vault written before this was
+  /// carried: the root's derivation, as it then always was.
+  final String? accountId;
+
   String get key => '$host:$port';
 
   Map<String, dynamic> toJson() => {
@@ -36,6 +42,7 @@ class VaultServer {
     'fingerprint': fingerprint,
     'identityKey': base64.encode(identityKey),
     'updatedAt': updatedAtMs,
+    'accountId': ?accountId,
   };
 
   factory VaultServer.fromJson(Map<String, dynamic> j) => VaultServer(
@@ -45,6 +52,7 @@ class VaultServer {
     fingerprint: j['fingerprint'] as String,
     identityKey: base64.decode(j['identityKey'] as String),
     updatedAtMs: j['updatedAt'] as int,
+    accountId: j['accountId'] as String?,
   );
 }
 

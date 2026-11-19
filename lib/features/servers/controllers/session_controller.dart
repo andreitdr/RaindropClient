@@ -196,6 +196,7 @@ class ServerSessionController
         engine: await ref.read(cryptoEngineProvider(profile.id).future),
         identity: identity,
         serverKey: serverKey,
+        accountId: profile.id,
         username: username,
         typedCode: authenticatorCode,
       );
@@ -265,6 +266,7 @@ class ServerSessionController
         engine: await ref.read(cryptoEngineProvider(arg).future),
         identity: identity,
         serverKey: serverKey,
+        accountId: arg,
       );
       await ref.read(appPrefsProvider).setRecoveryWait(arg, eligibleAt);
       final waiting = ApiException(

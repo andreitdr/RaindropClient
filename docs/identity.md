@@ -242,13 +242,36 @@ account. Windows and Linux have nowhere to keep one; Identity & devices says so.
   iCloud Keychain* (or the Google Account) first; the identity is adopted and the listed servers added
   as a synced vault would add them.
 
+## Reclaiming an account
+
+The last way back, for someone who lost every device, the recovery words and any backup: they start a
+new identity, and the server's owner — satisfied it is them — runs `reclaim <username>` in the server's
+console, which prints a one-time claim code `RDC1-<account id>-<secret>`, good for a day (the server's
+[E2EE doc](../../RaindropServer/docs/e2ee.md#reclaiming-an-account)).
+
+- **Joining with it.** `ServerAuthScreen`, for a server where this identity has no account yet, offers
+  *I have a claim code from the owner*. [`ClaimCode`](../lib/features/onboarding/models/claim_code.dart)
+  reads it (case and spaces forgiven); `ConnectServerFlow.useClaim` makes the account it names the one
+  to join (deleting any keys already made for the derived one), and `signInWithDevice` certifies the
+  device for that id (`createIdentityFromRoot(userId:)`, the Rust core's
+  `create_identity_from_root_for`) and sends `claim_code`. The server resets the old identity — every
+  member sees the safety number change — and the account, username and roles are this identity's.
+- **The account id is not derivable.** The vault carries each server's `accountId`
+  (`VaultServer.accountId`, written by `VaultController` from the profile's id), and everything that
+  adds a server from the vault — sync, pairing, recovery words (`RecoverScreen` takes this server's id
+  from the vault that comes with the root), the cloud backup — uses it before the derivation.
+  `ServerSessionController` and the recovery wait pass the profile's id too. A vault written before
+  this had none, which means the derived id, as it then always did.
+- Old encrypted history stays unreadable to the new identity.
+
 ## Limits
 
 - Losing every device **and** the recovery words loses the identity. Losing every device and the
   authenticator **and** its backup codes means [a wait](#waiting-out-a-lost-authenticator) before the
   words add a device (none at all on a server whose owner switched it off). The
-  [cloud backup](#cloud-backup), when on, stands in for the words; the server owner reclaiming an
-  account is planned — see the [roadmap](roadmap.md).
+  [cloud backup](#cloud-backup), when on, stands in for the words; with nothing at all left, the
+  server's owner can let a new identity [reclaim the account](#reclaiming-an-account), one server at a
+  time, without its old history.
 - A device that stops a wait only reaches the servers it has a session with; a wait on a server none of
   the person's devices has opened since runs its course unseen.
 - Every paired device holds the root. Removing a device from a server stops its sessions there, but a

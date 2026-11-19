@@ -33,7 +33,7 @@ The user enters a host, port (default `5001`), and an optional local nickname. S
 
 | `state` | Screen shows | Then |
 |---|---|---|
-| `unregistered` (or `erased`) | A username field | `flow.signIn(ref, username: …)` makes the account |
+| `unregistered` (or `erased`) | A username field — or, behind *I have a claim code from the owner*, a claim code | `flow.signIn(ref, username: …)` makes the account; with a claim code, `flow.useClaim` first ([reclaiming](identity.md#reclaiming-an-account)) |
 | `active`, `left_preserved` | Nothing to fill in | Signs in as soon as it opens — the person adding a server another of their devices joined, or adding back one they removed. A preserved account is restored by signing in |
 
 If the server answers `authenticator_required` — the account has an authenticator and this device does

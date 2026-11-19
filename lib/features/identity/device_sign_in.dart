@@ -27,13 +27,20 @@ import '../../core/storage/identity_store.dart';
 /// device computes one when it holds the secret (it was paired); otherwise
 /// the call fails with `authenticator_required` and the caller asks the
 /// person for [typedCode].
+///
+/// [accountId] is the account this device certifies itself for: the one the
+/// root derives, unless the person took an account over with a claim code
+/// from the server's owner — [claimCode], the first time — which keeps the
+/// account's old id.
 Future<SessionResult> signInWithDevice({
   required UsersApi api,
   required MlsCryptoEngine engine,
   required ClientIdentity identity,
   required Uint8List serverKey,
+  String? accountId,
   String? username,
   String? typedCode,
+  String? claimCode,
 }) async {
   final device =
       await engine.device() ??
@@ -41,6 +48,7 @@ Future<SessionResult> signInWithDevice({
         root: identity.root,
         serverKey: serverKey,
         deviceId: const Uuid().v4(),
+        userId: accountId,
       );
 
   final secret = identity.authenticatorSecret;
@@ -59,6 +67,7 @@ Future<SessionResult> signInWithDevice({
       username: username,
       authenticatorCode:
           typedCode ?? (secret == null ? null : Totp.code(secret)),
+      claimCode: claimCode,
     );
   }
 
@@ -90,6 +99,7 @@ Future<DateTime> requestRecoveryWithDevice({
   required MlsCryptoEngine engine,
   required ClientIdentity identity,
   required Uint8List serverKey,
+  String? accountId,
 }) async {
   final device =
       await engine.device() ??
@@ -97,6 +107,7 @@ Future<DateTime> requestRecoveryWithDevice({
         root: identity.root,
         serverKey: serverKey,
         deviceId: const Uuid().v4(),
+        userId: accountId,
       );
   final nonce = await api.beginAuth(device.userId);
   final wait = await api.requestRecovery(

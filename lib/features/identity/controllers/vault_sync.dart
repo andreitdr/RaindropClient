@@ -57,7 +57,11 @@ class VaultController extends Notifier<Vault> {
 
     for (final server in ref.read(serversControllerProvider)) {
       final known = vault.servers['${server.host}:${server.port}'];
-      if (known != null && known.displayName == server.displayName) continue;
+      if (known != null &&
+          known.displayName == server.displayName &&
+          known.accountId == server.id) {
+        continue;
+      }
       final fingerprint = await _secure.pinnedFingerprint(server.id);
       final identityKey = await _secure.pinnedIdentityKey(server.id);
       if (fingerprint == null || identityKey == null) continue;
@@ -69,6 +73,7 @@ class VaultController extends Notifier<Vault> {
           fingerprint: fingerprint,
           identityKey: identityKey,
           updatedAtMs: now,
+          accountId: server.id,
         ),
       );
     }
@@ -191,10 +196,9 @@ class VaultController extends Notifier<Vault> {
 
     for (final server in vault.servers.values) {
       if (listed.contains(server.key) || hidden.contains(server.key)) continue;
-      final id = await IdentityCrypto.accountId(
-        identity.root,
-        server.identityKey,
-      );
+      final id =
+          server.accountId ??
+          await IdentityCrypto.accountId(identity.root, server.identityKey);
       if (await _secure.pinnedFingerprint(id) == null) {
         await _secure.pinFingerprint(id, server.fingerprint);
       }

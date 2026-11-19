@@ -76,6 +76,15 @@ abstract class CryptoSession implements RustOpaqueInterface {
     required String deviceId,
   });
 
+  /// As [`CryptoSession::create_identity_from_root`], certified for `user_id` rather than the id
+  /// the root derives: an account the server's owner let this identity reclaim keeps its old id.
+  Future<DeviceIdentity> createIdentityFromRootFor({
+    required List<int> root,
+    required List<int> serverKey,
+    required String userId,
+    required String deviceId,
+  });
+
   Future<void> deleteGroup({required List<int> groupId});
 
   Future<DeviceIdentity?> device();

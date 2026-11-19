@@ -270,8 +270,9 @@ class UsersApi {
   /// identity key and [nonce]. [certificate] is needed until the device is
   /// registered here, [username] when the UUID has no account yet, and
   /// [authenticatorCode] when the device is new to an account that has an
-  /// authenticator (`authenticator_required`). The session that comes back
-  /// is already bound to the device.
+  /// authenticator (`authenticator_required`). [claimCode] is the server
+  /// owner's code for taking an account over with a new identity. The
+  /// session that comes back is already bound to the device.
   Future<SessionResult> completeAuth({
     required String userId,
     required String deviceId,
@@ -280,6 +281,7 @@ class UsersApi {
     Uint8List? certificate,
     String? username,
     String? authenticatorCode,
+    String? claimCode,
   }) async => SessionResult.fromProto(
     (await _channel.call(
       (o) => _users.completeAuth(
@@ -291,6 +293,7 @@ class UsersApi {
           certificate: certificate,
           username: username,
           authenticatorCode: authenticatorCode,
+          claimCode: claimCode,
         ),
         options: o,
       ),
