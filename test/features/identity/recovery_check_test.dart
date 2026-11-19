@@ -168,6 +168,37 @@ void main() {
       expect(prefs.recoveryCheckedAt, prefs.recoveryWordsSetAt);
     });
 
+    testWidgets('lists the words side by side, even on a phone', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(402, 874);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      SharedPreferences.setMockInitialValues({});
+      final prefs = AppPrefs(await SharedPreferences.getInstance());
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appPrefsProvider.overrideWithValue(prefs)],
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => TextButton(
+                onPressed: () =>
+                    showRecoveryWordsDialog(context, _words.join(' ')),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      final first = tester.getTopLeft(find.text('1. ${_words[0]}'));
+      final second = tester.getTopLeft(find.text('2. ${_words[1]}'));
+      expect(second.dy, first.dy);
+      expect(second.dx, greaterThan(first.dx));
+    });
+
     testWidgets('can go back to the words', (tester) async {
       await open(tester);
       await tester.tap(find.text('Show the words again'));

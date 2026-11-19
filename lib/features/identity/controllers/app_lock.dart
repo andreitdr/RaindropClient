@@ -98,6 +98,14 @@ class AppLock extends Notifier<bool> {
     state = true;
   }
 
+  /// The person has just made a brand-new identity here, so they are the
+  /// one the lock protects it for: asking them to unlock now would only put
+  /// the system's prompt on top of their new recovery words. Only where the
+  /// system unlocks the app — a device with neither still has to choose a PIN.
+  Future<void> trustNewIdentity() async {
+    if (await method() == UnlockMethod.system) state = true;
+  }
+
   void lock() => state = false;
 }
 

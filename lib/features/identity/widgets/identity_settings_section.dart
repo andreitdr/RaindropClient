@@ -11,6 +11,7 @@ import '../../../core/platform/platform_info.dart';
 import '../../../core/storage/identity_store.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../../core/widgets/adaptive.dart';
+import '../../security/controllers/device_setup_controller.dart';
 import '../../security/controllers/recovery_watch.dart';
 import '../../security/widgets/link_code_scanner.dart';
 import '../../security/widgets/recovery_words_dialog.dart';
@@ -42,7 +43,19 @@ class IdentitySettingsSection extends ConsumerWidget {
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     final holdsAuthenticator = identity.authenticatorSecret != null;
     final accountHasAuthenticator = vault.authenticatorId.isNotEmpty;
-    final onlyDevice = devices.every((d) => d.installId == installId);
+    // The vault learns of a new device only at its next sync; the server's
+    // list of this account's devices follows them as they come. Either
+    // knowing of another device is enough.
+    final otherDeviceOnAServer = ref
+        .watch(serversControllerProvider)
+        .where((s) => ref.exists(serverSessionProvider(s.id)))
+        .any(
+          (s) =>
+              (ref.watch(ownDevicesProvider(s.id)).valueOrNull?.length ?? 0) >
+              1,
+        );
+    final onlyDevice =
+        !otherDeviceOnAServer && devices.every((d) => d.installId == installId);
     final checkDue = ref.watch(recoveryCheckDueProvider);
     final waits = watchKnownRecoveries(ref);
 

@@ -114,19 +114,29 @@ class _RecoveryWordsDialogState extends ConsumerState<_RecoveryWordsDialog> {
             color: theme.colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            children: [
-              for (var i = 0; i < _words.length; i++)
-                SizedBox(
-                  width: 120,
-                  child: SelectableText(
-                    '${i + 1}. ${_words[i]}',
-                    style: const TextStyle(fontFamily: 'monospace'),
-                  ),
-                ),
-            ],
+          // As many columns of words as fit, but at least two: a phone's
+          // narrow dialog would otherwise list all 24 one under another.
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              const spacing = 8.0;
+              final columns = (constraints.maxWidth / 110).floor().clamp(2, 4);
+              final width =
+                  (constraints.maxWidth - spacing * (columns - 1)) / columns;
+              return Wrap(
+                spacing: spacing,
+                runSpacing: 8,
+                children: [
+                  for (var i = 0; i < _words.length; i++)
+                    SizedBox(
+                      width: width,
+                      child: SelectableText(
+                        '${i + 1}. ${_words[i]}',
+                        style: const TextStyle(fontFamily: 'monospace'),
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
         ),
         const SizedBox(height: 8),

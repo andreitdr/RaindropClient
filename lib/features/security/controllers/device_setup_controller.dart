@@ -12,6 +12,7 @@ import '../../../core/network/e2ee_api.dart';
 import '../../../core/storage/identity_store.dart';
 import '../../../core/storage/secure_store.dart';
 import '../../identity/controllers/vault_sync.dart';
+import '../../servers/controllers/live_sync.dart';
 import '../../servers/controllers/session_controller.dart';
 
 /// The crypto engine for one server: its encrypted store, opened once and
@@ -203,6 +204,20 @@ final ownDevicesProvider = FutureProvider.autoDispose
     .family<List<DeviceSummary>, String>((ref, serverId) async {
       final session = await ref.watch(serverSessionProvider(serverId).future);
       if (session == null) return const [];
+      // Read again when one of this account's devices comes or goes, so a
+      // device paired or recovered elsewhere shows up while this is open.
+      LiveSync(
+        ref,
+        serverId: serverId,
+        onEvent: (event) {
+          if ((event.type == 'e2ee.device.added' ||
+                  event.type == 'e2ee.device.revoked') &&
+              event.userId == session.currentUser.userId) {
+            ref.invalidateSelf();
+          }
+        },
+        resync: () async => ref.invalidateSelf(),
+      );
       final users = await session.e2eeApi.listDevices(session.token, [
         session.currentUser.userId,
       ]);

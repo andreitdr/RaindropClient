@@ -51,7 +51,10 @@ again before pairing a device, showing recovery words, changing the authenticato
 | `pin` | Otherwise (Linux, or a phone with no screen lock), once a PIN is set | An app PIN, checked by opening a blob sealed with Argon2id in the Rust core |
 | `none` | Otherwise, before a PIN is set | `LockGate` insists on choosing one (6+ characters) |
 
-At least one always applies; there is no way to run with neither. **What the PIN is:** the keystore
+At least one always applies; there is no way to run with neither. Right after **I'm new** makes an
+identity, a device the system unlocks counts as unlocked (`AppLock.trustNewIdentity`): the person who
+just made it is the one the lock is for, and the system's prompt would only cover the new recovery
+words. A device with no system unlock still has to choose a PIN. **What the PIN is:** the keystore
 guards the root at rest; the PIN is the app's check that the person at the device is its owner. It does
 not encrypt the root.
 
@@ -134,6 +137,8 @@ are forgiven (`normalizeRecoveryWords`, [`models/recovery_check.dart`](../lib/fe
 
 Words nobody wrote down are no way back, so the app works at making sure they were:
 
+- **Laid out to be copied.** The words sit in as many columns as fit, never fewer than two, so a
+  phone's narrow dialog does not list 24 lines.
 - **Typed back before the dialog closes.** `showRecoveryWordsDialog` shows the words, then asks for
   three random positions (`confirmationPositions`); only the right words close it. There is a way back
   to the words, none out without them.
@@ -151,8 +156,9 @@ Words nobody wrote down are no way back, so the app works at making sure they we
   `recoveryCheckDueProvider` (`recoveryCheckDue`) puts a nudge at the top of Identity & devices a month
   after the words were made, then every half year after each check, and at once on a device that never
   saw a check.
-- **The only device.** When the vault lists no device but this one, the same place asks the person to
-  pair another.
+- **The only device.** When neither the vault nor any open server's device list (`ownDevicesProvider`,
+  which follows `e2ee.device.added` / `revoked` for this account) knows another device, the same place
+  asks the person to pair another.
 
 ## Authenticator
 

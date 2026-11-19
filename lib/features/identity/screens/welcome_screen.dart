@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/widgets/adaptive.dart';
 import '../../security/widgets/recovery_words_dialog.dart';
+import '../controllers/app_lock.dart';
 import '../controllers/cloud_backup.dart';
 import '../controllers/identity_controller.dart';
 import '../models/identity_backup.dart';
@@ -36,6 +37,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
     // comes after the words goes on the navigator, which outlives it.
     final navigator = Navigator.of(context);
     try {
+      await ref.read(appLockProvider.notifier).trustNewIdentity();
       final words = await ref.read(identityProvider.notifier).create();
       if (!mounted) return;
       // The providers outlive this screen too; its ref does not.
