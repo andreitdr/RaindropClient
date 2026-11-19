@@ -123,4 +123,69 @@ class AppPrefs {
 
   Future<void> setDeviceName(String name) =>
       _prefs.setString(_kDeviceName, name);
+
+  /// When the current recovery words were shown on this device and the
+  /// person confirmed they had written them down.
+  DateTime? get recoveryWordsSetAt => _time(_kRecoveryWordsSetAt);
+
+  /// When the person last showed, on this device, that they still have their
+  /// recovery words — by confirming new ones or checking the current ones.
+  DateTime? get recoveryCheckedAt => _time(_kRecoveryCheckedAt);
+
+  /// New words were confirmed: they were made and checked just now.
+  Future<void> recordRecoveryWordsSet(DateTime at) async {
+    await _prefs.setInt(_kRecoveryWordsSetAt, at.millisecondsSinceEpoch);
+    await _prefs.setInt(_kRecoveryCheckedAt, at.millisecondsSinceEpoch);
+  }
+
+  Future<void> recordRecoveryChecked(DateTime at) =>
+      _prefs.setInt(_kRecoveryCheckedAt, at.millisecondsSinceEpoch);
+
+  /// When this device's wait to get in without an authenticator code ends,
+  /// per server id — for the servers it is waiting on.
+  Map<String, DateTime> get recoveryWaits {
+    final raw = _prefs.getString(_kRecoveryWaits);
+    if (raw == null) return {};
+    return {
+      for (final entry in (jsonDecode(raw) as Map).entries)
+        entry.key as String: DateTime.fromMillisecondsSinceEpoch(
+          entry.value as int,
+          isUtc: true,
+        ),
+    };
+  }
+
+  Future<void> setRecoveryWait(String serverId, DateTime? eligibleAt) {
+    final waits = recoveryWaits;
+    if (eligibleAt == null) {
+      if (waits.remove(serverId) == null) return Future.value();
+    } else {
+      waits[serverId] = eligibleAt.toUtc();
+    }
+    return _prefs.setString(
+      _kRecoveryWaits,
+      jsonEncode({
+        for (final entry in waits.entries)
+          entry.key: entry.value.millisecondsSinceEpoch,
+      }),
+    );
+  }
+
+  /// Other devices' recovery waits the person said were theirs, as
+  /// `serverId/deviceId`, so they are not asked again.
+  Set<String> get acknowledgedRecoveries =>
+      (_prefs.getStringList(_kAcknowledgedRecoveries) ?? const []).toSet();
+
+  Future<void> setAcknowledgedRecoveries(Set<String> keys) =>
+      _prefs.setStringList(_kAcknowledgedRecoveries, keys.toList()..sort());
+
+  static const _kRecoveryWaits = 'identity.recovery_waits';
+  static const _kAcknowledgedRecoveries = 'identity.acknowledged_recoveries';
+  static const _kRecoveryWordsSetAt = 'identity.recovery_words_set_at';
+  static const _kRecoveryCheckedAt = 'identity.recovery_checked_at';
+
+  DateTime? _time(String key) {
+    final ms = _prefs.getInt(key);
+    return ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms);
+  }
 }

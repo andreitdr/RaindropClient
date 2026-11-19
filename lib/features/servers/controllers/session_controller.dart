@@ -17,6 +17,7 @@ import '../../../core/network/users_api.dart';
 import '../../../core/network/voice_api.dart';
 import '../../../core/storage/identity_store.dart';
 import '../../../core/storage/secure_store.dart';
+import '../../../core/theme/theme_controller.dart';
 import '../../identity/device_sign_in.dart';
 import '../../security/controllers/device_setup_controller.dart';
 import 'servers_controller.dart';
@@ -126,6 +127,7 @@ class ServerSessionController
   }
 
   ServerSession? _gaveUp(ApiException reason) {
+    _retryWhenRecoveryEnds(reason);
     // After the build that is running: providers may not be written to
     // while another is building.
     Future.microtask(
@@ -198,6 +200,8 @@ class ServerSessionController
         typedCode: authenticatorCode,
       );
       await _secureStore.saveSessionToken(profile.id, result.token);
+      // In: any wait this device had to get in without a code is over.
+      await ref.read(appPrefsProvider).setRecoveryWait(profile.id, null);
       return ServerSession(
         profile: profile,
         client: client,
@@ -229,6 +233,69 @@ class ServerSessionController
     );
     ref.read(signInFailureProvider(arg).notifier).state = null;
     adopt(session);
+  }
+
+  /// Starts this device's wait to get in without an authenticator code, for
+  /// a person who has lost the authenticator and its backup codes. Returns
+  /// when it ends; the session then opens by itself, if the app is running,
+  /// or at the next launch.
+  Future<DateTime> requestRecovery() async {
+    ServerProfile? profile;
+    for (final s in ref.read(serversControllerProvider)) {
+      if (s.id == arg) profile = s;
+    }
+    final identity = await const IdentityStore().read();
+    final serverKey = await _secureStore.pinnedIdentityKey(arg);
+    if (profile == null || identity == null || serverKey == null) {
+      throw const ApiException(
+        0,
+        'no_identity',
+        'This device has no identity to sign in with.',
+      );
+    }
+
+    final client = RaindropChannel.forServer(
+      host: profile.host,
+      port: profile.port,
+      pinnedFingerprint: await _secureStore.pinnedFingerprint(arg),
+    );
+    try {
+      final eligibleAt = await requestRecoveryWithDevice(
+        api: UsersApi(client),
+        engine: await ref.read(cryptoEngineProvider(arg).future),
+        identity: identity,
+        serverKey: serverKey,
+      );
+      await ref.read(appPrefsProvider).setRecoveryWait(arg, eligibleAt);
+      final waiting = ApiException(
+        0,
+        'recovery_pending',
+        'This device can be added without a code from $eligibleAt.',
+      );
+      ref.read(signInFailureProvider(arg).notifier).state = waiting;
+      _retryWhenRecoveryEnds(waiting);
+      return eligibleAt;
+    } finally {
+      client.close();
+    }
+  }
+
+  Timer? _recoveryRetry;
+
+  /// While this device waits to get in without a code, signs in again by
+  /// itself the moment the wait is over.
+  void _retryWhenRecoveryEnds(ApiException reason) {
+    _recoveryRetry?.cancel();
+    if (reason.code != 'recovery_pending') return;
+    final eligibleAt = ref.read(appPrefsProvider).recoveryWaits[arg];
+    if (eligibleAt == null) return;
+    final delay = eligibleAt.difference(DateTime.now().toUtc());
+    if (delay.isNegative) return;
+    _recoveryRetry = Timer(delay + const Duration(seconds: 5), () {
+      ref.read(signInFailureProvider(arg).notifier).state = null;
+      ref.invalidateSelf();
+    });
+    ref.onDispose(() => _recoveryRetry?.cancel());
   }
 
   Future<ServerSession> _restore(

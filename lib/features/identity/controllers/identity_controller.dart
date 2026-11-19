@@ -1,6 +1,6 @@
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -8,6 +8,8 @@ import '../../../core/crypto/identity_crypto.dart';
 import '../../../core/platform/platform_info.dart';
 import '../../../core/storage/app_prefs.dart';
 import '../../../core/storage/identity_store.dart';
+import '../../../core/theme/theme_controller.dart';
+import '../models/recovery_check.dart';
 
 /// The person's identity on this device, or null before one was created,
 /// paired or recovered — which is the first thing the app asks for.
@@ -70,6 +72,46 @@ class IdentityController extends AsyncNotifier<ClientIdentity?> {
     if (current == null) throw StateError('This device has no identity yet.');
     return current;
   }
+}
+
+/// Whether to ask the person to check they still have their recovery words
+/// (see [recoveryCheckDue]), and the two things that reset it.
+final recoveryCheckDueProvider = NotifierProvider<RecoveryCheckDue, bool>(
+  RecoveryCheckDue.new,
+);
+
+class RecoveryCheckDue extends Notifier<bool> {
+  @override
+  bool build() {
+    final prefs = ref.watch(appPrefsProvider);
+    return recoveryCheckDue(
+      now: DateTime.now(),
+      setAt: prefs.recoveryWordsSetAt,
+      checkedAt: prefs.recoveryCheckedAt,
+    );
+  }
+
+  /// New words were shown and the person typed some of them back.
+  Future<void> recordWordsSet() async {
+    await ref.read(appPrefsProvider).recordRecoveryWordsSet(DateTime.now());
+    ref.invalidateSelf();
+  }
+
+  /// The person typed in all their words and they were the current ones.
+  Future<void> recordChecked() async {
+    await ref.read(appPrefsProvider).recordRecoveryChecked(DateTime.now());
+    ref.invalidateSelf();
+  }
+}
+
+/// Whether [words] are the current recovery words: the seed they make is the
+/// one this device keeps. Checked here, with nothing sent anywhere. Throws
+/// a `CryptoException` when they are not valid recovery words at all.
+Future<bool> recoveryWordsMatch(ClientIdentity identity, String words) async {
+  final seed = await IdentityCrypto.seedFromWords(
+    normalizeRecoveryWords(words),
+  );
+  return listEquals(seed, identity.recoverySeed);
 }
 
 /// This install's id in the person's device list, made on first use.

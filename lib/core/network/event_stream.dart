@@ -38,6 +38,10 @@ abstract final class ServerEventTypes {
   static const voiceState = 'voice.state';
   static const voiceLeft = 'voice.left';
 
+  /// The account's waits to add a device without an authenticator code
+  /// changed. To the account only.
+  static const recoveryChanged = 'e2ee.recovery.changed';
+
   /// A case added on a newer server than this build.
   static const unknown = 'unknown';
 }
@@ -80,6 +84,7 @@ class ServerEvent {
     pb.ServerEvent_Event.welcome => 'e2ee.welcome',
     pb.ServerEvent_Event.groupReconcile => 'e2ee.group.reconcile',
     pb.ServerEvent_Event.keyPackagesLow => 'e2ee.keypackages.low',
+    pb.ServerEvent_Event.recoveryChanged => ServerEventTypes.recoveryChanged,
     pb.ServerEvent_Event.plugin => proto.plugin.type,
     pb.ServerEvent_Event.notSet => ServerEventTypes.unknown,
   };

@@ -21,7 +21,7 @@ import 'users.pb.dart' as $0;
 export 'users.pb.dart';
 
 /// Accounts and sessions. A client holds its own UUID per server; the first login with it is
-/// registration. Every call but the first six needs a session: send its token as
+/// registration. Every call but the first eight needs a session: send its token as
 /// `authorization: Bearer <token>` metadata.
 @$pb.GrpcServiceName('raindrop.v1.UserService')
 class UserServiceClient extends $grpc.Client {
@@ -91,6 +91,19 @@ class UserServiceClient extends $grpc.Client {
     $grpc.CallOptions? options,
   }) {
     return $createUnaryCall(_$completeAuth, request, options: options);
+  }
+
+  /// Starts the wait that lets a device new to the account in without an authenticator code, for a
+  /// person who has their recovery words but lost the authenticator and its backup codes. Proven like
+  /// CompleteAuth: a BeginAuth nonce signed by the device, and its certificate. The account's devices
+  /// are told at once (recovery_changed) and any of them can cancel it (DeviceService.CancelRecovery);
+  /// once eligible_at has passed, CompleteAuth lets this device in with no code. Asking again for the
+  /// same device answers with the wait already running. Anonymous.
+  $grpc.ResponseFuture<$0.RequestRecoveryResponse> requestRecovery(
+    $0.RequestRecoveryRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$requestRecovery, request, options: options);
   }
 
   /// End this session.
@@ -177,6 +190,11 @@ class UserServiceClient extends $grpc.Client {
           '/raindrop.v1.UserService/CompleteAuth',
           ($0.CompleteAuthRequest value) => value.writeToBuffer(),
           $0.CompleteAuthResponse.fromBuffer);
+  static final _$requestRecovery =
+      $grpc.ClientMethod<$0.RequestRecoveryRequest, $0.RequestRecoveryResponse>(
+          '/raindrop.v1.UserService/RequestRecovery',
+          ($0.RequestRecoveryRequest value) => value.writeToBuffer(),
+          $0.RequestRecoveryResponse.fromBuffer);
   static final _$logout =
       $grpc.ClientMethod<$0.LogoutRequest, $0.LogoutResponse>(
           '/raindrop.v1.UserService/Logout',
@@ -268,6 +286,15 @@ abstract class UserServiceBase extends $grpc.Service {
             ($core.List<$core.int> value) =>
                 $0.CompleteAuthRequest.fromBuffer(value),
             ($0.CompleteAuthResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.RequestRecoveryRequest,
+            $0.RequestRecoveryResponse>(
+        'RequestRecovery',
+        requestRecovery_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.RequestRecoveryRequest.fromBuffer(value),
+        ($0.RequestRecoveryResponse value) => value.writeToBuffer()));
     $addMethod($grpc.ServiceMethod<$0.LogoutRequest, $0.LogoutResponse>(
         'Logout',
         logout_Pre,
@@ -376,6 +403,15 @@ abstract class UserServiceBase extends $grpc.Service {
 
   $async.Future<$0.CompleteAuthResponse> completeAuth(
       $grpc.ServiceCall call, $0.CompleteAuthRequest request);
+
+  $async.Future<$0.RequestRecoveryResponse> requestRecovery_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.RequestRecoveryRequest> $request) async {
+    return requestRecovery($call, await $request);
+  }
+
+  $async.Future<$0.RequestRecoveryResponse> requestRecovery(
+      $grpc.ServiceCall call, $0.RequestRecoveryRequest request);
 
   $async.Future<$0.LogoutResponse> logout_Pre(
       $grpc.ServiceCall $call, $async.Future<$0.LogoutRequest> $request) async {

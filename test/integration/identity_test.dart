@@ -31,6 +31,12 @@ final _skip = _server == null
     ? 'build RaindropCrypto first'
     : null;
 
+// The recovery wait is a week by default; this test needs a server started
+// with a wait of seconds (`users.recoveryWaitDays` in its raindrop.json).
+final _recoverySkip = Platform.environment['RAINDROP_TEST_SHORT_RECOVERY'] == null
+    ? 'set RAINDROP_TEST_SHORT_RECOVERY for a server whose recovery wait is seconds'
+    : null;
+
 Matcher _apiError(String code) =>
     throwsA(isA<ApiException>().having((e) => e.code, 'code', code));
 
@@ -190,9 +196,12 @@ void main() {
     final root = await IdentityCrypto.openRoot(
       seed: seed,
       serverKey: serverKey,
-      blob: sealed,
+      blob: sealed.sealedRoot,
     );
     expect(root, bob.root);
+    // The vault comes with it, and opens with the root.
+    expect(sealed.vault, isNotNull);
+    await IdentityCrypto.openVault(root: root, serverKey: serverKey, blob: sealed.vault!);
     final recovered = ClientIdentity(root: root, recoverySeed: seed);
 
     // The words alone are not the account.
@@ -214,7 +223,7 @@ void main() {
       _apiError('vault_not_found'),
     );
     await expectLater(
-      IdentityCrypto.openRoot(seed: wrong, serverKey: serverKey, blob: sealed),
+      IdentityCrypto.openRoot(seed: wrong, serverKey: serverKey, blob: sealed.sealedRoot),
       throwsA(
         isA<CryptoException>().having(
           (e) => e.kind,
@@ -238,6 +247,43 @@ void main() {
     final laptop = await engine();
     expect((await signIn(laptop, paired)).user.userId, session.user.userId);
   }, timeout: const Timeout(Duration(minutes: 2)), skip: _skip);
+
+  test('without any code, the words get in after a wait a device can stop', () async {
+    final dana = await newPerson();
+    final phone = await engine();
+    final session = await signIn(phone, dana, username: name('dana'));
+    final secret = Totp.newSecret();
+    await api.enrollAuthenticator(session.token, secret: secret, code: Totp.code(secret));
+
+    Future<DateTime> wait(MlsCryptoEngine device) => requestRecoveryWithDevice(
+      api: users,
+      engine: device,
+      identity: dana,
+      serverKey: serverKey,
+    );
+
+    // Somebody else has the words and starts a wait; the phone sees it and stops it.
+    final stolen = await engine();
+    await expectLater(signIn(stolen, dana), _apiError('authenticator_required'));
+    await wait(stolen);
+    expect(await api.recoveries(session.token), hasLength(1));
+    expect(await api.cancelRecoveries(session.token), 1);
+    expect(await api.recoveries(session.token), isEmpty);
+
+    // Dana herself, on a new device: the wait runs its course.
+    final tablet = await engine();
+    await expectLater(signIn(tablet, dana), _apiError('authenticator_required'));
+    final ends = await wait(tablet);
+    expect(await wait(tablet), ends, reason: 'asking again does not restart the clock');
+    await expectLater(signIn(tablet, dana), _apiError('recovery_pending'));
+
+    await Future<void>.delayed(ends.difference(DateTime.now().toUtc()) + const Duration(seconds: 2));
+    expect((await signIn(tablet, dana)).user.userId, session.user.userId);
+    expect(await api.recoveries(session.token), isEmpty);
+
+    // The stopped one never gets in without a code.
+    await expectLater(signIn(stolen, dana), _apiError('recovery_cancelled'));
+  }, timeout: const Timeout(Duration(minutes: 3)), skip: _skip ?? _recoverySkip);
 
   test('a device with no account is paired through the relay', () async {
     final carol = await newPerson();

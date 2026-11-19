@@ -1376,6 +1376,199 @@ class CompleteAuthResponse extends $pb.GeneratedMessage {
   Session ensureSession() => $_ensure(0);
 }
 
+/// Starts waiting to add a device without an authenticator code.
+class RequestRecoveryRequest extends $pb.GeneratedMessage {
+  factory RequestRecoveryRequest({
+    $core.String? userId,
+    $core.String? deviceId,
+    $core.List<$core.int>? nonce,
+    $core.List<$core.int>? signature,
+    $core.List<$core.int>? certificate,
+  }) {
+    final result = RequestRecoveryRequest._();
+    if (userId != null) result.userId = userId;
+    if (deviceId != null) result.deviceId = deviceId;
+    if (nonce != null) result.nonce = nonce;
+    if (signature != null) result.signature = signature;
+    if (certificate != null) result.certificate = certificate;
+    return result;
+  }
+
+  RequestRecoveryRequest._();
+
+  factory RequestRecoveryRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      RequestRecoveryRequest()..mergeFromBuffer(data, registry);
+  factory RequestRecoveryRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      RequestRecoveryRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'RequestRecoveryRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: RequestRecoveryRequest.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'userId')
+    ..aOS(2, _omitFieldNames ? '' : 'deviceId')
+    ..a<$core.List<$core.int>>(
+        3, _omitFieldNames ? '' : 'nonce', $pb.PbFieldType.OY)
+    ..a<$core.List<$core.int>>(
+        4, _omitFieldNames ? '' : 'signature', $pb.PbFieldType.OY)
+    ..a<$core.List<$core.int>>(
+        5, _omitFieldNames ? '' : 'certificate', $pb.PbFieldType.OY)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  RequestRecoveryRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  RequestRecoveryRequest copyWith(
+          void Function(RequestRecoveryRequest) updates) =>
+      super.copyWith((message) => updates(message as RequestRecoveryRequest))
+          as RequestRecoveryRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use RequestRecoveryRequest() / RequestRecoveryRequest.new instead')
+  static RequestRecoveryRequest create() => RequestRecoveryRequest._();
+  static $pb.GeneratedMessage $_createMessage() => RequestRecoveryRequest._();
+  @$core.override
+  RequestRecoveryRequest createEmptyInstance() => RequestRecoveryRequest._();
+  @$core.pragma('dart2js:noInline')
+  static RequestRecoveryRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<RequestRecoveryRequest>(
+          RequestRecoveryRequest.$_createMessage);
+  static RequestRecoveryRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get userId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set userId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasUserId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearUserId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get deviceId => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set deviceId($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasDeviceId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearDeviceId() => $_clearField(2);
+
+  /// A nonce BeginAuth returned for this user_id.
+  @$pb.TagNumber(3)
+  $core.List<$core.int> get nonce => $_getN(2);
+  @$pb.TagNumber(3)
+  set nonce($core.List<$core.int> value) => $_setBytes(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasNonce() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearNonce() => $_clearField(3);
+
+  /// Ed25519 by the device's signature key over the same bytes CompleteAuth signs.
+  @$pb.TagNumber(4)
+  $core.List<$core.int> get signature => $_getN(3);
+  @$pb.TagNumber(4)
+  set signature($core.List<$core.int> value) => $_setBytes(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasSignature() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearSignature() => $_clearField(4);
+
+  /// The device certificate, signed by the account's identity key.
+  @$pb.TagNumber(5)
+  $core.List<$core.int> get certificate => $_getN(4);
+  @$pb.TagNumber(5)
+  set certificate($core.List<$core.int> value) => $_setBytes(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasCertificate() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearCertificate() => $_clearField(5);
+}
+
+/// The wait for this device.
+class RequestRecoveryResponse extends $pb.GeneratedMessage {
+  factory RequestRecoveryResponse({
+    $1.Timestamp? requestedAt,
+    $1.Timestamp? eligibleAt,
+  }) {
+    final result = RequestRecoveryResponse._();
+    if (requestedAt != null) result.requestedAt = requestedAt;
+    if (eligibleAt != null) result.eligibleAt = eligibleAt;
+    return result;
+  }
+
+  RequestRecoveryResponse._();
+
+  factory RequestRecoveryResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      RequestRecoveryResponse()..mergeFromBuffer(data, registry);
+  factory RequestRecoveryResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      RequestRecoveryResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'RequestRecoveryResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: RequestRecoveryResponse.$_createMessage)
+    ..aOM<$1.Timestamp>(1, _omitFieldNames ? '' : 'requestedAt',
+        subBuilder: $1.Timestamp.$_createMessage)
+    ..aOM<$1.Timestamp>(2, _omitFieldNames ? '' : 'eligibleAt',
+        subBuilder: $1.Timestamp.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  RequestRecoveryResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  RequestRecoveryResponse copyWith(
+          void Function(RequestRecoveryResponse) updates) =>
+      super.copyWith((message) => updates(message as RequestRecoveryResponse))
+          as RequestRecoveryResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use RequestRecoveryResponse() / RequestRecoveryResponse.new instead')
+  static RequestRecoveryResponse create() => RequestRecoveryResponse._();
+  static $pb.GeneratedMessage $_createMessage() => RequestRecoveryResponse._();
+  @$core.override
+  RequestRecoveryResponse createEmptyInstance() => RequestRecoveryResponse._();
+  @$core.pragma('dart2js:noInline')
+  static RequestRecoveryResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<RequestRecoveryResponse>(
+          RequestRecoveryResponse.$_createMessage);
+  static RequestRecoveryResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $1.Timestamp get requestedAt => $_getN(0);
+  @$pb.TagNumber(1)
+  set requestedAt($1.Timestamp value) => $_setField(1, value);
+  @$pb.TagNumber(1)
+  $core.bool hasRequestedAt() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearRequestedAt() => $_clearField(1);
+  @$pb.TagNumber(1)
+  $1.Timestamp ensureRequestedAt() => $_ensure(0);
+
+  /// From then on, CompleteAuth lets this device in without an authenticator code.
+  @$pb.TagNumber(2)
+  $1.Timestamp get eligibleAt => $_getN(1);
+  @$pb.TagNumber(2)
+  set eligibleAt($1.Timestamp value) => $_setField(2, value);
+  @$pb.TagNumber(2)
+  $core.bool hasEligibleAt() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearEligibleAt() => $_clearField(2);
+  @$pb.TagNumber(2)
+  $1.Timestamp ensureEligibleAt() => $_ensure(1);
+}
+
 /// Ends the calling session.
 class LogoutRequest extends $pb.GeneratedMessage {
   factory LogoutRequest() => LogoutRequest._();

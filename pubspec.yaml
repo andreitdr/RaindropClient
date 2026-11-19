@@ -47,6 +47,7 @@ dependencies:
   shared_preferences: ^2.5.5
   uuid: ^4.6.0
   local_auth: ^3.0.2
+  pdf: ^3.13.1
 
 # local_auth_windows 2.0.2 (the latest) does not compile with Visual Studio 18:
 # it builds with MSVC's removed /await coroutines and returns from a coroutine

@@ -33,7 +33,7 @@ everything else behind [`LockGate`](../lib/features/identity/widgets/lock_gate.d
 `WelcomeScreen` offers three ways to get an identity:
 
 - **I'm new** — `IdentityController.create()` makes a root and a recovery key and shows the 24 words
-  once (`showRecoveryWordsDialog`).
+  once (`showRecoveryWordsDialog`, see [Keeping the words](#keeping-the-words)).
 - **I use Raindrop on another device** — [pairing](#pairing-a-device).
 - **Use my recovery words** — [recovery](#recovery-words).
 
@@ -125,27 +125,95 @@ adds that server; its vault brings the rest.
 Settings → Identity & devices → New recovery words makes a new key; each server's sealed root is replaced as the vault next
 syncs with it, and until then the old words still open that server's copy.
 
+The words are typed or pasted as they come: case, extra spaces and the "7." numbering the dialog shows
+are forgiven (`normalizeRecoveryWords`, [`models/recovery_check.dart`](../lib/features/identity/models/recovery_check.dart)).
+
+### Keeping the words
+
+Words nobody wrote down are no way back, so the app works at making sure they were:
+
+- **Typed back before the dialog closes.** `showRecoveryWordsDialog` shows the words, then asks for
+  three random positions (`confirmationPositions`); only the right words close it. There is a way back
+  to the words, none out without them.
+- **The emergency kit** ([`emergency_kit.dart`](../lib/features/identity/emergency_kit.dart)): a
+  one-page PDF, made with the pure-Dart `pdf` package and saved where the person chooses (a save dialog
+  on the desktops, the system's own on phones), holding the words, the servers in the vault (recovering
+  needs one address; blank lines for more) and what to do. The backup codes dialog offers the same kit
+  with the codes. **It can only be made while they are on screen**: the device keeps the seed, never
+  the words, and servers keep only hashes of the codes. The kit uses the PDF's built-in Helvetica,
+  which has no Unicode — only words, codes and addresses go in it.
+- **Check my recovery words** (Identity & devices): all 24 typed in, turned into a seed and compared
+  with `client.recovery_seed` on the device (`recoveryWordsMatch`); nothing is sent.
+- **Reminders.** `AppPrefs` records when the current words were confirmed
+  (`identity.recovery_words_set_at`) and last checked (`identity.recovery_checked_at`).
+  `recoveryCheckDueProvider` (`recoveryCheckDue`) puts a nudge at the top of Identity & devices a month
+  after the words were made, then every half year after each check, and at once on a device that never
+  saw a check.
+- **The only device.** When the vault lists no device but this one, the same place asks the person to
+  pair another.
+
 ## Authenticator
 
 Optional, and recommended: with it, the recovery words alone cannot add a device.
 
 - **Set up** (Settings → Identity & devices → Authenticator): a new 20-byte secret is shown as an `otpauth://` QR code and
   base32 key; the person types a code to prove their app has it; the secret and ten one-time backup
-  codes are enrolled on every server reachable now. The backup codes are shown once.
+  codes are enrolled on every server reachable now. The backup codes are shown once, with the
+  [emergency kit](#keeping-the-words) on offer; setting up warns that an authenticator on a phone is lost
+  with the phone.
+- **New backup codes** (a device holding the secret): the same secret is enrolled again with ten new
+  codes on every server reachable now — the device computes the code enrolling asks for. A server not
+  reachable keeps the old codes.
 - **A server joined or reached later** is enrolled by `DeviceSetupController` when its session opens
   (without backup codes: the device does not keep them).
 - **A paired device** receives the secret in the pairing payload and computes codes itself, so adding
   a server asks nothing. **A recovered device** does not have it: adding it to an account asks for a
   code or a backup code (`ServerAuthScreen`, `SignInPane`).
-- **Lost authenticator:** any device still paired sets up a new one — no old code is needed.
+- **Lost authenticator:** any device still paired sets up a new one — no old code is needed. With no
+  device left and no backup code either, see [Waiting out a lost authenticator](#waiting-out-a-lost-authenticator).
 - **Replaced or removed on another device:** the vault's authenticator fingerprint says so, and a
   device holding the old secret drops it instead of enrolling it again.
 - **Remove:** disabled on every server reachable now. A server that was not reachable keeps asking for
   a code until an authenticator is set up again.
 
+## Waiting out a lost authenticator
+
+For a person with the recovery words and nothing else: every device, the authenticator and its backup
+codes gone. The server can let such a device in **after a wait** (a week by default, set by its owner;
+see the server's [E2EE doc](../../RaindropServer/docs/e2ee.md#recovering-without-the-authenticator)),
+which the account's other devices are told about and can stop.
+
+- **Recovering adds every server at once.** `GetSealedRoot` returns the vault beside the sealed root;
+  `RecoverScreen` opens it with the root and `VaultController.adoptServers` adds every server in it.
+- **Starting the wait.** `SignInPane`, asking for a code, offers *I lost my authenticator and codes*.
+  After a confirmation that says what it is, `ServerSessionController.requestRecovery` signs a fresh
+  challenge with this device's key (`requestRecoveryWithDevice`, beside `signInWithDevice`) and calls
+  `UserService.RequestRecovery`. The pane then starts the wait on every other server in the list that
+  also asks this device for a code, so the person waits once, not once per server.
+- **While it runs** (`recovery_pending`), the pane says when it ends — kept per server in `AppPrefs`
+  (`identity.recovery_waits`) — with *Check now* and *Enter a code instead*. `ServerSessionController`
+  sets a timer for the end and signs in by itself then; a later launch simply signs in, which the server
+  now allows with no code. Signing in clears the stored date. The device has no authenticator secret
+  afterwards: Identity & devices → Authenticator sets up a new one.
+- **Stopped** (`recovery_cancelled`): the pane says another device stopped it and asks for a code.
+- **On the person's other devices.** [`pendingRecoveriesProvider`](../lib/features/security/controllers/recovery_watch.dart)
+  reads a server's running waits (`DeviceService.GetRecoveryStatus`) and follows
+  `e2ee.recovery.changed`. The main view listens to the open server's and asks at once
+  ([`askAboutRecoveries`](../lib/features/security/widgets/recovery_alert.dart)): *It was me* remembers
+  the answer (`identity.acknowledged_recoveries`); *Stop it* cancels on every server this device has a
+  session with (`CancelRecovery`) and points to making new recovery words, since they have leaked.
+  Identity & devices shows the same as a nudge with *Stop*. Only servers with a session already open
+  are asked — signing in to every server just to look would show the person online everywhere — and the
+  one on screen always has one.
+
 ## Limits
 
-- Losing every device **and** the recovery words loses the identity.
+- Losing every device **and** the recovery words loses the identity. Losing every device and the
+  authenticator **and** its backup codes means [a wait](#waiting-out-a-lost-authenticator) before the
+  words add a device (none at all on a server whose owner switched it off). A platform-synced copy of
+  the identity and the server owner reclaiming an account are planned; see the [roadmap](roadmap.md).
+- A device that stops a wait only reaches the servers it has a session with; a wait on a server none of
+  the person's devices has opened since runs its course unseen.
 - Every paired device holds the root. Removing a device from a server stops its sessions there, but a
   device stolen while unlocked still has the identity; the remedy, a new root, is not built.
 - Removing a server from a device deletes that device's keys for it, so adding it back registers a new
@@ -156,7 +224,9 @@ Optional, and recommended: with it, the recovery words alone cannot add a device
 ## Tests
 
 `test/features/identity/identity_logic_test.dart` (authenticator codes against RFC 6238, the pairing
-code, vault merging, the pairing payload) and `test/integration/identity_test.dart`, which runs the
-whole flow — two devices, the vault, recovery with an authenticator and a backup code, pairing through
-the relay — against a live server with the real Rust core (`RAINDROP_TEST_SERVER`; see
+code, vault merging, the pairing payload), `recovery_check_test.dart` (typing the words back, the
+reminder schedule, the emergency kit, the stored wait), `identity_screens_test.dart` (the sign-in pane's
+waiting and stopped states) and `test/integration/identity_test.dart`, which runs the
+whole flow — two devices, the vault, recovery with an authenticator and a backup code, a wait that one device
+stops and another sees through, pairing through the relay — against a live server with the real Rust core (`RAINDROP_TEST_SERVER`; see
 [crypto](crypto.md#tests)).

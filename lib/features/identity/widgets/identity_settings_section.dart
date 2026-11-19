@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,8 +8,10 @@ import '../../../core/crypto/identity_crypto.dart';
 import '../../../core/crypto/totp.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/platform/platform_info.dart';
+import '../../../core/storage/identity_store.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../../core/widgets/adaptive.dart';
+import '../../security/controllers/recovery_watch.dart';
 import '../../security/widgets/link_code_scanner.dart';
 import '../../security/widgets/recovery_words_dialog.dart';
 import '../../servers/controllers/servers_controller.dart';
@@ -19,6 +20,8 @@ import '../controllers/app_lock.dart';
 import '../controllers/identity_controller.dart';
 import '../controllers/pairing.dart';
 import '../controllers/vault_sync.dart';
+import '../emergency_kit.dart';
+import '../models/recovery_check.dart';
 import 'lock_gate.dart';
 
 /// Settings → Identity & devices: everything that belongs to the person
@@ -38,12 +41,45 @@ class IdentitySettingsSection extends ConsumerWidget {
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     final holdsAuthenticator = identity.authenticatorSecret != null;
     final accountHasAuthenticator = vault.authenticatorId.isNotEmpty;
+    final onlyDevice = devices.every((d) => d.installId == installId);
+    final checkDue = ref.watch(recoveryCheckDueProvider);
+    final waits = watchKnownRecoveries(ref);
 
     return Card(
       margin: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (waits.isNotEmpty)
+            _Nudge(
+              icon: Icons.warning_amber_rounded,
+              text:
+                  'A new device is waiting to join your account on '
+                  '${{for (final w in waits) w.server.displayName}.join(', ')}'
+                  ' without your authenticator. Not you? Stop it, then make '
+                  'new recovery words.',
+              action: 'Stop',
+              onPressed: () => _stopRecoveries(context, ref),
+            ),
+          if (checkDue)
+            _Nudge(
+              icon: Icons.key,
+              text:
+                  'Do you still have your recovery words? Check them now, '
+                  'while this device still works.',
+              action: 'Check',
+              onPressed: () => _checkRecoveryWords(context, ref),
+            ),
+          if (onlyDevice)
+            _Nudge(
+              icon: Icons.devices_other,
+              text:
+                  'This is your only device. If you lose it, only your '
+                  'recovery words get you back in. Pair another device to '
+                  'be safe.',
+              action: 'Pair',
+              onPressed: () => _pair(context, ref),
+            ),
           ListTile(
             leading: Icon(_platformIcon(currentPlatform.name)),
             title: Text(deviceName(ref.watch(appPrefsProvider))),
@@ -78,6 +114,15 @@ class IdentitySettingsSection extends ConsumerWidget {
             onTap: () => _newRecoveryWords(context, ref),
           ),
           ListTile(
+            leading: const Icon(Icons.fact_check_outlined),
+            title: const Text('Check my recovery words'),
+            subtitle: const Text(
+              'Type them in to make sure what you saved still works. '
+              'Nothing is sent anywhere.',
+            ),
+            onTap: () => _checkRecoveryWords(context, ref),
+          ),
+          ListTile(
             leading: const Icon(Icons.shield_outlined),
             title: const Text('Authenticator'),
             subtitle: Text(
@@ -97,6 +142,16 @@ class IdentitySettingsSection extends ConsumerWidget {
                 : null,
             onTap: () => _setUpAuthenticator(context, ref),
           ),
+          if (holdsAuthenticator)
+            ListTile(
+              leading: const Icon(Icons.password),
+              title: const Text('New backup codes'),
+              subtitle: const Text(
+                'Codes that stand in for the authenticator if it is lost '
+                'with your devices. Replaces your current ones.',
+              ),
+              onTap: () => _newBackupCodes(context, ref),
+            ),
           const _AppLockTile(),
         ],
       ),
@@ -262,11 +317,58 @@ class IdentitySettingsSection extends ConsumerWidget {
       return;
     }
     final words = await ref.read(identityProvider.notifier).newRecoveryKey();
-    if (context.mounted) await showRecoveryWordsDialog(context, words);
+    if (context.mounted) {
+      await showRecoveryWordsDialog(
+        context,
+        words,
+        servers: _serverAddresses(ref),
+      );
+    }
     // Each server's copy of the sealed root is replaced with one the new
     // words open.
     for (final session in await _sessions(ref)) {
       await ref.read(vaultProvider.notifier).sync(session);
+    }
+  }
+
+  /// Every server in the vault, as `host:port`, for the emergency kit.
+  static List<String> _serverAddresses(WidgetRef ref) =>
+      ref.read(vaultProvider).servers.values.map((s) => s.key).toList()..sort();
+
+  Future<void> _checkRecoveryWords(BuildContext context, WidgetRef ref) async {
+    final identity = await ref.read(identityProvider.future);
+    if (identity == null || !context.mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => _CheckRecoveryWordsDialog(identity: identity),
+    );
+    if (ok != true) return;
+    await ref.read(recoveryCheckDueProvider.notifier).recordChecked();
+    if (context.mounted) {
+      _snack(context, 'Those are your current recovery words.');
+    }
+  }
+
+  Future<void> _stopRecoveries(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showAdaptiveConfirm(
+      context,
+      title: 'Stop the waiting device?',
+      message:
+          'It will never be let in without a code. If you started it on a '
+          'new device yourself, that device then needs a code from your '
+          'authenticator, a backup code, or pairing from this one.',
+      confirmLabel: 'Stop it',
+      destructive: true,
+    );
+    if (!confirmed || !context.mounted) return;
+    final failed = await cancelAllRecoveries(ref);
+    if (context.mounted) {
+      _snack(
+        context,
+        failed == 0
+            ? 'Stopped. Make new recovery words if it was not you.'
+            : 'Stopped, except on $failed server(s) that could not be reached.',
+      );
     }
   }
 
@@ -285,6 +387,57 @@ class IdentitySettingsSection extends ConsumerWidget {
     if (secret == null || !context.mounted) return;
 
     final backupCodes = Totp.newBackupCodes();
+    final sessions = await _enroll(context, ref, secret, backupCodes);
+    if (sessions == null) return;
+
+    await ref.read(identityProvider.notifier).setAuthenticator(secret);
+    ref.read(vaultProvider.notifier).markAuthenticator(secret);
+    for (final session in sessions) {
+      await ref.read(vaultProvider.notifier).sync(session);
+    }
+    if (context.mounted) await _showBackupCodes(context, ref, backupCodes);
+  }
+
+  /// Replaces the backup codes on every server reachable now, keeping the
+  /// authenticator itself: this device holds its secret, so it can compute
+  /// the current code enrolling asks for.
+  Future<void> _newBackupCodes(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showAdaptiveConfirm(
+      context,
+      title: 'Make new backup codes?',
+      message:
+          'Your current backup codes stop working on every server this '
+          'device can reach now. A server that cannot be reached keeps the '
+          'old ones until you do this again.',
+      confirmLabel: 'Continue',
+    );
+    if (!confirmed || !context.mounted) return;
+    if (!await confirmUnlock(context, ref, reason: 'Make new backup codes')) {
+      return;
+    }
+    final secret = (await ref.read(identityProvider.future))
+        ?.authenticatorSecret;
+    if (secret == null || !context.mounted) return;
+
+    final backupCodes = Totp.newBackupCodes();
+    final sessions = await _enroll(context, ref, secret, backupCodes);
+    if (sessions == null || !context.mounted) return;
+    if (sessions.isEmpty) {
+      _snack(context, 'No server could be reached. Try again when online.');
+      return;
+    }
+    await _showBackupCodes(context, ref, backupCodes);
+  }
+
+  /// Enrolls [secret] and [backupCodes] on every server this device is
+  /// signed in to now. Returns those servers' sessions, or null — having
+  /// said why — when there were some and none took it.
+  Future<List<ServerSession>?> _enroll(
+    BuildContext context,
+    WidgetRef ref,
+    Uint8List secret,
+    List<String> backupCodes,
+  ) async {
     final sessions = await _sessions(ref);
     var enrolled = 0;
     ApiException? failure;
@@ -305,22 +458,21 @@ class IdentitySettingsSection extends ConsumerWidget {
       if (context.mounted) {
         _snack(context, failure?.message ?? 'No server could be reached.');
       }
-      return;
+      return null;
     }
-
-    await ref.read(identityProvider.notifier).setAuthenticator(secret);
-    ref.read(vaultProvider.notifier).markAuthenticator(secret);
-    for (final session in sessions) {
-      await ref.read(vaultProvider.notifier).sync(session);
-    }
-    if (context.mounted) {
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => _BackupCodesDialog(codes: backupCodes),
-      );
-    }
+    return sessions;
   }
+
+  Future<void> _showBackupCodes(
+    BuildContext context,
+    WidgetRef ref,
+    List<String> codes,
+  ) => showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) =>
+        _BackupCodesDialog(codes: codes, servers: _serverAddresses(ref)),
+  );
 
   Future<void> _removeAuthenticator(BuildContext context, WidgetRef ref) async {
     final confirmed = await showAdaptiveConfirm(
@@ -461,6 +613,12 @@ class _AuthenticatorDialogState extends State<_AuthenticatorDialog> {
                 'Scan this with an authenticator app, or type the key into '
                 'it. Then enter the 6-digit code the app shows.',
               ),
+              const SizedBox(height: 8),
+              Text(
+                'If the app is on your phone, losing the phone loses it too. '
+                'Keep the backup codes you are shown next somewhere else.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
               const SizedBox(height: 16),
               Center(
                 child: Container(
@@ -510,9 +668,10 @@ class _AuthenticatorDialogState extends State<_AuthenticatorDialog> {
 
 /// Shows the one-time backup codes once.
 class _BackupCodesDialog extends StatelessWidget {
-  const _BackupCodesDialog({required this.codes});
+  const _BackupCodesDialog({required this.codes, required this.servers});
 
   final List<String> codes;
+  final List<String> servers;
 
   @override
   Widget build(BuildContext context) => AlertDialog(
@@ -534,11 +693,21 @@ class _BackupCodesDialog extends StatelessWidget {
             textAlign: TextAlign.center,
             style: const TextStyle(fontFamily: 'monospace', height: 1.5),
           ),
-          TextButton.icon(
-            onPressed: () =>
-                Clipboard.setData(ClipboardData(text: codes.join('\n'))),
-            icon: const Icon(Icons.copy, size: 18),
-            label: const Text('Copy'),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            children: [
+              TextButton.icon(
+                onPressed: () =>
+                    Clipboard.setData(ClipboardData(text: codes.join('\n'))),
+                icon: const Icon(Icons.copy, size: 18),
+                label: const Text('Copy'),
+              ),
+              EmergencyKitButton(
+                build: () =>
+                    buildEmergencyKit(backupCodes: codes, servers: servers),
+              ),
+            ],
           ),
         ],
       ),
@@ -550,6 +719,142 @@ class _BackupCodesDialog extends StatelessWidget {
       ),
     ],
   );
+}
+
+/// Asks for all 24 recovery words and pops true once they are the current
+/// ones. Compared on this device against the seed it keeps; nothing is sent.
+class _CheckRecoveryWordsDialog extends StatefulWidget {
+  const _CheckRecoveryWordsDialog({required this.identity});
+
+  final ClientIdentity identity;
+
+  @override
+  State<_CheckRecoveryWordsDialog> createState() =>
+      _CheckRecoveryWordsDialogState();
+}
+
+class _CheckRecoveryWordsDialogState extends State<_CheckRecoveryWordsDialog> {
+  final _words = TextEditingController();
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _words.dispose();
+    super.dispose();
+  }
+
+  Future<void> _check() async {
+    final words = normalizeRecoveryWords(_words.text);
+    if (words.split(' ').length != 24) {
+      setState(() => _error = 'Enter all 24 words.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    String? error;
+    try {
+      if (await recoveryWordsMatch(widget.identity, words)) {
+        if (mounted) Navigator.pop(context, true);
+        return;
+      }
+      error =
+          'These are not your current recovery words. If you made new ones '
+          'since, use those. If you have lost them, make new ones now.';
+    } on CryptoException {
+      error = 'Those are not 24 valid recovery words. Check for a typo.';
+    }
+    if (mounted) {
+      setState(() {
+        _busy = false;
+        _error = error;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Check my recovery words'),
+    content: SizedBox(
+      width: 420,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Type the 24 words you saved. They are checked on this device '
+            'only.',
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _words,
+            enabled: !_busy,
+            autofocus: true,
+            minLines: 3,
+            maxLines: 5,
+            autocorrect: false,
+            enableSuggestions: false,
+            decoration: InputDecoration(
+              labelText: 'Recovery words',
+              border: const OutlineInputBorder(),
+              errorText: _error,
+              errorMaxLines: 3,
+            ),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: _busy ? null : () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: _busy ? null : _check,
+        child: const Text('Check'),
+      ),
+    ],
+  );
+}
+
+/// A highlighted line at the top of the section asking the person to do
+/// something that keeps their identity recoverable.
+class _Nudge extends StatelessWidget {
+  const _Nudge({
+    required this.icon,
+    required this.text,
+    required this.action,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String text;
+  final String action;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      color: scheme.tertiaryContainer,
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+      child: Row(
+        children: [
+          Icon(icon, color: scheme.onTertiaryContainer),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(color: scheme.onTertiaryContainer),
+            ),
+          ),
+          TextButton(onPressed: onPressed, child: Text(action)),
+        ],
+      ),
+    );
+  }
 }
 
 /// How this device is unlocked, and changing the PIN where it is a PIN.

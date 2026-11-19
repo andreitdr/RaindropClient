@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -14,6 +16,9 @@ import '../../../core/storage/secure_store.dart';
 import '../../../core/widgets/adaptive.dart';
 import '../../servers/controllers/servers_controller.dart';
 import '../controllers/identity_controller.dart';
+import '../controllers/vault_sync.dart';
+import '../models/vault.dart';
+import '../models/recovery_check.dart';
 import '../widgets/server_address_fields.dart';
 
 /// Getting an identity back when every device is gone: one server the person
@@ -64,13 +69,15 @@ class _RecoverScreenState extends ConsumerState<RecoverScreen> {
         throw ApiException.certificateMismatch();
       }
 
-      final seed = await IdentityCrypto.seedFromWords(_words.text);
+      final seed = await IdentityCrypto.seedFromWords(
+        normalizeRecoveryWords(_words.text),
+      );
       final sealed = await E2eeApi(client)
           .sealedRoot(await IdentityCrypto.lookupId(seed, serverKey));
       final root = await IdentityCrypto.openRoot(
         seed: seed,
         serverKey: serverKey,
-        blob: sealed,
+        blob: sealed.sealedRoot,
       );
 
       // The server goes into the list with the pins this connection made;
@@ -88,6 +95,10 @@ class _RecoverScreenState extends ConsumerState<RecoverScreen> {
           .add(
             ServerProfile(id: id, host: host, port: port, displayName: host),
           );
+      // Every other server the person is on, from the vault that came with
+      // the root: they all start signing in now, so a device that has to
+      // wait out a lost authenticator waits on all of them at once.
+      await _addVaultServers(root, seed, serverKey, sealed.vault);
       if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
     } on ApiException catch (e) {
       _fail(
@@ -106,6 +117,31 @@ class _RecoverScreenState extends ConsumerState<RecoverScreen> {
       });
     } finally {
       client.close();
+    }
+  }
+
+  Future<void> _addVaultServers(
+    Uint8List root,
+    Uint8List seed,
+    Uint8List serverKey,
+    Uint8List? sealedVault,
+  ) async {
+    if (sealedVault == null) return;
+    try {
+      final vault = Vault.tryFromBytes(
+        await IdentityCrypto.openVault(
+          root: root,
+          serverKey: serverKey,
+          blob: sealedVault,
+        ),
+      );
+      if (vault == null) return;
+      await ref
+          .read(vaultProvider.notifier)
+          .adoptServers(vault, ClientIdentity(root: root, recoverySeed: seed));
+    } on CryptoException {
+      // Sealed under an older root: the first sync with this server brings
+      // the servers instead.
     }
   }
 
@@ -161,8 +197,8 @@ class _RecoverScreenState extends ConsumerState<RecoverScreen> {
                           border: OutlineInputBorder(),
                         ),
                         validator: (v) =>
-                            (v == null ||
-                                v.trim().split(RegExp(r'\s+')).length != 24)
+                            normalizeRecoveryWords(v ?? '').split(' ').length !=
+                                24
                             ? 'Enter all 24 words'
                             : null,
                       ),

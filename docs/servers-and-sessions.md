@@ -62,13 +62,15 @@ one thing missing:
 
 | Refusal | Means | Asks for |
 |---|---|---|
-| `authenticator_required`, `invalid_authenticator_code`, `authenticator_locked` | The device is new to an account with an authenticator and does not hold its secret | A code, or a backup code |
+| `authenticator_required`, `invalid_authenticator_code`, `authenticator_locked` | The device is new to an account with an authenticator and does not hold its secret | A code, or a backup code — or, with both lost, starting [a wait](identity.md#waiting-out-a-lost-authenticator) |
+| `recovery_pending` | This device is waiting to be let in without a code | Nothing: it says when, and signs in by itself then (or takes a code) |
+| `recovery_cancelled` | One of the person's devices stopped the wait | A code, or a backup code |
 | `invalid_username` | The server no longer has the account (reset, or erased) | A username, to join again |
 | `invalid_credentials`, `device_exists` | This device was removed from the account | A go-ahead: its keys for the server are deleted and new ones made |
 | anything else | | **Try again** |
 
 All of them also offer **Remove from this device**. `ServerSessionController.signInWith(...)` is what
-the pane calls.
+the pane calls, and `requestRecovery()` starts a wait.
 
 Mutating methods:
 

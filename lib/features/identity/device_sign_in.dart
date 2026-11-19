@@ -81,6 +81,37 @@ Future<SessionResult> signInWithDevice({
   }
 }
 
+/// Asks the server to let this device in without an authenticator code once
+/// a wait is over (see `UsersApi.requestRecovery`). The device's keys are
+/// the ones [signInWithDevice] made, or made here the same way. Returns when
+/// the wait ends.
+Future<DateTime> requestRecoveryWithDevice({
+  required UsersApi api,
+  required MlsCryptoEngine engine,
+  required ClientIdentity identity,
+  required Uint8List serverKey,
+}) async {
+  final device =
+      await engine.device() ??
+      await engine.createIdentityFromRoot(
+        root: identity.root,
+        serverKey: serverKey,
+        deviceId: const Uuid().v4(),
+      );
+  final nonce = await api.beginAuth(device.userId);
+  final wait = await api.requestRecovery(
+    userId: device.userId,
+    deviceId: device.deviceId,
+    nonce: nonce,
+    signature: await engine.signAuthChallenge(
+      serverKey: serverKey,
+      nonce: nonce,
+    ),
+    certificate: device.certificate,
+  );
+  return wait.eligibleAt;
+}
+
 /// The failures of [signInWithDevice] that are about the authenticator, and
 /// so are answered by asking the person for a code.
 bool needsAuthenticatorCode(String code) =>

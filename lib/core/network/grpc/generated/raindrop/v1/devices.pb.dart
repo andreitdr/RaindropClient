@@ -2053,13 +2053,15 @@ class GetSealedRootRequest extends $pb.GeneratedMessage {
   void clearLookupId() => $_clearField(1);
 }
 
-/// The sealed root.
+/// The sealed root, and the vault sealed under it.
 class GetSealedRootResponse extends $pb.GeneratedMessage {
   factory GetSealedRootResponse({
     $core.List<$core.int>? sealedRoot,
+    $core.List<$core.int>? vault,
   }) {
     final result = GetSealedRootResponse._();
     if (sealedRoot != null) result.sealedRoot = sealedRoot;
+    if (vault != null) result.vault = vault;
     return result;
   }
 
@@ -2078,6 +2080,8 @@ class GetSealedRootResponse extends $pb.GeneratedMessage {
       createEmptyInstance: GetSealedRootResponse.$_createMessage)
     ..a<$core.List<$core.int>>(
         1, _omitFieldNames ? '' : 'sealedRoot', $pb.PbFieldType.OY)
+    ..a<$core.List<$core.int>>(
+        2, _omitFieldNames ? '' : 'vault', $pb.PbFieldType.OY)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -2112,6 +2116,17 @@ class GetSealedRootResponse extends $pb.GeneratedMessage {
   $core.bool hasSealedRoot() => $_has(0);
   @$pb.TagNumber(1)
   void clearSealedRoot() => $_clearField(1);
+
+  /// The vault (its server list above all), sealed under the root: it opens only once the sealed root
+  /// has. Lets a device recovering with the words reach every server at once, before signing in.
+  @$pb.TagNumber(2)
+  $core.List<$core.int> get vault => $_getN(1);
+  @$pb.TagNumber(2)
+  set vault($core.List<$core.int> value) => $_setBytes(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasVault() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearVault() => $_clearField(2);
 }
 
 /// Sets the account's authenticator.
@@ -2497,6 +2512,301 @@ class GetAuthenticatorStatusResponse extends $pb.GeneratedMessage {
   $core.bool hasBackupCodesLeft() => $_has(1);
   @$pb.TagNumber(2)
   void clearBackupCodesLeft() => $_clearField(2);
+}
+
+/// A device waiting to be added to the account without an authenticator code.
+class PendingRecovery extends $pb.GeneratedMessage {
+  factory PendingRecovery({
+    $core.String? deviceId,
+    $1.Timestamp? requestedAt,
+    $1.Timestamp? eligibleAt,
+  }) {
+    final result = PendingRecovery._();
+    if (deviceId != null) result.deviceId = deviceId;
+    if (requestedAt != null) result.requestedAt = requestedAt;
+    if (eligibleAt != null) result.eligibleAt = eligibleAt;
+    return result;
+  }
+
+  PendingRecovery._();
+
+  factory PendingRecovery.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PendingRecovery()..mergeFromBuffer(data, registry);
+  factory PendingRecovery.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PendingRecovery()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'PendingRecovery',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: PendingRecovery.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'deviceId')
+    ..aOM<$1.Timestamp>(2, _omitFieldNames ? '' : 'requestedAt',
+        subBuilder: $1.Timestamp.$_createMessage)
+    ..aOM<$1.Timestamp>(3, _omitFieldNames ? '' : 'eligibleAt',
+        subBuilder: $1.Timestamp.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PendingRecovery clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PendingRecovery copyWith(void Function(PendingRecovery) updates) =>
+      super.copyWith((message) => updates(message as PendingRecovery))
+          as PendingRecovery;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use PendingRecovery() / PendingRecovery.new instead')
+  static PendingRecovery create() => PendingRecovery._();
+  static $pb.GeneratedMessage $_createMessage() => PendingRecovery._();
+  @$core.override
+  PendingRecovery createEmptyInstance() => PendingRecovery._();
+  @$core.pragma('dart2js:noInline')
+  static PendingRecovery getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<PendingRecovery>(
+          PendingRecovery.$_createMessage);
+  static PendingRecovery? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get deviceId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set deviceId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasDeviceId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearDeviceId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $1.Timestamp get requestedAt => $_getN(1);
+  @$pb.TagNumber(2)
+  set requestedAt($1.Timestamp value) => $_setField(2, value);
+  @$pb.TagNumber(2)
+  $core.bool hasRequestedAt() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearRequestedAt() => $_clearField(2);
+  @$pb.TagNumber(2)
+  $1.Timestamp ensureRequestedAt() => $_ensure(1);
+
+  /// When it gets in, unless cancelled before then.
+  @$pb.TagNumber(3)
+  $1.Timestamp get eligibleAt => $_getN(2);
+  @$pb.TagNumber(3)
+  set eligibleAt($1.Timestamp value) => $_setField(3, value);
+  @$pb.TagNumber(3)
+  $core.bool hasEligibleAt() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearEligibleAt() => $_clearField(3);
+  @$pb.TagNumber(3)
+  $1.Timestamp ensureEligibleAt() => $_ensure(2);
+}
+
+/// Asks for the running recovery waits.
+class GetRecoveryStatusRequest extends $pb.GeneratedMessage {
+  factory GetRecoveryStatusRequest() => GetRecoveryStatusRequest._();
+
+  GetRecoveryStatusRequest._();
+
+  factory GetRecoveryStatusRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetRecoveryStatusRequest()..mergeFromBuffer(data, registry);
+  factory GetRecoveryStatusRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetRecoveryStatusRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GetRecoveryStatusRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: GetRecoveryStatusRequest.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetRecoveryStatusRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetRecoveryStatusRequest copyWith(
+          void Function(GetRecoveryStatusRequest) updates) =>
+      super.copyWith((message) => updates(message as GetRecoveryStatusRequest))
+          as GetRecoveryStatusRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use GetRecoveryStatusRequest() / GetRecoveryStatusRequest.new instead')
+  static GetRecoveryStatusRequest create() => GetRecoveryStatusRequest._();
+  static $pb.GeneratedMessage $_createMessage() => GetRecoveryStatusRequest._();
+  @$core.override
+  GetRecoveryStatusRequest createEmptyInstance() =>
+      GetRecoveryStatusRequest._();
+  @$core.pragma('dart2js:noInline')
+  static GetRecoveryStatusRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<GetRecoveryStatusRequest>(
+          GetRecoveryStatusRequest.$_createMessage);
+  static GetRecoveryStatusRequest? _defaultInstance;
+}
+
+/// The running waits, oldest first; empty when there are none.
+class GetRecoveryStatusResponse extends $pb.GeneratedMessage {
+  factory GetRecoveryStatusResponse({
+    $core.Iterable<PendingRecovery>? recoveries,
+  }) {
+    final result = GetRecoveryStatusResponse._();
+    if (recoveries != null) result.recoveries.addAll(recoveries);
+    return result;
+  }
+
+  GetRecoveryStatusResponse._();
+
+  factory GetRecoveryStatusResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetRecoveryStatusResponse()..mergeFromBuffer(data, registry);
+  factory GetRecoveryStatusResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetRecoveryStatusResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GetRecoveryStatusResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: GetRecoveryStatusResponse.$_createMessage)
+    ..pPM<PendingRecovery>(1, _omitFieldNames ? '' : 'recoveries',
+        subBuilder: PendingRecovery.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetRecoveryStatusResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetRecoveryStatusResponse copyWith(
+          void Function(GetRecoveryStatusResponse) updates) =>
+      super.copyWith((message) => updates(message as GetRecoveryStatusResponse))
+          as GetRecoveryStatusResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use GetRecoveryStatusResponse() / GetRecoveryStatusResponse.new instead')
+  static GetRecoveryStatusResponse create() => GetRecoveryStatusResponse._();
+  static $pb.GeneratedMessage $_createMessage() =>
+      GetRecoveryStatusResponse._();
+  @$core.override
+  GetRecoveryStatusResponse createEmptyInstance() =>
+      GetRecoveryStatusResponse._();
+  @$core.pragma('dart2js:noInline')
+  static GetRecoveryStatusResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<GetRecoveryStatusResponse>(
+          GetRecoveryStatusResponse.$_createMessage);
+  static GetRecoveryStatusResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $pb.PbList<PendingRecovery> get recoveries => $_getList(0);
+}
+
+/// Cancels every running recovery wait.
+class CancelRecoveryRequest extends $pb.GeneratedMessage {
+  factory CancelRecoveryRequest() => CancelRecoveryRequest._();
+
+  CancelRecoveryRequest._();
+
+  factory CancelRecoveryRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      CancelRecoveryRequest()..mergeFromBuffer(data, registry);
+  factory CancelRecoveryRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      CancelRecoveryRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'CancelRecoveryRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: CancelRecoveryRequest.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CancelRecoveryRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CancelRecoveryRequest copyWith(
+          void Function(CancelRecoveryRequest) updates) =>
+      super.copyWith((message) => updates(message as CancelRecoveryRequest))
+          as CancelRecoveryRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use CancelRecoveryRequest() / CancelRecoveryRequest.new instead')
+  static CancelRecoveryRequest create() => CancelRecoveryRequest._();
+  static $pb.GeneratedMessage $_createMessage() => CancelRecoveryRequest._();
+  @$core.override
+  CancelRecoveryRequest createEmptyInstance() => CancelRecoveryRequest._();
+  @$core.pragma('dart2js:noInline')
+  static CancelRecoveryRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<CancelRecoveryRequest>(
+          CancelRecoveryRequest.$_createMessage);
+  static CancelRecoveryRequest? _defaultInstance;
+}
+
+/// How many were running.
+class CancelRecoveryResponse extends $pb.GeneratedMessage {
+  factory CancelRecoveryResponse({
+    $core.int? cancelled,
+  }) {
+    final result = CancelRecoveryResponse._();
+    if (cancelled != null) result.cancelled = cancelled;
+    return result;
+  }
+
+  CancelRecoveryResponse._();
+
+  factory CancelRecoveryResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      CancelRecoveryResponse()..mergeFromBuffer(data, registry);
+  factory CancelRecoveryResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      CancelRecoveryResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'CancelRecoveryResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: CancelRecoveryResponse.$_createMessage)
+    ..aI(1, _omitFieldNames ? '' : 'cancelled')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CancelRecoveryResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CancelRecoveryResponse copyWith(
+          void Function(CancelRecoveryResponse) updates) =>
+      super.copyWith((message) => updates(message as CancelRecoveryResponse))
+          as CancelRecoveryResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use CancelRecoveryResponse() / CancelRecoveryResponse.new instead')
+  static CancelRecoveryResponse create() => CancelRecoveryResponse._();
+  static $pb.GeneratedMessage $_createMessage() => CancelRecoveryResponse._();
+  @$core.override
+  CancelRecoveryResponse createEmptyInstance() => CancelRecoveryResponse._();
+  @$core.pragma('dart2js:noInline')
+  static CancelRecoveryResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<CancelRecoveryResponse>(
+          CancelRecoveryResponse.$_createMessage);
+  static CancelRecoveryResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.int get cancelled => $_getIZ(0);
+  @$pb.TagNumber(1)
+  set cancelled($core.int value) => $_setSignedInt32(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasCancelled() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearCancelled() => $_clearField(1);
 }
 
 /// Starts a pairing.

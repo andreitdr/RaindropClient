@@ -178,6 +178,27 @@ class UserDevices {
 
 /// `raindrop.v1.DeviceService` and `DeliveryService`. One instance per
 /// connected server.
+/// A device waiting to be added to the account without an authenticator
+/// code (`UserService.RequestRecovery`): it gets in at [eligibleAt] unless
+/// one of the account's devices cancels it first.
+class PendingRecovery {
+  const PendingRecovery({
+    required this.deviceId,
+    required this.requestedAt,
+    required this.eligibleAt,
+  });
+
+  factory PendingRecovery.fromProto(pb.PendingRecovery p) => PendingRecovery(
+    deviceId: p.deviceId,
+    requestedAt: Wire.time(p.requestedAt),
+    eligibleAt: Wire.time(p.eligibleAt),
+  );
+
+  final String deviceId;
+  final DateTime requestedAt;
+  final DateTime eligibleAt;
+}
+
 class E2eeApi {
   E2eeApi(this._channel)
     : _devices = pb.DeviceServiceClient(_channel.channel),
@@ -536,17 +557,43 @@ class E2eeApi {
     return (lookupId: response.lookupId, vault: Wire.bytes(response.vault));
   }
 
-  /// The sealed root stored under [lookupId] — the one call a device holding
+  /// The sealed root stored under [lookupId], and the vault sealed under it
+  /// (null from a server too old to send it) — the one call a device holding
   /// only the recovery words makes before it has an account. Anonymous.
   /// Throws `vault_not_found`.
-  Future<Uint8List> sealedRoot(String lookupId) async => Wire.bytes(
-    (await _channel.call(
+  Future<({Uint8List sealedRoot, Uint8List? vault})> sealedRoot(
+    String lookupId,
+  ) async {
+    final response = await _channel.call(
       (o) => _devices.getSealedRoot(
         pb.GetSealedRootRequest(lookupId: lookupId),
         options: o,
       ),
-    )).sealedRoot,
-  );
+    );
+    return (
+      sealedRoot: Wire.bytes(response.sealedRoot),
+      vault: response.vault.isEmpty ? null : Wire.bytes(response.vault),
+    );
+  }
+
+  // ── Recovery waits ──
+
+  /// The devices waiting to be added to the account without an
+  /// authenticator code. Needs a bound session.
+  Future<List<PendingRecovery>> recoveries(String token) async =>
+      (await _channel.call(
+        (o) => _devices.getRecoveryStatus(
+          pb.GetRecoveryStatusRequest(),
+          options: o,
+        ),
+        token: token,
+      )).recoveries.map(PendingRecovery.fromProto).toList();
+
+  /// Cancels every one of them, for good. Returns how many there were.
+  Future<int> cancelRecoveries(String token) async => (await _channel.call(
+    (o) => _devices.cancelRecovery(pb.CancelRecoveryRequest(), options: o),
+    token: token,
+  )).cancelled;
 
   // ── Authenticator ──
 

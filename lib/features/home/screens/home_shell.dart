@@ -8,6 +8,7 @@ import '../../../core/layout/layout_row.dart';
 import '../../../core/layout/layout_scope.dart';
 import '../../../core/layout/layout_slot.dart';
 import '../../../core/models/server_profile.dart';
+import '../../../core/network/e2ee_api.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/adaptive.dart';
 import '../../../core/widgets/panel.dart';
@@ -17,7 +18,9 @@ import '../../channels/models/channel.dart';
 import '../../channels/widgets/channel_sidebar.dart';
 import '../../chat/widgets/chat_view.dart';
 import '../../security/controllers/device_setup_controller.dart';
+import '../../security/controllers/recovery_watch.dart';
 import '../../security/widgets/encryption_setup_pane.dart';
+import '../../security/widgets/recovery_alert.dart';
 import '../../identity/controllers/identity_controller.dart';
 import '../../identity/screens/welcome_screen.dart';
 import '../../identity/widgets/lock_gate.dart';
@@ -200,6 +203,15 @@ class _ShellLayoutState extends ConsumerState<_ShellLayout> {
             ?.showSnackBar(SnackBar(content: Text(notice)));
         ref.read(voiceCallProvider.notifier).dismissNotice();
       });
+      // A device waiting to join the person's account without an
+      // authenticator code: asked about at once, on whichever server.
+      ref.listen(
+        pendingRecoveriesProvider(serverId),
+        (_, waits) => askAboutRecoveries(context, ref, [
+          for (final recovery in waits.valueOrNull ?? const <PendingRecovery>[])
+            (server: session.profile, recovery: recovery),
+        ]),
+      );
     }
     final membersRevealed = ref.watch(
       revealedPanesProvider.select((s) => s.contains(MainPanes.members)),

@@ -187,6 +187,23 @@ class DeviceServiceClient extends $grpc.Client {
         options: options);
   }
 
+  /// The waits to add a device without an authenticator code (UserService.RequestRecovery) running on
+  /// the account: needs a bound session.
+  $grpc.ResponseFuture<$0.GetRecoveryStatusResponse> getRecoveryStatus(
+    $0.GetRecoveryStatusRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$getRecoveryStatus, request, options: options);
+  }
+
+  /// Cancels every one of them, for good: needs a bound session.
+  $grpc.ResponseFuture<$0.CancelRecoveryResponse> cancelRecovery(
+    $0.CancelRecoveryRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$cancelRecovery, request, options: options);
+  }
+
   /// A device with no account anywhere posts its pairing offer. Anonymous.
   $grpc.ResponseFuture<$0.StartPairingResponse> startPairing(
     $0.StartPairingRequest request, {
@@ -311,6 +328,16 @@ class DeviceServiceClient extends $grpc.Client {
       '/raindrop.v1.DeviceService/GetAuthenticatorStatus',
       ($0.GetAuthenticatorStatusRequest value) => value.writeToBuffer(),
       $0.GetAuthenticatorStatusResponse.fromBuffer);
+  static final _$getRecoveryStatus = $grpc.ClientMethod<
+          $0.GetRecoveryStatusRequest, $0.GetRecoveryStatusResponse>(
+      '/raindrop.v1.DeviceService/GetRecoveryStatus',
+      ($0.GetRecoveryStatusRequest value) => value.writeToBuffer(),
+      $0.GetRecoveryStatusResponse.fromBuffer);
+  static final _$cancelRecovery =
+      $grpc.ClientMethod<$0.CancelRecoveryRequest, $0.CancelRecoveryResponse>(
+          '/raindrop.v1.DeviceService/CancelRecovery',
+          ($0.CancelRecoveryRequest value) => value.writeToBuffer(),
+          $0.CancelRecoveryResponse.fromBuffer);
   static final _$startPairing =
       $grpc.ClientMethod<$0.StartPairingRequest, $0.StartPairingResponse>(
           '/raindrop.v1.DeviceService/StartPairing',
@@ -500,6 +527,24 @@ abstract class DeviceServiceBase extends $grpc.Service {
         ($core.List<$core.int> value) =>
             $0.GetAuthenticatorStatusRequest.fromBuffer(value),
         ($0.GetAuthenticatorStatusResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.GetRecoveryStatusRequest,
+            $0.GetRecoveryStatusResponse>(
+        'GetRecoveryStatus',
+        getRecoveryStatus_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.GetRecoveryStatusRequest.fromBuffer(value),
+        ($0.GetRecoveryStatusResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.CancelRecoveryRequest,
+            $0.CancelRecoveryResponse>(
+        'CancelRecovery',
+        cancelRecovery_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.CancelRecoveryRequest.fromBuffer(value),
+        ($0.CancelRecoveryResponse value) => value.writeToBuffer()));
     $addMethod(
         $grpc.ServiceMethod<$0.StartPairingRequest, $0.StartPairingResponse>(
             'StartPairing',
@@ -697,6 +742,24 @@ abstract class DeviceServiceBase extends $grpc.Service {
 
   $async.Future<$0.GetAuthenticatorStatusResponse> getAuthenticatorStatus(
       $grpc.ServiceCall call, $0.GetAuthenticatorStatusRequest request);
+
+  $async.Future<$0.GetRecoveryStatusResponse> getRecoveryStatus_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.GetRecoveryStatusRequest> $request) async {
+    return getRecoveryStatus($call, await $request);
+  }
+
+  $async.Future<$0.GetRecoveryStatusResponse> getRecoveryStatus(
+      $grpc.ServiceCall call, $0.GetRecoveryStatusRequest request);
+
+  $async.Future<$0.CancelRecoveryResponse> cancelRecovery_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.CancelRecoveryRequest> $request) async {
+    return cancelRecovery($call, await $request);
+  }
+
+  $async.Future<$0.CancelRecoveryResponse> cancelRecovery(
+      $grpc.ServiceCall call, $0.CancelRecoveryRequest request);
 
   $async.Future<$0.StartPairingResponse> startPairing_Pre(
       $grpc.ServiceCall $call,

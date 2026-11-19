@@ -18,7 +18,8 @@ import 'package:protobuf/well_known_types/google/protobuf/duration.pb.dart'
     as $5;
 
 import 'channels.pb.dart' as $2;
-import 'members.pbenum.dart' as $6;
+import 'devices.pb.dart' as $6;
+import 'members.pbenum.dart' as $7;
 import 'roles.pb.dart' as $3;
 import 'text.pb.dart' as $1;
 import 'voice.pb.dart' as $4;
@@ -288,6 +289,7 @@ enum ServerEvent_Event {
   welcome,
   groupReconcile,
   keyPackagesLow,
+  recoveryChanged,
   plugin,
   notSet
 }
@@ -319,6 +321,7 @@ class ServerEvent extends $pb.GeneratedMessage {
     WelcomeEvent? welcome,
     GroupReconcileEvent? groupReconcile,
     KeyPackagesLowEvent? keyPackagesLow,
+    RecoveryChangedEvent? recoveryChanged,
     PluginEvent? plugin,
   }) {
     final result = ServerEvent._();
@@ -346,6 +349,7 @@ class ServerEvent extends $pb.GeneratedMessage {
     if (welcome != null) result.welcome = welcome;
     if (groupReconcile != null) result.groupReconcile = groupReconcile;
     if (keyPackagesLow != null) result.keyPackagesLow = keyPackagesLow;
+    if (recoveryChanged != null) result.recoveryChanged = recoveryChanged;
     if (plugin != null) result.plugin = plugin;
     return result;
   }
@@ -385,6 +389,7 @@ class ServerEvent extends $pb.GeneratedMessage {
     22: ServerEvent_Event.welcome,
     23: ServerEvent_Event.groupReconcile,
     24: ServerEvent_Event.keyPackagesLow,
+    25: ServerEvent_Event.recoveryChanged,
     100: ServerEvent_Event.plugin,
     0: ServerEvent_Event.notSet
   };
@@ -417,6 +422,7 @@ class ServerEvent extends $pb.GeneratedMessage {
       22,
       23,
       24,
+      25,
       100
     ])
     ..aOM<ReadyEvent>(1, _omitFieldNames ? '' : 'ready',
@@ -467,6 +473,8 @@ class ServerEvent extends $pb.GeneratedMessage {
         subBuilder: GroupReconcileEvent.$_createMessage)
     ..aOM<KeyPackagesLowEvent>(24, _omitFieldNames ? '' : 'keyPackagesLow',
         subBuilder: KeyPackagesLowEvent.$_createMessage)
+    ..aOM<RecoveryChangedEvent>(25, _omitFieldNames ? '' : 'recoveryChanged',
+        subBuilder: RecoveryChangedEvent.$_createMessage)
     ..aOM<PluginEvent>(100, _omitFieldNames ? '' : 'plugin',
         subBuilder: PluginEvent.$_createMessage)
     ..hasRequiredFields = false;
@@ -517,6 +525,7 @@ class ServerEvent extends $pb.GeneratedMessage {
   @$pb.TagNumber(22)
   @$pb.TagNumber(23)
   @$pb.TagNumber(24)
+  @$pb.TagNumber(25)
   @$pb.TagNumber(100)
   ServerEvent_Event whichEvent() => _ServerEvent_EventByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(1)
@@ -543,6 +552,7 @@ class ServerEvent extends $pb.GeneratedMessage {
   @$pb.TagNumber(22)
   @$pb.TagNumber(23)
   @$pb.TagNumber(24)
+  @$pb.TagNumber(25)
   @$pb.TagNumber(100)
   void clearEvent() => $_clearField($_whichOneof(0));
 
@@ -821,17 +831,30 @@ class ServerEvent extends $pb.GeneratedMessage {
   @$pb.TagNumber(24)
   KeyPackagesLowEvent ensureKeyPackagesLow() => $_ensure(23);
 
+  /// To the account: a wait to add a device without an authenticator code started, was cancelled or
+  /// ended. Not you? Cancel it (DeviceService.CancelRecovery) and make new recovery words.
+  @$pb.TagNumber(25)
+  RecoveryChangedEvent get recoveryChanged => $_getN(24);
+  @$pb.TagNumber(25)
+  set recoveryChanged(RecoveryChangedEvent value) => $_setField(25, value);
+  @$pb.TagNumber(25)
+  $core.bool hasRecoveryChanged() => $_has(24);
+  @$pb.TagNumber(25)
+  void clearRecoveryChanged() => $_clearField(25);
+  @$pb.TagNumber(25)
+  RecoveryChangedEvent ensureRecoveryChanged() => $_ensure(24);
+
   /// An event a server plugin publishes. Built-in events never use it.
   @$pb.TagNumber(100)
-  PluginEvent get plugin => $_getN(24);
+  PluginEvent get plugin => $_getN(25);
   @$pb.TagNumber(100)
   set plugin(PluginEvent value) => $_setField(100, value);
   @$pb.TagNumber(100)
-  $core.bool hasPlugin() => $_has(24);
+  $core.bool hasPlugin() => $_has(25);
   @$pb.TagNumber(100)
   void clearPlugin() => $_clearField(100);
   @$pb.TagNumber(100)
-  PluginEvent ensurePlugin() => $_ensure(24);
+  PluginEvent ensurePlugin() => $_ensure(25);
 }
 
 /// The stream is open. Sent first, and again after a Resubscribe; a client re-reads after it.
@@ -1053,7 +1076,7 @@ class MemberEvent extends $pb.GeneratedMessage {
 class MemberPresenceEvent extends $pb.GeneratedMessage {
   factory MemberPresenceEvent({
     $core.String? userId,
-    $6.Presence? presence,
+    $7.Presence? presence,
   }) {
     final result = MemberPresenceEvent._();
     if (userId != null) result.userId = userId;
@@ -1075,8 +1098,8 @@ class MemberPresenceEvent extends $pb.GeneratedMessage {
       package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
       createEmptyInstance: MemberPresenceEvent.$_createMessage)
     ..aOS(1, _omitFieldNames ? '' : 'userId')
-    ..aE<$6.Presence>(2, _omitFieldNames ? '' : 'presence',
-        enumValues: $6.Presence.values)
+    ..aE<$7.Presence>(2, _omitFieldNames ? '' : 'presence',
+        enumValues: $7.Presence.values)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1112,9 +1135,9 @@ class MemberPresenceEvent extends $pb.GeneratedMessage {
   void clearUserId() => $_clearField(1);
 
   @$pb.TagNumber(2)
-  $6.Presence get presence => $_getN(1);
+  $7.Presence get presence => $_getN(1);
   @$pb.TagNumber(2)
-  set presence($6.Presence value) => $_setField(2, value);
+  set presence($7.Presence value) => $_setField(2, value);
   @$pb.TagNumber(2)
   $core.bool hasPresence() => $_has(1);
   @$pb.TagNumber(2)
@@ -1768,6 +1791,60 @@ class KeyPackagesLowEvent extends $pb.GeneratedMessage {
   $core.bool hasRemaining() => $_has(1);
   @$pb.TagNumber(2)
   void clearRemaining() => $_clearField(2);
+}
+
+/// The account's running recovery waits, all of them.
+class RecoveryChangedEvent extends $pb.GeneratedMessage {
+  factory RecoveryChangedEvent({
+    $core.Iterable<$6.PendingRecovery>? recoveries,
+  }) {
+    final result = RecoveryChangedEvent._();
+    if (recoveries != null) result.recoveries.addAll(recoveries);
+    return result;
+  }
+
+  RecoveryChangedEvent._();
+
+  factory RecoveryChangedEvent.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      RecoveryChangedEvent()..mergeFromBuffer(data, registry);
+  factory RecoveryChangedEvent.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      RecoveryChangedEvent()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'RecoveryChangedEvent',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: RecoveryChangedEvent.$_createMessage)
+    ..pPM<$6.PendingRecovery>(1, _omitFieldNames ? '' : 'recoveries',
+        subBuilder: $6.PendingRecovery.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  RecoveryChangedEvent clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  RecoveryChangedEvent copyWith(void Function(RecoveryChangedEvent) updates) =>
+      super.copyWith((message) => updates(message as RecoveryChangedEvent))
+          as RecoveryChangedEvent;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use RecoveryChangedEvent() / RecoveryChangedEvent.new instead')
+  static RecoveryChangedEvent create() => RecoveryChangedEvent._();
+  static $pb.GeneratedMessage $_createMessage() => RecoveryChangedEvent._();
+  @$core.override
+  RecoveryChangedEvent createEmptyInstance() => RecoveryChangedEvent._();
+  @$core.pragma('dart2js:noInline')
+  static RecoveryChangedEvent getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<RecoveryChangedEvent>(
+          RecoveryChangedEvent.$_createMessage);
+  static RecoveryChangedEvent? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $pb.PbList<$6.PendingRecovery> get recoveries => $_getList(0);
 }
 
 /// An event from a server plugin.

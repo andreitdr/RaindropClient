@@ -97,6 +97,53 @@ void main() {
       expect(find.text('Remove from this device'), findsOneWidget);
     });
 
+    testWidgets('a way to wait, when the codes are lost too', (tester) async {
+      await show(tester, 'authenticator_required');
+      expect(find.text('I lost my authenticator and codes'), findsOneWidget);
+
+      await tester.tap(find.text('I lost my authenticator and codes'));
+      await tester.pumpAndSettle();
+      // Said plainly before anything starts: a wait, and the other devices
+      // can stop it.
+      expect(find.text('Lost your authenticator?'), findsOneWidget);
+      expect(find.textContaining('can stop it'), findsOneWidget);
+    });
+
+    testWidgets('the end of a wait already running', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = AppPrefs(await SharedPreferences.getInstance());
+      await prefs.setRecoveryWait(_server.id, DateTime.utc(2030, 1, 2, 12));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appPrefsProvider.overrideWithValue(prefs),
+            signInFailureProvider(_server.id).overrideWith(
+              (ref) => const ApiException(409, 'recovery_pending', 'wait'),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: SignInPane(profile: _server)),
+          ),
+        ),
+      );
+
+      expect(find.textContaining('January 2, 2030'), findsOneWidget);
+      expect(find.text('Check now'), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+
+      // A code found in the meantime is still welcome.
+      await tester.tap(find.text('Enter a code instead'));
+      await tester.pump();
+      expect(find.text('Authenticator code'), findsOneWidget);
+    });
+
+    testWidgets('a code, when a device stopped the wait', (tester) async {
+      await show(tester, 'recovery_cancelled');
+      expect(find.text('Authenticator code'), findsOneWidget);
+      expect(find.textContaining('stopped this device'), findsOneWidget);
+      expect(find.text('I lost my authenticator and codes'), findsNothing);
+    });
+
     testWidgets('a username, when the account is gone', (tester) async {
       await show(tester, 'invalid_username');
       expect(find.text('Username'), findsOneWidget);

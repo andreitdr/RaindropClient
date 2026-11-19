@@ -97,7 +97,7 @@ with it, because the server forgets session bindings when sessions end. The serv
 | State | Meaning | UI |
 |---|---|---|
 | `DeviceSetupUnsupported` | the server lacks `e2ee.devices.v1` | nothing |
-| `DeviceSetupReady` | keys present, device registered, session bound | normal shell. On the account's **first device** it carries `recoveryWords` once: the shell shows `showRecoveryWordsDialog`, which cannot be dismissed without ticking "I have saved it" |
+| `DeviceSetupReady` | keys present, device registered, session bound | normal shell. On the account's **first device** it carries `recoveryWords` once: the shell shows `showRecoveryWordsDialog`, which cannot be closed until three of the words are typed back |
 | `DeviceSetupNeedsKeys` | the account has an identity elsewhere and this device has no keys | `EncryptionSetupPane` takes the chat pane: link, recovery key, or reset |
 | `DeviceSetupLinking` | waiting for an existing device to approve the shown link code (polls every 2 s, 5 min) | the code, with copy |
 | `DeviceSetupReplaced` | the identity was reset elsewhere, or this device was revoked | "Set up again", which wipes the local store |
@@ -208,7 +208,9 @@ data-carrying enums, so there is still no `build_runner` step.
   - the unbound-session restriction
   - an identity reset
 
-  It skips itself unless `RAINDROP_TEST_SERVER=host:port` names a server with a fresh database.
+  It skips itself unless `RAINDROP_TEST_SERVER=host:port` names a server with a fresh database. The
+  recovery-wait case also needs `RAINDROP_TEST_SHORT_RECOVERY=1` and a server whose `raindrop.json`
+  sets `users.recoveryWaitDays` to seconds' worth (`0.0002` is about 17 s).
   All the integration tests run in parallel against that one server, where by default everybody can
   see every channel, so they only assert about their own channels. Run them together:
 

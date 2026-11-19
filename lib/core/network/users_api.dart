@@ -297,6 +297,37 @@ class UsersApi {
     )).session,
   );
 
+  /// Starts the wait after which this device is added to the account
+  /// without an authenticator code, or answers with the one already running:
+  /// for a person who has their recovery words but lost the authenticator
+  /// and its backup codes. Proven like [completeAuth]: [signature] over a
+  /// fresh [nonce], and the device's [certificate]. Anonymous. Returns when
+  /// the device may sign in with no code.
+  Future<({DateTime requestedAt, DateTime eligibleAt})> requestRecovery({
+    required String userId,
+    required String deviceId,
+    required Uint8List nonce,
+    required Uint8List signature,
+    required Uint8List certificate,
+  }) async {
+    final response = await _channel.call(
+      (o) => _users.requestRecovery(
+        pb.RequestRecoveryRequest(
+          userId: userId,
+          deviceId: deviceId,
+          nonce: nonce,
+          signature: signature,
+          certificate: certificate,
+        ),
+        options: o,
+      ),
+    );
+    return (
+      requestedAt: Wire.time(response.requestedAt),
+      eligibleAt: Wire.time(response.eligibleAt),
+    );
+  }
+
   Future<void> logout(String token) => _channel.call(
     (o) => _users.logout(pb.LogoutRequest(), options: o),
     token: token,
