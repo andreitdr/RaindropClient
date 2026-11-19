@@ -67,9 +67,10 @@ one thing missing:
 | `recovery_cancelled` | One of the person's devices stopped the wait | A code, or a backup code |
 | `invalid_username` | The server no longer has the account (reset, or erased) | A username, to join again |
 | `invalid_credentials`, `device_exists` | This device was removed from the account | A go-ahead: its keys for the server are deleted and new ones made |
+| `identity_mismatch` | The account now belongs to another identity: reset from another device, or [taken back with a claim code](identity.md#reclaiming-an-account) | Nothing it can give: it says so and offers only **Remove from this device** |
 | anything else | | **Try again** |
 
-All of them also offer **Remove from this device**. `ServerSessionController.signInWith(...)` is what
+All of them also offer **Remove from this device** (the last as its only button). `ServerSessionController.signInWith(...)` is what
 the pane calls, and `requestRecovery()` starts a wait.
 
 Mutating methods:

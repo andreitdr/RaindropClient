@@ -16,7 +16,10 @@ signs in with its own key — see [Identity](identity.md).
 
 ### 1. [`ConnectServerScreen`](../lib/features/onboarding/screens/connect_server_screen.dart) — host, port, nickname
 
-The user enters a host, port (default `5001`), and an optional local nickname. Submitting:
+The user enters a host, port (default `5001`), and an optional local nickname. Host and port are
+[`ServerAddressFields`](../lib/features/identity/widgets/server_address_fields.dart), the same fields
+pairing and recovery use: the host is typed as an address — URL keyboard, no autocorrect (iOS would
+make `localhost` "local host"), no suggestions or smart punctuation. Submitting:
 
 1. `ServerService.GetServerInfo` (`flow.probe()`) confirms the server is reachable. This first call
    also opens the gRPC connection, and so triggers the TLS handshake `CertificatePinner` observes (see

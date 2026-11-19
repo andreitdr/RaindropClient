@@ -11,6 +11,7 @@ import 'package:raindrop_client/core/storage/app_prefs.dart';
 import 'package:raindrop_client/core/theme/theme_controller.dart';
 import 'package:raindrop_client/features/identity/screens/welcome_screen.dart';
 import 'package:raindrop_client/features/identity/widgets/lock_gate.dart';
+import 'package:raindrop_client/features/identity/widgets/server_address_fields.dart';
 import 'package:raindrop_client/features/servers/controllers/session_controller.dart';
 import 'package:raindrop_client/features/servers/widgets/server_unreachable_pane.dart';
 import 'package:raindrop_client/features/servers/widgets/sign_in_pane.dart';
@@ -144,6 +145,17 @@ void main() {
       expect(find.text('I lost my authenticator and codes'), findsNothing);
     });
 
+    testWidgets('nothing but removing it, when another identity has it', (
+      tester,
+    ) async {
+      await show(tester, 'identity_mismatch');
+      expect(find.byType(TextField), findsNothing);
+      expect(find.textContaining('belongs to a different identity'), findsOneWidget);
+      expect(find.text('Try again'), findsNothing);
+      // One way out, not two.
+      expect(find.text('Remove from this device'), findsOneWidget);
+    });
+
     testWidgets('a username, when the account is gone', (tester) async {
       await show(tester, 'invalid_username');
       expect(find.text('Username'), findsOneWidget);
@@ -155,6 +167,24 @@ void main() {
       expect(find.byType(TextField), findsNothing);
       expect(find.text('Set this device up again'), findsOneWidget);
     });
+  });
+
+  testWidgets('a server address is typed as an address, not as prose', (
+    tester,
+  ) async {
+    final host = TextEditingController();
+    final port = TextEditingController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: ServerAddressFields(host: host, port: port)),
+      ),
+    );
+    final field = tester.widget<TextField>(find.byType(TextField).first);
+    expect(field.autocorrect, isFalse);
+    expect(field.enableSuggestions, isFalse);
+    expect(field.keyboardType, TextInputType.url);
+    host.dispose();
+    port.dispose();
   });
 
   testWidgets('an unreachable server can still be removed from this device', (

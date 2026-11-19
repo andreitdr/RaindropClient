@@ -27,7 +27,10 @@ import 'remove_server.dart';
 ///   again;
 /// - nothing but a go-ahead, when this device was **removed** from the
 ///   account by another of the person's devices and has to set itself up
-///   afresh.
+///   afresh;
+/// - nothing it can give, when the account now belongs to **another
+///   identity** — reset by its holder, or taken over with a claim code from
+///   the server's owner. All that is left is removing it from this device.
 class SignInPane extends ConsumerStatefulWidget {
   const SignInPane({super.key, required this.profile});
 
@@ -37,7 +40,7 @@ class SignInPane extends ConsumerStatefulWidget {
   ConsumerState<SignInPane> createState() => _SignInPaneState();
 }
 
-enum _Need { code, waiting, username, freshDevice, retry }
+enum _Need { code, waiting, username, freshDevice, otherIdentity, retry }
 
 class _SignInPaneState extends ConsumerState<SignInPane> {
   final _input = TextEditingController();
@@ -61,6 +64,7 @@ class _SignInPaneState extends ConsumerState<SignInPane> {
     'recovery_pending' => _codeInstead ? _Need.code : _Need.waiting,
     'invalid_username' => _Need.username,
     'invalid_credentials' || 'device_exists' => _Need.freshDevice,
+    'identity_mismatch' => _Need.otherIdentity,
     _ => _Need.retry,
   };
 
@@ -83,6 +87,9 @@ class _SignInPaneState extends ConsumerState<SignInPane> {
           ref.invalidate(cryptoEngineProvider(_serverId));
           await const CryptoStores().delete(_serverId);
           await session.signInWith();
+        case _Need.otherIdentity:
+          // Nothing to send: the pane offers only removing the server.
+          break;
         case _Need.retry || _Need.waiting:
           ref.read(signInFailureProvider(_serverId).notifier).state = null;
           ref.invalidate(serverSessionProvider(_serverId));
@@ -204,6 +211,15 @@ class _SignInPaneState extends ConsumerState<SignInPane> {
         null,
         'Set this device up again',
       ),
+      _Need.otherIdentity => (
+        'Your account on $name now belongs to a different identity, so this '
+            'device can no longer sign in to it. Its identity was reset from '
+            'another device, or the account was taken back with a claim code '
+            'from whoever runs the server. If that was you, use the device '
+            'that holds your account now — or pair this one with it.',
+        null,
+        'Remove from this device',
+      ),
       _Need.retry => (
         failure?.message ?? 'Could not sign in to $name.',
         null,
@@ -246,7 +262,12 @@ class _SignInPaneState extends ConsumerState<SignInPane> {
                   ],
                   const SizedBox(height: 20),
                   FilledButton(
-                    onPressed: _busy ? null : () => _submit(need),
+                    onPressed: _busy
+                        ? null
+                        : need == _Need.otherIdentity
+                        ? () =>
+                              confirmRemoveServer(context, ref, widget.profile)
+                        : () => _submit(need),
                     child: _busy
                         ? const SizedBox(
                             height: 20,
@@ -272,14 +293,19 @@ class _SignInPaneState extends ConsumerState<SignInPane> {
                       child: const Text('Enter a code instead'),
                     ),
                   ],
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: _busy
-                        ? null
-                        : () =>
-                              confirmRemoveServer(context, ref, widget.profile),
-                    child: const Text('Remove from this device'),
-                  ),
+                  if (need != _Need.otherIdentity) ...[
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: _busy
+                          ? null
+                          : () => confirmRemoveServer(
+                              context,
+                              ref,
+                              widget.profile,
+                            ),
+                      child: const Text('Remove from this device'),
+                    ),
+                  ],
                   // No channel list here, so no button beside the person's
                   // name: this is the way to this device's settings.
                   TextButton(

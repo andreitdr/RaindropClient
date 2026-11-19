@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/widgets/adaptive.dart';
 import '../../identity/controllers/identity_controller.dart';
+import '../../identity/widgets/server_address_fields.dart';
 import '../controllers/connect_server_flow.dart';
 
 /// Step 1 of adding a server: host, port, and a local nickname. Submitting
@@ -118,29 +119,10 @@ class _ConnectServerScreenState extends ConsumerState<ConnectServerScreen> {
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                       const SizedBox(height: 20),
-                      TextFormField(
-                        controller: _hostController,
-                        decoration: const InputDecoration(
-                          labelText: 'Host',
-                          hintText: 'raindrop.example.com',
-                        ),
-                        validator: (v) =>
-                            (v == null || v.trim().isEmpty) ? 'Required' : null,
-                        textInputAction: TextInputAction.next,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _portController,
-                        decoration: const InputDecoration(labelText: 'Port'),
-                        keyboardType: TextInputType.number,
-                        validator: (v) {
-                          final n = int.tryParse(v?.trim() ?? '');
-                          if (n == null || n <= 0 || n > 65535) {
-                            return 'Enter a valid port';
-                          }
-                          return null;
-                        },
-                        textInputAction: TextInputAction.next,
+                      ServerAddressFields(
+                        host: _hostController,
+                        port: _portController,
+                        enabled: !_connecting,
                       ),
                       const SizedBox(height: 12),
                       TextFormField(

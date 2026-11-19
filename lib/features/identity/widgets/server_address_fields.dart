@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 /// The host and port of a server, as two form fields. Used wherever the app
 /// has to be told where a server is: adding one, and finding the person's
 /// identity on one when pairing or recovering.
+///
+/// An address is not prose: no autocorrect (iOS would turn `localhost` into
+/// "local host"), no suggestions, no smart punctuation, and the URL keyboard.
 class ServerAddressFields extends StatelessWidget {
   const ServerAddressFields({
     super.key,
@@ -27,6 +30,10 @@ class ServerAddressFields extends StatelessWidget {
           hintText: 'raindrop.example.com',
         ),
         autocorrect: false,
+        enableSuggestions: false,
+        smartDashesType: SmartDashesType.disabled,
+        smartQuotesType: SmartQuotesType.disabled,
+        keyboardType: TextInputType.url,
         validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
         textInputAction: TextInputAction.next,
       ),
