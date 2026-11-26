@@ -196,10 +196,20 @@ void main() {
       expect(heard, [CallSessionAction.toggleMute, CallSessionAction.leave]);
     });
 
-    // The ongoing notification is the price of the call running at all, so
-    // there is nothing for Settings to offer to turn off.
-    test('does not offer its notification as something to turn off', () {
-      expect(host.showsCallOutsideApp, isFalse);
+    // The notification itself is the price of the call running at all; what
+    // Settings offers is showing it as a call — the status bar chip and a
+    // Live Update — and the choice travels with the call.
+    test('offers showing the call prominently as something to turn off', () async {
+      expect(host.showsCallOutsideApp, isTrue);
+
+      await host.begin(
+        const CallSessionDescription(
+          title: 'In General',
+          body: 'A server',
+          showOutsideApp: false,
+        ),
+      );
+      expect((activity.calls.single.arguments as Map)['showOutsideApp'], false);
     });
   });
 

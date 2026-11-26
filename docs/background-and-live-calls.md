@@ -5,11 +5,13 @@ background**. A person in a call who switches to another app, locks the phone or
 should still see the call, know whether they are muted, and be able to mute or hang up from there.
 
 This is built in phases. **Phase 1, the shared foundation, phase 2, macOS, phase 3, Windows and Linux,
-and phase 4, the iPhone and iPad Live Activity, are done; Android is not.** So today the three desktops
-show the call outside the app and stay running with their window closed, an iPhone or iPad shows it as a
-Live Activity, and no Android phone draws it beyond its ongoing notification. Everything marked *not
-built yet* below is a plan, not behaviour. **Windows and Linux have been compiled in part but never built
-or run, and the Live Activity has never been seen with a real call**; see their sections.
+phase 4, the iPhone and iPad Live Activity, and phase 5, Android, are done; only macOS 27.3's own Live
+Activities remain, waiting on that release.** So today the three desktops show the call outside the app
+and stay running with their window closed, an iPhone or iPad shows it as a Live Activity, and an Android
+phone shows it as a call notification, a status bar chip and, on Android 16, a Live Update. Everything
+marked *not built yet* below is a plan, not behaviour. **Windows and Linux have been compiled in part but
+never built or run, and neither the Live Activity nor Android's notification has been seen with a real
+call**; see their sections.
 
 ## On a Mac
 
@@ -296,6 +298,77 @@ needs its own App ID on the developer account; no App Group or other capability 
 signing registers it; a release pipeline with explicit profiles needs a profile for it. CI builds
 `--no-codesign`. See [Android and iOS](mobile.md#the-ios-extension).
 
+## On Android
+
+### What a person sees
+
+- **The call is a call notification** while it lasts, with the call's title (the channel), the server
+  and, if it applies, "Muted", "Deafened" or "Reconnecting…" as its text line, the call's running time,
+  and a **Mute** / **Unmute** button. Tapping it comes back to the call. It is ongoing: it cannot be
+  swiped away, and **Leave call** ends the call. Deafen is not in it. While the call shares the screen,
+  the text says "Sharing your screen" and it also has **Stop sharing**.
+- **In the status bar** (Android 12+) the notification is drawn as a call chip with the call's time, and
+  on **Android 16** it asks to be a **Live Update**: the chip, the lock screen, and what makers build on
+  them (Samsung's Now Bar, other makers' islands). The person can still turn promotion off for Raindrop
+  in the system's settings, and then it is the ordinary call notification.
+- **It can be turned off.** **Show calls in the status bar** in [Device settings](settings.md#background)
+  (on by default). Off, the call is a plain ongoing notification, with **Leave call** and Mute as
+  buttons and no chip or Live Update. It is still there: Android only lets a call keep running with the
+  app off screen while a foreground service shows one.
+- **Swiping the app away from Recents ends the call**, as on an iPhone. Before this, the foreground
+  service outlived the swiped-away app's Flutter engine and left a microphone notification for a call
+  that had already stopped.
+- **The notification permission** (Android 13+) is asked when a call begins, as before. Without it the
+  call runs and shows nothing.
+
+Not done, as open items:
+
+- **Settings does not show when the person has turned promotion off** for the app
+  (`canPostPromotedNotifications()`, and a way to open `ACTION_MANAGE_APP_PROMOTED_NOTIFICATIONS`).
+- **Makers' islands are reached only through Android 16's Live Updates.** There is no maker SDK, and
+  whether a maker shows a given app's Live Updates is up to the maker (allow-lists are unconfirmed), so
+  Samsung's Now Bar, Xiaomi's Super Island and OPPO's Fluid Cloud may or may not show Raindrop.
+- **No Telecom / ConnectionService.** The service stays type `microphone` (plus `mediaProjection` while
+  sharing); `phoneCall` would need Telecom.
+
+**Not yet seen on a device or emulator with a real call**: the notification, the chip, the Live Update,
+its buttons and swiping the app away. The local emulator is a Play Store image without root, so the
+unexported service cannot be driven without a real call. What has been checked is that
+`flutter build apk --debug` is clean (this app's Kotlin treats warnings as errors), that `flutter analyze`
+is clean and that the unit tests pass.
+
+### How it is built
+
+Dart side: `AndroidCallSessionHost` (in `call_session_host.dart`) extends `ChannelCallSessionHost`
+(adding `capture`). `showsCallOutsideApp` is true, which is what puts the setting in Settings on Android.
+`showCallSettingTitle` is "Show calls in the status bar" there, and `showCallSettingDetail` (new, in
+`platform_info.dart`) is the row's subtitle per phone.
+
+Native side, in `android/app/src/main/kotlin/com/raindrop/raindrop_client/`:
+
+- `MainActivity.kt` answers `raindrop/call_session`. `begin` and `update` are the same request: `describe`
+  reads the map leniently into a `CallDescription` data class (title, body, `connectedAt`, `micOn`,
+  `deafened`, `reconnecting`, and `prominent`, which is Dart's `showOutsideApp`; `prominent` is true when
+  absent) and starts the service with it as intent extras. `begin` also asks for the notification
+  permission. `CallForegroundService.onAction`, set here, posts `action` with `toggleMute` or `leave`
+  to Dart, which acts as the call bar would; it and `onCaptureEnded` are cleared in
+  `cleanUpFlutterEngine`.
+- `CallForegroundService.kt` builds the notification on every start. Both ways: the call category, low
+  importance, ongoing, not colorized (a Live Update never is), the time from `setWhen(connectedAt)` with
+  a chronometer (no time before the call connects), the text line (the server plus "Muted" or
+  "Deafened", or "Reconnecting…"), a Mute / Unmute action (`ACTION_TOGGLE_MUTE`) and, while sharing,
+  "Stop sharing" (`ACTION_STOP_CAPTURE`). With `prominent`: a
+  `NotificationCompat.CallStyle.forOngoingCall` with a `Person` named after the call, whose hang-up is
+  Leave (`ACTION_LEAVE`), and `setRequestPromotedOngoing(true)`. Without it: no style, and Leave call is
+  an ordinary action. Mute and Leave are service intents; the service calls `onAction`, and the
+  notification follows when Dart describes the call again.
+- `onTaskRemoved` calls `onAction("leave")`, and stops the service 1.5 s later whether or not Dart
+  managed to leave.
+- The manifest declares `POST_PROMOTED_NOTIFICATIONS`, which is not a runtime permission. The service is
+  still `microphone|mediaProjection`, not exported. `androidx.core:core-ktx` is 1.17.0 (was 1.15.0), the
+  first with `setRequestPromotedOngoing`. New strings (Mute, Unmute, Leave call, Muted, Deafened,
+  Reconnecting…) are in `res/values/strings.xml`.
+
 ## What exists on every platform
 
 ### The call, described
@@ -324,7 +397,8 @@ app lock, the background settings, the call's roster and the channel list, and a
 found by name; a name the build does not know is ignored. The controller applies each as the call bar's
 matching button does, so mute while the microphone has failed retries it. The channel hosts
 (`ChannelCallSessionHost`) relay a channel method `action` whose argument is the action's name. The
-desktop runners and iOS (`CallActivity.swift`) send it; the Kotlin side does not yet.
+desktop runners, iOS (`CallActivity.swift`) and Android (the notification's Mute and Leave, through
+`MainActivity`) send it.
 
 ### A rejoin keeps the session
 
@@ -359,29 +433,28 @@ at startup and on every change, and opens `/settings` on the icon's command only
 unlocked. `BackgroundSettingsSection` ([Settings](settings.md#background)) shows each row only where
 the residency is `available` or the host `showsCallOutsideApp`, and the whole section nowhere else.
 Today the residency is available on the three desktops and the host shows its call outside the app on
-iOS, so the section shows on those four and nowhere else (on iOS it has the one row, **Show calls as a
-Live Activity**).
-`CallSessionHost.showsCallOutsideApp` is true on iOS only. It is false on the desktops, where the call
-always shows, and on Android: its ongoing notification is the price of the call running, so it is not
-offered as something to turn off until there is a promoted version to turn off.
+iOS and Android, so the section shows on those five and nowhere else (on iOS it has the one row, **Show
+calls as a Live Activity**; on Android, **Show calls in the status bar**).
+`CallSessionHost.showsCallOutsideApp` is true on iOS and Android. It is false on the desktops, where the
+call always shows. On Android what the setting turns off is the promoted version (the call chip and the
+Live Update), not the notification, which is the price of the call running.
 
-Tests: `test/core/voice/call_session_host_test.dart` (the `DesktopCallSessionHost` group, and
-the `IosCallSessionHost` group, and `createCallSessionHost` on iOS and all three desktops),
+Tests: `test/core/voice/call_session_host_test.dart` (the `AndroidCallSessionHost` group, the
+`DesktopCallSessionHost` group, and the `IosCallSessionHost` group, and `createCallSessionHost` on iOS and all three desktops),
 `test/core/platform/app_residency_test.dart` (`DesktopAppResidency`, and `createAppResidency` per
 platform), `test/features/voice/call_description_test.dart` and
 `test/features/settings/background_settings_test.dart`.
 
 ## The plan per platform (not built yet)
 
-The desktops and iOS are built (see above); the rest is still to do.
+The desktops, iOS and Android are built (see above); one platform is left.
 
 | Platform | Showing the call | Staying running |
 |---|---|---|
-| **Android** | A CallStyle notification and Live Updates (the status bar chip, the Now Bar) on top of the existing foreground service; the Kotlin side sending `action` | Already covered by the foreground service |
-| **macOS 27.3** | Live Activities | — |
+| **macOS 27.3** | Live Activities, waiting on 27.3's release | — |
 
-Each of these implements the existing seams (`CallSessionHost`, `AppResidency`) rather than adding a
-branch to the call controller. When one lands, move it out of this table into its own section above, flip the host's
+It implements the existing seams (`CallSessionHost`, `AppResidency`) rather than adding a branch to the
+call controller. When it lands, move it out of this table into its own section above, flip the host's
 `showsCallOutsideApp` or the residency's `available`, and update the [roadmap](roadmap.md).
 
 ## Related

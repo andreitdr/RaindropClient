@@ -25,7 +25,7 @@ it out loud — both go through [`CallSessionHost`](../lib/core/voice/call_sessi
 | | What it takes | Where |
 |---|---|---|
 | **iOS** | The `audio` background mode, plus an active `playAndRecord` audio session — which LiveKit holds for the length of the call. Nothing at runtime to keep it running; at runtime the host only *shows* the call, as a Live Activity (`IosCallSessionHost`). | `ios/Runner/Info.plist`, `ios/Runner/CallActivity.swift`, `ios/RaindropLiveActivity/` |
-| **Android** | A foreground service of type `microphone`, with a notification, for as long as the call lasts. | `android/app/src/main/kotlin/…/CallForegroundService.kt` |
+| **Android** | A foreground service of type `microphone`, with a notification, for as long as the call lasts. The notification is a call notification with Mute and Leave (`CallStyle`, a status bar chip and, on Android 16, a Live Update), or a plain ongoing one when the person turns that off. | `android/app/src/main/kotlin/…/CallForegroundService.kt`, `MainActivity.kt` |
 | **Desktop** | Nothing. Windows are not suspended for being in the background. | — |
 
 `CallSessionHost` is the seam between those. `VoiceCallController` begins a session once the media
@@ -60,13 +60,14 @@ The way back is `CallSessionHost.actions`, a stream of `CallSessionAction` (`tog
 each as the call bar's button would, so a mute pressed while the microphone has failed retries it. The
 channel hosts (`ChannelCallSessionHost`, which Android's, iOS's and the desktops' extend) relay the
 channel method `action`, whose argument is the action's name; a name this build does not know is
-ignored. **The Kotlin side does not send it yet**; the desktops and iOS do.
+ignored. Every platform sends it: on Android, the notification's Mute and Leave (deafen is not in it).
 
 `CallSessionHost.showsCallOutsideApp` says whether the host shows the call somewhere the person may do
 without, which is what puts the setting in [Settings](settings.md#background). It is true on iOS only,
-where the call is a Live Activity and the setting reads **Show calls as a Live Activity**. It is false on
-the desktops, which always show their call, and on Android, where the ongoing notification is the price
-of the call running at all, so it is not offered as something to turn off yet.
+where the call is a Live Activity and the setting reads **Show calls as a Live Activity**, and on Android,
+where it reads **Show calls in the status bar** and turns off the call chip and Live Update (not the
+notification, which is the price of the call running at all). It is false on the desktops, which always
+show their call.
 
 ### The iOS Live Activity
 
@@ -88,9 +89,34 @@ Two rules the Android side follows, both because the call's real state lives in 
 - It is `START_NOT_STICKY`. A service the system restarted on its own would be showing a notification
   for a call that is no longer happening.
 
-**The notification cannot be dismissed** to end a call (`setOngoing`); hanging up is done in the app,
-and tapping the notification comes back to it. Denying the notification permission does not stop a
-call — Android 13+ just shows nothing and the service still runs.
+### The Android call notification
+
+The service is told the whole description (`MainActivity.describe` into a `CallDescription`, sent to the
+service as intent extras) and builds the notification from it. With **Show calls in the status bar** on
+(`showOutsideApp`, called `prominent` natively) it is a `NotificationCompat.CallStyle.forOngoingCall`
+notification, a `Person` named after the call with Leave as its hang-up: Android 12+ draws it as a status
+bar chip with the call's time, and `setRequestPromotedOngoing(true)` asks Android 16 to show it as a Live
+Update (the chip and the lock screen, which Samsung's Now Bar and other makers' islands build on).
+`POST_PROMOTED_NOTIFICATIONS` is declared for that; it is not a runtime permission, and the person can
+still turn promotion off for the app. It is not colorized, since a Live Update never is. With the setting
+off it is a plain ongoing notification with **Leave call** as an action. Either way it has Mute / Unmute,
+the time (`setWhen(connectedAt)` and a chronometer), and a text line of the server plus "Muted" or
+"Deafened", or "Reconnecting…"; the screen-sharing variant keeps its "Stop sharing".
+
+Mute and Leave go to the service (`ACTION_TOGGLE_MUTE`, `ACTION_LEAVE`), which calls `onAction`, set by
+`MainActivity` to post `action` with `toggleMute` or `leave` to Dart; Dart acts as the call bar would and
+describes the call again, which updates the notification. Deafen is not in it.
+
+**Swiping the app away from Recents ends the call** (`onTaskRemoved`): Dart is asked to leave, and the
+service stops itself 1.5 s later whether or not it did. Before this the service outlived the swiped-away
+app's Flutter engine, leaving a microphone notification for a call that had already stopped.
+
+**The notification cannot be swiped away** to end a call (`setOngoing`); **Leave** (and Mute) now work from
+it, and tapping it comes back to the app. Denying the notification permission does not stop a call —
+Android 13+ just shows nothing and the service still runs.
+
+**Not yet seen on a device or emulator with a real call**: the notification, the chip, the Live Update,
+its actions and the swipe-away. See [Background and live calls](background-and-live-calls.md#on-android).
 
 **The permission is asked the first time a call begins** (`MainActivity.askForNotifications`, on the
 session's `begin`), which is the moment the notification means something. Until this was added it was
@@ -288,6 +314,7 @@ Declared up front, asked for when first used, and every one of them optional exc
 | Camera | Scanning another device's [link code](crypto.md) | Type the code instead |
 | Photos (iOS) | Attaching a photo to a message | Attach from Files instead |
 | Notifications (Android 13+) | The ongoing-call notification | The call still runs, unshown |
+| Promoted notifications (Android 16, `POST_PROMOTED_NOTIFICATIONS`; not asked at runtime) | The call as a Live Update | The ordinary call notification; the person can also turn it off per app |
 | Screen capture (asked by the system, every share) | Sharing your screen into a call | You can watch shares, not start one |
 | Bluetooth (Android) | A Bluetooth headset in a call | The phone's own speakers |
 
@@ -304,9 +331,11 @@ one, not to recite the API.
 - **No CallKit or ConnectionService**: a call is started from inside the app, and never rings. On an
   iPhone that also means no green call pill in the status bar; the system shows its own microphone
   indicator.
-- **Android shows no promoted call yet** (CallStyle, Live Updates, the Now Bar): only the ongoing
-  notification. An iPhone's call is a Live Activity, but its buttons need iOS 17 and it has not yet been
-  seen with a real call. See [Background and live calls](background-and-live-calls.md).
+- **Android's call is not yet seen on a device**, and no maker's island is guaranteed: they are reached
+  only through Android 16's Live Updates, and Settings does not say when the person has turned promotion
+  off for the app. There is no Telecom, so the service stays `microphone`. An iPhone's call is a Live
+  Activity, but its buttons need iOS 17 and it has not yet been seen with a real call. See
+  [Background and live calls](background-and-live-calls.md).
 - **Sixty frames a second from an iPhone or iPad's screen**, and **the sound of a shared screen** on
   either system. See [Voice](voice.md#on-a-phone).
 - **Push-to-talk** is missing on every platform, not only here.

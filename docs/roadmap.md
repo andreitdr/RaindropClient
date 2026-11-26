@@ -28,7 +28,7 @@ the **app**; the other two projects keep their own, and a gap here is often a ga
 | Live updates | `EventStream` over the server's bidirectional gRPC stream with heartbeats and resubscribe on resume, `LiveSync` merging by id, reconnect with backoff and fallback polling | [Live updates](live-updates.md) |
 | Layout | A user-arranged main view: pane order, widths, buttons in slots, hiding, saved to a local layout file, edited in a layout editor | [Layout](layout.md) |
 | Theming | Two built-in themes, custom themes from asset/JSON definitions, a theme editor | [Theming](theming.md) |
-| Settings | Theme, layout, voice & video (including camera and effects), the Background section (the desktops and iOS so far), encryption (devices, linking, new recovery key), connected servers | [Settings](settings.md) |
+| Settings | Theme, layout, voice & video (including camera and effects), the Background section (the desktops, iOS and Android), encryption (devices, linking, new recovery key), connected servers | [Settings](settings.md) |
 | Network | gRPC over one pinned connection per server (`RaindropChannel`), code generated from RaindropProto, per-service API wrappers | [Network layer](network-layer.md) |
 | Storage | `AppPrefs` for preferences, `SecureStore` for tokens and store keys, the encrypted crypto store per server | [Storage](storage.md) |
 | CI | Build on Linux/macOS/Windows and `flutter analyze` + `flutter test` on every push to `main`; desktop installers on a version tag | [CI & releases](ci-and-releases.md) |
@@ -36,9 +36,9 @@ the **app**; the other two projects keep their own, and a gap here is often a ga
 ## Not implemented yet
 
 ### Background and live calls (in progress)
-The shared foundation, macOS, Windows, Linux and iOS are done: the call session describes the whole call
+The shared foundation, macOS, Windows, Linux, iOS and Android are done: the call session describes the whole call
 and carries its controls back, a rejoin keeps the session, a Mac shows the call in the notch or the menu
-bar, Windows in its notification-area icon, Linux in its tray and an iPhone or iPad as a Live Activity,
+bar, Windows in its notification-area icon, Linux in its tray, an iPhone or iPad as a Live Activity and an Android phone as a call notification,
 and each desktop stays running with the window closed. Still to do, each on its own platform:
 
 - **macOS, to verify:** none of it has been tried on a real Mac with a real call yet: hover and clicks
@@ -56,8 +56,15 @@ and each desktop stays running with the window closed. Still to do, each on its 
   background are throttled. Known limits: buttons need iOS 17, an activity lasts at most 8 hours, and
   there is no CallKit green pill. Its extension needs its own App ID (and a profile in a release
   pipeline that signs explicitly).
-- **Android:** a CallStyle notification and Live Updates, and the Kotlin side sending `action`.
-- **macOS 27.3:** Live Activities.
+- **Android, to verify:** the call notification (CallStyle, the status bar chip, the Android 16 Live Update),
+  its Mute and Leave, and swiping the app away have been built (`flutter build apk --debug` is clean) but
+  never seen on a device or emulator with a real call.
+- **Android, follow-ups:** Settings does not yet show when the person has turned promotion off for the
+  app (`canPostPromotedNotifications()`, `ACTION_MANAGE_APP_PROMOTED_NOTIFICATIONS`). Makers' islands
+  (Samsung's Now Bar, Xiaomi's Super Island, OPPO's Fluid Cloud) are reached only through Live Updates:
+  no maker SDK exists, and whether a maker shows a given app's is up to the maker. No
+  Telecom/ConnectionService (the service stays `microphone`; `phoneCall` would need Telecom).
+- **macOS 27.3:** Live Activities, waiting on 27.3's release.
 
 See [Background and live calls](background-and-live-calls.md).
 

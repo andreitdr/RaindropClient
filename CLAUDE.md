@@ -156,7 +156,8 @@ core/
                 core/voice/ ever names a track type), and CallSessionHost (keeping a call running
                 while the app is off screen, telling Android a call is capturing the screen, and
                 showing the call outside the app with its mute/deafen/leave controls coming back
-                as `actions`: on Android it is the foreground service, on iOS a Live Activity
+                as `actions`: on Android it is the foreground service (a call notification, a
+                status bar chip and an Android 16 Live Update), on iOS a Live Activity
                 (IosCallSessionHost, drawn by the `ios/RaindropLiveActivity` extension), and on the
                 desktops (DesktopCallSessionHost) the call in the notch or the menu bar, the
                 notification-area icon, or the tray; InactiveCallSessionHost is for tests)
@@ -540,7 +541,9 @@ camera and moderate; the media goes over the transport it names on join (`liveki
   is built on the desktops (a Mac's notch and menu bar, Windows' notification-area icon, Linux's tray;
   written in each runner, not with `tray_manager`) and on iOS (a Live Activity: `ios/Runner/CallActivity.swift`
   starts and updates it, the `ios/RaindropLiveActivity` extension draws it, and swiping the app away
-  ends it), and in progress on Android: `docs/background-and-live-calls.md`. Quitting is never done by
+  ends it), and on Android (`CallForegroundService`: a `CallStyle` notification with Mute and Leave, a
+  status bar chip and a requested Live Update, a plain ongoing one when the person turns it off, and
+  swiping the app away ends the call): `docs/background-and-live-calls.md`. Quitting is never done by
   `AppResidency`; every way out goes through Flutter's exit request, where `leaveNow` leaves the call.
 - **Hanging up lets go of every device at once.** The microphone, camera and share stop immediately,
   without `Room.disconnect()`, which waits 10 s for an acknowledgement before stopping the tracks.
@@ -554,10 +557,11 @@ camera and moderate; the media goes over the transport it names on join (`liveki
   window's sound on macOS and Linux, sixty frames a second from an iOS screen share, a hardware codec
   for shares, microphone gain; changing your username from the app; replacing the root identity
   after a device is stolen; any report-moderation UI.
-- **Showing a call outside the app** on Android (CallStyle and Live Updates) and macOS 27.3 (Live
-  Activities). The three desktops show it and stay running with the window closed (the notch and menu
-  bar, the notification-area icon, the tray), and an iPhone or iPad shows it as a Live Activity; the Mac
-  and the Live Activity are not yet tried with a real call, and the Windows and Linux runners have never
+- **Showing a call outside the app** on macOS 27.3 (Live Activities, waiting on its release). The three
+  desktops show it and stay running with the window closed (the notch and menu bar, the
+  notification-area icon, the tray), an iPhone or iPad shows it as a Live Activity and an Android phone
+  as a call notification; the Mac, the Live Activity and Android's notification are not yet tried with
+  a real call (and Settings does not yet show when Android's promotion is turned off for the app), and the Windows and Linux runners have never
   been built or run (CI is their first build) — see
   `docs/background-and-live-calls.md`.
 - **Notifications**, including for messages that arrive while the app is closed. Raindrop is self-hosted

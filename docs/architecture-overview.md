@@ -26,7 +26,7 @@ lib/
                   code that imports livekit_client / flutter_webrtc, and CallSessionHost (keeps a
                   call running off screen, shows it outside the app and carries its controls back; on
                   the desktops it shows the call in the notch or menu bar, the notification-area
-                  icon, or the tray, and on iOS as a Live Activity)
+                  icon, or the tray, on iOS as a Live Activity, and on Android as a call notification)
     storage/    — AppPrefs (plain prefs) and SecureStore (Keychain/Credential Manager/libsecret/Keystore)
     layout/     — LayoutConfig (the main view's pane order/widths and slot buttons, as JSON),
                   LayoutStore (the layout file), LayoutScope/LayoutRow/LayoutSlot, and the editor's

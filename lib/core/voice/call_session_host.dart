@@ -327,11 +327,12 @@ abstract class ChannelCallSessionHost implements CallSessionHost {
 class AndroidCallSessionHost extends ChannelCallSessionHost {
   const AndroidCallSessionHost();
 
-  /// Not yet: the ongoing notification is what keeps the call running, so it
-  /// is not the person's to turn off. Promoting it — the status bar chip, the
-  /// Now Bar — will be.
+  /// The ongoing notification itself is not the person's to turn off — it is
+  /// what keeps the call running — but showing it as a call is: the status
+  /// bar's call chip (Android 12+) and a Live Update (Android 16+, which
+  /// Samsung's Now Bar and other makers' islands build on).
   @override
-  bool get showsCallOutsideApp => false;
+  bool get showsCallOutsideApp => true;
 
   @override
   Future<bool> setScreenCapture(bool capturing) async {

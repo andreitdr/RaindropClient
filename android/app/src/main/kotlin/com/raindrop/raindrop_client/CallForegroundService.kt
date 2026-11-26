@@ -16,6 +16,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.Display
 import androidx.core.app.NotificationCompat
+import androidx.core.app.Person
 
 /**
  * Keeps a voice call running while the app is not on screen.
@@ -38,6 +39,16 @@ import androidx.core.app.NotificationCompat
  * `core/voice/call_session_host.dart`); this only keeps the process alive and
  * shows what is going on, so a call that ends while the app is backgrounded
  * still takes the notification with it.
+ *
+ * **It shows the call as a call** while the person wants that (Settings,
+ * "Show calls in the status bar"): a `CallStyle` notification, which Android
+ * 12+ draws as a chip with the call's time in the status bar, asking to be
+ * promoted to a Live Update on Android 16 — which is what Samsung's Now Bar and
+ * other makers' islands show. Its Mute and Leave are sent to Dart like the
+ * call bar's buttons ([onAction]). Otherwise it is a plain ongoing
+ * notification, with the same two actions.
+ *
+ * **Swiping the app away ends the call**, as on an iPhone ([onTaskRemoved]).
  */
 class CallForegroundService : Service() {
 
@@ -53,8 +64,23 @@ class CallForegroundService : Service() {
         /** The notification's own "Stop sharing". */
         const val ACTION_STOP_CAPTURE = "com.raindrop.raindrop_client.CAPTURE_STOP"
 
+        /** The notification's Mute/Unmute and Leave call. */
+        const val ACTION_TOGGLE_MUTE = "com.raindrop.raindrop_client.CALL_TOGGLE_MUTE"
+        const val ACTION_LEAVE = "com.raindrop.raindrop_client.CALL_LEAVE"
+
         const val EXTRA_TITLE = "title"
         const val EXTRA_BODY = "body"
+        const val EXTRA_CONNECTED_AT = "connectedAt"
+        const val EXTRA_MIC_ON = "micOn"
+        const val EXTRA_DEAFENED = "deafened"
+        const val EXTRA_RECONNECTING = "reconnecting"
+        const val EXTRA_PROMINENT = "prominent"
+
+        /**
+         * How long a swiped-away app's call is given to say goodbye to the
+         * server before the service stops and the process goes with it.
+         */
+        private const val LEAVE_ON_TASK_REMOVED_MS = 1500L
 
         /**
          * Low importance: an ongoing call is worth a visible entry, not a
@@ -88,12 +114,24 @@ class CallForegroundService : Service() {
          */
         var onCaptureEnded: (() -> Unit)? = null
 
-        /** Starts, or updates the text of, the ongoing-call notification. */
-        fun start(context: Context, title: String, body: String) {
+        /**
+         * Told the name of a control pressed in the notification — `toggleMute`
+         * or `leave`, as Dart's `CallSessionAction` knows them. Set by
+         * `MainActivity`, which is what can reach Dart.
+         */
+        var onAction: ((String) -> Unit)? = null
+
+        /** Starts the ongoing-call notification, or brings it up to date. */
+        fun start(context: Context, call: CallDescription) {
             val intent = Intent(context, CallForegroundService::class.java).apply {
                 action = ACTION_START
-                putExtra(EXTRA_TITLE, title)
-                putExtra(EXTRA_BODY, body)
+                putExtra(EXTRA_TITLE, call.title)
+                putExtra(EXTRA_BODY, call.body)
+                putExtra(EXTRA_CONNECTED_AT, call.connectedAt)
+                putExtra(EXTRA_MIC_ON, call.micOn)
+                putExtra(EXTRA_DEAFENED, call.deafened)
+                putExtra(EXTRA_RECONNECTING, call.reconnecting)
+                putExtra(EXTRA_PROMINENT, call.prominent)
             }
             // A foreground service may be started from the background only
             // because the app is in a call the user began themselves.
@@ -134,8 +172,7 @@ class CallForegroundService : Service() {
         }
     }
 
-    private var title = ""
-    private var body = ""
+    private var call = CallDescription()
     private var capturing = false
 
     /** Whether this capture's display has been seen yet: see [captureDisplayIsLive]. */
@@ -167,10 +204,24 @@ class CallForegroundService : Service() {
             }
 
             ACTION_START -> {
-                title = intent.getStringExtra(EXTRA_TITLE) ?: getString(R.string.call_ongoing)
-                body = intent.getStringExtra(EXTRA_BODY).orEmpty()
+                call = CallDescription(
+                    title = intent.getStringExtra(EXTRA_TITLE)
+                        ?.takeIf { it.isNotEmpty() }
+                        ?: getString(R.string.call_ongoing),
+                    body = intent.getStringExtra(EXTRA_BODY).orEmpty(),
+                    connectedAt = intent.getLongExtra(EXTRA_CONNECTED_AT, 0L),
+                    micOn = intent.getBooleanExtra(EXTRA_MIC_ON, true),
+                    deafened = intent.getBooleanExtra(EXTRA_DEAFENED, false),
+                    reconnecting = intent.getBooleanExtra(EXTRA_RECONNECTING, false),
+                    prominent = intent.getBooleanExtra(EXTRA_PROMINENT, true),
+                )
                 startInForeground()
             }
+
+            // Pressed in the notification: Dart's to do, as from the call bar.
+            // The notification follows when Dart describes the call again.
+            ACTION_TOGGLE_MUTE -> onAction?.invoke("toggleMute")
+            ACTION_LEAVE -> onAction?.invoke("leave")
 
             // Tapped in the notification. The share is Dart's to end — the
             // server has to be told — so this only passes the word on; the
@@ -188,6 +239,22 @@ class CallForegroundService : Service() {
         // The call is Dart's state; a service the system restarts on its own
         // would show a notification for a call that is no longer happening.
         return START_NOT_STICKY
+    }
+
+    /**
+     * The app was swiped away from Recents. That ends its call, as it does on
+     * an iPhone: Dart is asked to leave while it still can, and the service
+     * stops shortly after whether or not it did — the activity, and the Flutter
+     * engine with it, are going, so nothing would be left to end it later, and
+     * the notification would be announcing a microphone nobody is using.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        onAction?.invoke("leave")
+        main.postDelayed({
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }, LEAVE_ON_TASK_REMOVED_MS)
+        super.onTaskRemoved(rootIntent)
     }
 
     private fun setCapturing(wanted: Boolean): Boolean {
@@ -251,16 +318,47 @@ class CallForegroundService : Service() {
         }
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(title)
-            .setContentText(body)
+            .setContentTitle(call.title)
+            .setContentText(statusLine())
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            // The call ends from inside the app, not by swiping this away.
+            // The call ends from inside the app or with Leave, not by swiping
+            // this away.
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setShowWhen(false)
             .setContentIntent(pending)
+            // A Live Update is never colorized, so neither is this.
+            .setColorized(false)
+
+        // The call's own time, which the system keeps running — the chip in
+        // the status bar shows it too.
+        if (call.connectedAt > 0L) {
+            builder.setWhen(call.connectedAt).setShowWhen(true).setUsesChronometer(true)
+        } else {
+            builder.setShowWhen(false)
+        }
+
+        val leave = serviceIntent(ACTION_LEAVE, 3)
+        if (call.prominent) {
+            val caller = Person.Builder()
+                .setName(call.title)
+                .setImportant(true)
+                .build()
+            builder
+                .setStyle(NotificationCompat.CallStyle.forOngoingCall(caller, leave))
+                // Android 16's Live Updates: the status bar chip, the lock
+                // screen, and whatever a maker builds on them. Android shows
+                // it only where the person has not turned it off.
+                .setRequestPromotedOngoing(true)
+        } else {
+            builder.addAction(0, getString(R.string.call_leave), leave)
+        }
+        builder.addAction(
+            0,
+            getString(if (call.micOn) R.string.call_mute else R.string.call_unmute),
+            serviceIntent(ACTION_TOGGLE_MUTE, 2),
+        )
 
         if (capturing) {
             // Said first, because it is the part somebody would want to know
@@ -268,23 +366,36 @@ class CallForegroundService : Service() {
             // the whole point of sharing is being in some other app.
             builder
                 .setContentText(getString(R.string.call_sharing_screen))
-                .setSubText(title)
+                .setSubText(call.title)
                 .addAction(
                     0,
                     getString(R.string.call_stop_sharing),
-                    PendingIntent.getService(
-                        this,
-                        1,
-                        Intent(this, CallForegroundService::class.java).apply {
-                            action = ACTION_STOP_CAPTURE
-                        },
-                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                    ),
+                    serviceIntent(ACTION_STOP_CAPTURE, 1),
                 )
         }
 
         return builder.build()
     }
+
+    /** The server, and whether this member can be heard. */
+    private fun statusLine(): String {
+        if (call.reconnecting) return getString(R.string.call_reconnecting)
+        val state = when {
+            call.deafened -> getString(R.string.call_deafened)
+            !call.micOn -> getString(R.string.call_muted)
+            else -> null
+        }
+        return listOfNotNull(call.body.takeIf { it.isNotEmpty() }, state).joinToString(" · ")
+    }
+
+    /** One of the notification's own actions, delivered back to this service. */
+    private fun serviceIntent(action: String, requestCode: Int): PendingIntent =
+        PendingIntent.getService(
+            this,
+            requestCode,
+            Intent(this, CallForegroundService::class.java).setAction(action),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
 
     /**
      * Notices a capture the *system* ended: its own stop control in the
@@ -361,3 +472,19 @@ class CallForegroundService : Service() {
         manager.createNotificationChannel(channel)
     }
 }
+
+/**
+ * The call as Dart describes it (`CallSessionDescription.toMap()`), less what
+ * the notification does not show.
+ */
+data class CallDescription(
+    val title: String = "",
+    val body: String = "",
+    /** When the call first connected, in epoch milliseconds; 0 before then. */
+    val connectedAt: Long = 0L,
+    val micOn: Boolean = true,
+    val deafened: Boolean = false,
+    val reconnecting: Boolean = false,
+    /** Shown as a call — the status bar chip, a Live Update — not only in the shade. */
+    val prominent: Boolean = true,
+)

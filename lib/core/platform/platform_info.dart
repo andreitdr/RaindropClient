@@ -223,6 +223,20 @@ String get showCallSettingTitle => switch (currentPlatform) {
   _ => 'Show calls outside the app',
 };
 
+/// What Device settings says showing a call outside the app means on this
+/// phone.
+String get showCallSettingDetail => switch (currentPlatform) {
+  RaindropPlatform.ios =>
+    'The call, its timer, and mute and hang-up on the Lock Screen and in the '
+        'Dynamic Island, while you are in another app.',
+  RaindropPlatform.android =>
+    'The call and its timer as a chip in the status bar, and as a Live Update '
+        'on Android 16 — on Samsung phones, in the Now Bar. Off, the call stays '
+        'in the notification shade, which it needs to keep running.',
+  _ =>
+    'The call, its timer, and mute and hang-up, while you are in another app.',
+};
+
 /// Whether the camera can scan a QR code here — the device-link code another
 /// device shows. `mobile_scanner` covers iOS, Android and macOS; elsewhere
 /// the code is typed or pasted instead.

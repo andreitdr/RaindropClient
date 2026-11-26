@@ -51,9 +51,7 @@ class BackgroundSettingsSection extends ConsumerWidget {
               if (callSurface)
                 _SwitchRow(
                   title: showCallSettingTitle,
-                  subtitle:
-                      'The call, its timer, and mute and hang-up, while '
-                      'you are in another app.',
+                  subtitle: showCallSettingDetail,
                   value: settings.showCallOutsideApp,
                   onChanged: controller.setShowCallOutsideApp,
                 ),

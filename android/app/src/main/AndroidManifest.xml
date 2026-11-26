@@ -28,6 +28,10 @@
     <!-- The notification that service is required to show. Denying it does not stop a call;
          Android 13+ just shows nothing, and the service still runs. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Android 16's Live Updates: the call's notification promoted to the status bar chip
+         and the lock screen, which Samsung's Now Bar and other makers' islands build on. Not
+         a runtime permission; the person can still turn it off for the app. -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
 
     <application
         android:label="@string/app_name"

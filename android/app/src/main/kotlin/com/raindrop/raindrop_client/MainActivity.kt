@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
 /**
@@ -41,6 +42,11 @@ class MainActivity : FlutterFragmentActivity() {
         CallForegroundService.onCaptureEnded = {
             main.post { channel.invokeMethod("captureEnded", null) }
         }
+        // And the notification's Mute and Leave, which Dart carries out as the
+        // call bar's buttons would.
+        CallForegroundService.onAction = { action ->
+            main.post { channel.invokeMethod("action", action) }
+        }
 
         channel
             .setMethodCallHandler { call, result ->
@@ -50,9 +56,7 @@ class MainActivity : FlutterFragmentActivity() {
                     // re-issues its notification. Dart keeps the two apart
                     // because iOS and desktop hosts may not.
                     "begin", "update" -> {
-                        val title = call.argument<String>("title").orEmpty()
-                        val body = call.argument<String>("body").orEmpty()
-                        CallForegroundService.start(applicationContext, title, body)
+                        CallForegroundService.start(applicationContext, describe(call))
                         if (call.method == "begin") askForNotifications()
                         result.success(null)
                     }
@@ -75,6 +79,20 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }
     }
+
+    /**
+     * The call as Dart sent it (`CallSessionDescription.toMap()`), read
+     * leniently: a missing or mistyped key is the quiet default.
+     */
+    private fun describe(call: MethodCall) = CallDescription(
+        title = call.argument<String>("title").orEmpty(),
+        body = call.argument<String>("body").orEmpty(),
+        connectedAt = call.argument<Number>("connectedAt")?.toLong() ?: 0L,
+        micOn = call.argument<Boolean>("micOn") ?: true,
+        deafened = call.argument<Boolean>("deafened") ?: false,
+        reconnecting = call.argument<Boolean>("reconnecting") ?: false,
+        prominent = call.argument<Boolean>("showOutsideApp") ?: true,
+    )
 
     /**
      * Asks to show notifications, the first time a call starts.
@@ -114,6 +132,7 @@ class MainActivity : FlutterFragmentActivity() {
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         // Nothing left to tell: the engine it would be told through is going.
         CallForegroundService.onCaptureEnded = null
+        CallForegroundService.onAction = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 }

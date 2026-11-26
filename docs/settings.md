@@ -66,18 +66,21 @@ Voice & video, reading and writing `backgroundSettingsProvider` (`BackgroundSett
 - **Keep running when closed** (desktops; titled per platform by `keepRunningSettingTitle` — menu bar,
   notification area or tray): closing the window hides it instead of quitting.
 - **Show calls outside the app** (phones; `showCallSettingTitle`, "Show calls as a Live Activity" on
-  iOS): the call on the Lock Screen, the Dynamic Island, the status bar.
+  iOS, "Show calls in the status bar" on Android; the subtitle is `showCallSettingDetail`, per phone):
+  the call on the Lock Screen and the Dynamic Island, or in the status bar and as a Live Update.
 
 Each row appears only where it can be honoured — the first where `AppResidency.available`, the second
 where `CallSessionHost.showsCallOutsideApp` — and the whole section, heading included, is not drawn
-where neither is. **Today that is the three desktops and iOS.** An iPhone or iPad has the one switch,
+where neither is. **Today that is the three desktops, iOS and Android.** An iPhone or iPad has the one switch,
 **Show calls as a Live Activity** (Apple's own name: the Lock Screen on every iPhone, the Dynamic Island
-on those with one). The desktops have the other, titled "Keep running in the menu
+on those with one). An Android phone has the one switch **Show calls in the status bar**: the call as a
+chip with its time (Android 12+) and a Live Update (Android 16; on Samsung phones, the Now Bar). Off, the
+call stays in the notification shade, which it needs to keep running. The desktops have the other, titled "Keep running in the menu
 bar" on a Mac, "…in the notification area" on Windows and "…in the tray" on Linux. Its on-state subtitle
 is `keepRunningSettingDetail`: the same on Mac and Windows apart from where to quit from, and on Linux
 it adds that a desktop with no tray minimises the window instead while you are in a call. The call
-setting is not offered on a desktop (it always shows its call) or on Android yet, which still draws no
-Background section until its per-platform work lands. See
+setting is not offered on a desktop, which always shows its call. It does not yet say when the person
+has turned promoted notifications off for Raindrop in Android's own settings. See
 [Background and live calls](background-and-live-calls.md).
 
 ### Identity & devices
