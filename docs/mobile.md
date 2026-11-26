@@ -300,7 +300,7 @@ rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-and
   Management.
 - **Decline Xcode's "Update to recommended settings"** when it opens the project (or revert
   `ios/Runner.xcodeproj` if it was accepted). It replaces the targets' fixed `IPHONEOS_DEPLOYMENT_TARGET`
-  values (15.0) with `$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)`,
+  values (15.0, and 16.2 for `RaindropLiveActivity`) with `$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)`,
   which CocoaPods 1.17 cannot parse (`pod install` fails with "Malformed version number string
   $(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)"), and moves `DEVELOPMENT_TEAM` to the project level.
 
