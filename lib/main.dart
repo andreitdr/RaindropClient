@@ -4,13 +4,13 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:media_kit/media_kit.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'core/crypto/crypto_store.dart';
 import 'core/layout/layout_controller.dart';
 import 'core/layout/layout_store.dart';
+import 'core/media/media_playback.dart';
 import 'core/network/pin_registry.dart';
 import 'core/storage/app_prefs.dart';
 import 'core/storage/attachment_cache.dart';
@@ -30,8 +30,9 @@ Future<void> main() async {
   // built and linked by native/raindrop_crypto_builder.
   await CryptoStores.initialize();
 
-  // Plays video and audio attachments on every platform the app targets.
-  MediaKit.ensureInitialized();
+  // Plays video and audio attachments: media_kit, or nothing to start on
+  // Windows, which plays through Media Foundation (core/media/).
+  initializeMedia();
 
   // The call audio stack, before anything can join a call: on phones the
   // session type a call needs is fixed at initialization. See initializeVoice.

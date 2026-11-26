@@ -9,7 +9,7 @@ build fails where CI does not, compare against what `ci.yml` sets up.
 
 | # | What | Why | Download |
 |---|---|---|---|
-| 1 | **Visual Studio 2022** (Community is fine) with the **Desktop development with C++** workload. That workload includes the MSVC v143 compiler, a Windows 10/11 SDK and CMake. | Flutter's Windows runner and every native plugin are C++, and Rust links with the MSVC linker. VS Code is not enough. | <https://visualstudio.microsoft.com/downloads/> |
+| 1 | **Visual Studio 2022** (Community is fine) with the **Desktop development with C++** workload. That workload includes the MSVC v143 compiler, a Windows 10/11 SDK and CMake, and **C++ ATL** among its recommended components (keep it ticked; Build Tools installs need it added). On an ARM64 PC, also the ARM64 build tools, ATL for ARM64 and the C++ Clang Compiler. | Flutter's Windows runner and every native plugin are C++, and Rust links with the MSVC linker. VS Code is not enough. | <https://visualstudio.microsoft.com/downloads/> |
 | 2 | **Git for Windows** | Cloning, and Flutter itself needs Git. | <https://git-scm.com/downloads/win> |
 | 3 | **Flutter SDK**, stable channel, on `PATH`. `pubspec.yaml` needs Dart 3.13.2 or newer, so use a current stable. | The app. | <https://docs.flutter.dev/get-started/install/windows/desktop> |
 | 4 | **Rust** through **rustup**, with the default MSVC toolchain (`x86_64-pc-windows-msvc`) | The end-to-end encryption core (`../RaindropCrypto`) is Rust, compiled during `flutter build` by cargokit. | <https://rustup.rs/> |
@@ -78,8 +78,14 @@ flutter build windows --release
 The release build lands in `build\windows\x64\runner\Release\`.
 
 **The first build is slow**, typically several minutes. OpenSSL, SQLCipher and OpenMLS compile from
-source, and flutter_webrtc and media_kit download prebuilt WebRTC and libmpv, so it also needs
-internet access. Later builds only recompile what changed.
+source, and flutter_webrtc downloads prebuilt WebRTC (and video_player_win Microsoft's WIL headers
+through NuGet), so it also needs internet access. Later builds only recompile what changed.
+
+**ARM64 Windows builds natively**, into `build\windows\arm64\runner\Release\` (Flutter builds for
+the machine it runs on; it cannot build x64 from ARM64). On ARM64 the Rust core also needs Visual
+Studio's **C++ Clang Compiler for Windows** component, since tract-linalg assembles its ARM64 kernels
+with clang. Video and audio attachments play through Media Foundation on every Windows build, not
+media_kit, whose Windows libraries are x64 only (`docs/attachments.md#platform-notes`).
 
 ### Running the build on another PC
 
@@ -132,6 +138,8 @@ and Perl don't all honour long paths.
 |---|---|
 | `Building with plugins requires symlink support` | Turn on Developer Mode, then open a new terminal. |
 | `Unable to find suitable Visual Studio toolchain` / `flutter doctor` has no Visual Studio tick | Install the *Desktop development with C++* workload. |
+| `Cannot open include file: 'atlstr.h'` (flutter_secure_storage_windows) | Add **C++ ATL** (ATL for ARM64 on an ARM64 PC) in the Visual Studio Installer. |
+| `failed to find tool "clang"` (tract-linalg, ARM64 only) | Add the **C++ Clang Compiler for Windows** component. |
 | `perl reported failure` or `Can't locate Locale/Maketext/Simple.pm` | The wrong Perl ran. Put Strawberry Perl first on `PATH`, or set `OPENSSL_SRC_PERL` to its `perl.exe`. |
 | `'nasm' is not recognized` or `NASM not found` | Add `C:\Program Files\NASM` to `PATH` and open a new terminal. |
 | `No such file or directory` from OpenSSL's `Configure` | Path too long. Set `RAINDROP_CARGO_BUILD_DIR` to a very short folder such as `C:\ck`, and move the checkout to a shorter path. |

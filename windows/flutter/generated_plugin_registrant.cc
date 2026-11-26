@@ -13,8 +13,8 @@
 #include <flutter_webrtc/flutter_web_r_t_c_plugin.h>
 #include <livekit_client/live_kit_plugin.h>
 #include <local_auth_windows/local_auth_plugin.h>
-#include <media_kit_libs_windows_video/media_kit_libs_windows_video_plugin_c_api.h>
 #include <media_kit_video/media_kit_video_plugin_c_api.h>
+#include <video_player_win/video_player_win_plugin_c_api.h>
 
 void RegisterPlugins(flutter::PluginRegistry* registry) {
   ConnectivityPlusWindowsPluginRegisterWithRegistrar(
@@ -31,8 +31,8 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("LiveKitPlugin"));
   LocalAuthPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("LocalAuthPlugin"));
-  MediaKitLibsWindowsVideoPluginCApiRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("MediaKitLibsWindowsVideoPluginCApi"));
   MediaKitVideoPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("MediaKitVideoPluginCApi"));
+  VideoPlayerWinPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("VideoPlayerWinPluginCApi"));
 }

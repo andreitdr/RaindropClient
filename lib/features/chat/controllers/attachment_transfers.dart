@@ -5,12 +5,11 @@ import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../../core/crypto/attachment_cipher.dart';
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/crypto/message_payload.dart';
+import '../../../core/media/media_playback.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/attachments_api.dart';
 import '../../../core/storage/attachment_cache.dart';
@@ -372,34 +371,21 @@ class AttachmentTransfers {
   }
 
   /// A still from a few seconds into a video, grabbed by the media player
-  /// without showing it anywhere.
+  /// without showing it anywhere. None on Windows, whose player cannot grab
+  /// one: the video goes up without a thumbnail.
   static Future<_Preview?> _videoPreview(String path) async {
-    final player = Player();
-    try {
-      final controller = VideoController(player);
-      await player.open(Media(Uri.file(path).toString()), play: false);
-      await controller.waitUntilFirstFrameRendered.timeout(
-        const Duration(seconds: 5),
-      );
-      final duration = player.state.duration;
-      if (duration > const Duration(seconds: 4)) {
-        await player.seek(const Duration(seconds: 2));
-        await Future<void>.delayed(const Duration(milliseconds: 300));
-      }
-      final frame = await player.screenshot(format: 'image/jpeg');
-      if (frame == null) return null;
-      final shrunk = await Isolate.run(() => _shrink(frame));
-      return shrunk == null
-          ? null
-          : _Preview(
-              shrunk.jpeg,
-              width: player.state.width ?? shrunk.width,
-              height: player.state.height ?? shrunk.height,
-              duration: duration > Duration.zero ? duration : null,
-            );
-    } finally {
-      await player.dispose();
-    }
+    final still = await grabVideoStill(path);
+    if (still == null) return null;
+    final frame = still.jpeg;
+    final shrunk = await Isolate.run(() => _shrink(frame));
+    return shrunk == null
+        ? null
+        : _Preview(
+            shrunk.jpeg,
+            width: still.width ?? shrunk.width,
+            height: still.height ?? shrunk.height,
+            duration: still.duration,
+          );
   }
 }
 

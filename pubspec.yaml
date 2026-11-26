@@ -27,9 +27,22 @@ dependencies:
   image: ^4.10.1
   intl: ^0.20.3
   livekit_client: ^2.13.0
+  # Video and audio attachments: media_kit everywhere but Windows. Its
+  # native libraries come per platform rather than through
+  # media_kit_libs_video, so Windows gets none: media_kit_libs_windows_video
+  # ships x64-only libmpv and ANGLE, which an ARM64 build cannot link, and
+  # without it media_kit_video builds its empty Windows stub. Windows plays
+  # through video_player_win instead (core/media/).
   media_kit: ^1.2.6
-  media_kit_libs_video: ^1.0.7
+  media_kit_libs_android_video: ^1.3.8
+  media_kit_libs_ios_video: ^1.1.4
+  media_kit_libs_linux: ^1.2.1
+  media_kit_libs_macos_video: ^1.1.4
   media_kit_video: ^2.0.1
+  # Windows' player: Media Foundation, so it builds for x64 and ARM64 alike.
+  # Used through its own controller rather than video_player, so no other
+  # platform's video_player implementation is pulled in.
+  video_player_win: ^3.3.2
   mime: ^2.1.0
   mobile_scanner: ^7.4.2
   msgpack_dart: ^1.0.1

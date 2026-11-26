@@ -413,7 +413,8 @@ under its own key by the Rust core (`AttachmentCipher`), streamed up (`Attachmen
 type, hash, a sender-made thumbnail — inside a `files` message, attested under v2. The composer's
 paperclip and desktop drag-and-drop check every file against the server's `GetAttachmentPolicy`
 first; it shows only with `attachments.v1`, `attach_files` in the channel, and encryption on this
-device. Received files preview inline (image, video and audio through `media_kit`) only when the
+device. Received files preview inline (image, video and audio through `core/media/`'s `MediaPlayback`: media_kit,
+or Media Foundation on Windows, which sends videos without a thumbnail) only when the
 server's `preview.extensions` lists them, `AttachmentPreviewRegistry` knows them (the plugin seam), and
 the extension the sender declared to the server matches the name in the message; everything else is a
 file card that saves, and nothing received is ever opened by the app. Decrypted files live in a temporary

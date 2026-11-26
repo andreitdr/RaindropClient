@@ -67,6 +67,20 @@ bool get canChooseAudioDevices => isDesktopPlatform;
 /// the OS's business.
 bool get canChooseCamera => true;
 
+/// Whether video and audio attachments play through Windows' own Media
+/// Foundation (video_player_win) rather than media_kit. Windows only, x64 as
+/// well as ARM64: media_kit's Windows libraries (libmpv, ANGLE) are x64 builds
+/// an ARM64 app cannot link, so no Windows build ships them, and both play the
+/// same way — which also means CI's x64 build compiles what ARM64 runs.
+bool get playsMediaThroughMediaFoundation =>
+    currentPlatform == RaindropPlatform.windows;
+
+/// Whether the media player can grab a still from a video, for the thumbnail
+/// a video attachment is sent with. Not on Windows, whose player has no way
+/// to: a video sent from Windows goes up without one, and shows the plain
+/// video card.
+bool get canGrabVideoStills => !playsMediaThroughMediaFoundation;
+
 /// Whether this platform has somewhere to put a frame processor.
 ///
 /// The camera itself works everywhere; the effects need a hook into the capture

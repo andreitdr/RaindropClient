@@ -10,8 +10,8 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_webrtc
   livekit_client
   local_auth_windows
-  media_kit_libs_windows_video
   media_kit_video
+  video_player_win
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

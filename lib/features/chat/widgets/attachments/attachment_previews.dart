@@ -4,10 +4,9 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../../../core/crypto/crypto_engine.dart';
+import '../../../../core/media/media_playback.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/network/attachments_api.dart';
 import '../../controllers/attachment_transfers.dart';
@@ -326,8 +325,7 @@ class VideoPreview extends ConsumerStatefulWidget {
 
 class _VideoPreviewState extends ConsumerState<VideoPreview>
     with _LoadsAttachment {
-  Player? _player;
-  VideoController? _controller;
+  MediaPlayback? _playback;
 
   @override
   AttachmentPreviewContext get preview => widget.preview;
@@ -337,30 +335,29 @@ class _VideoPreviewState extends ConsumerState<VideoPreview>
   Future<void> _play() async {
     final opened = await load();
     if (opened == null || !mounted) return;
-    final player = Player();
-    final controller = VideoController(player);
-    setState(() {
-      _player = player;
-      _controller = controller;
-    });
-    await player.open(Media(Uri.file(opened.path).toString()));
+    final playback = await MediaPlayback.open(opened.path, video: true);
+    if (!mounted) {
+      await playback.dispose();
+      return;
+    }
+    setState(() => _playback = playback);
   }
 
   @override
   void dispose() {
-    unawaited(_player?.dispose());
+    unawaited(_playback?.dispose());
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final attachment = preview.attachment;
-    final controller = _controller;
+    final playback = _playback;
     final duration = attachment.descriptor?.duration;
     return _MediaFrame(
       size: _frameFor(attachment, fallback: const Size(360, 202)),
-      child: controller != null
-          ? Video(controller: controller)
+      child: playback != null
+          ? playback.view()
           : InkWell(
               onTap: loading ? null : _play,
               child: Stack(
@@ -419,7 +416,7 @@ class AudioPreview extends ConsumerStatefulWidget {
 
 class _AudioPreviewState extends ConsumerState<AudioPreview>
     with _LoadsAttachment {
-  Player? _player;
+  MediaPlayback? _playback;
   final _subscriptions = <StreamSubscription<Object?>>[];
   bool _playing = false;
   Duration _position = Duration.zero;
@@ -429,26 +426,29 @@ class _AudioPreviewState extends ConsumerState<AudioPreview>
   AttachmentPreviewContext get preview => widget.preview;
 
   Future<void> _toggle() async {
-    if (_player case final player?) {
-      await player.playOrPause();
+    if (_playback case final playback?) {
+      await playback.playOrPause();
       return;
     }
     final opened = await load();
     if (opened == null || !mounted) return;
-    final player = Player();
+    final playback = await MediaPlayback.open(opened.path);
+    if (!mounted) {
+      await playback.dispose();
+      return;
+    }
     _subscriptions.addAll([
-      player.stream.playing.listen(
+      playback.playing.listen(
         (v) => mounted ? setState(() => _playing = v) : null,
       ),
-      player.stream.position.listen(
+      playback.position.listen(
         (v) => mounted ? setState(() => _position = v) : null,
       ),
-      player.stream.duration.listen(
+      playback.duration.listen(
         (v) => mounted ? setState(() => _duration = v) : null,
       ),
     ]);
-    _player = player;
-    await player.open(Media(Uri.file(opened.path).toString()));
+    _playback = playback;
   }
 
   @override
@@ -456,7 +456,7 @@ class _AudioPreviewState extends ConsumerState<AudioPreview>
     for (final s in _subscriptions) {
       unawaited(s.cancel());
     }
-    unawaited(_player?.dispose());
+    unawaited(_playback?.dispose());
     super.dispose();
   }
 
@@ -513,9 +513,9 @@ class _AudioPreviewState extends ConsumerState<AudioPreview>
                                   .clamp(0, 1)
                                   .toDouble()
                             : 0,
-                        onChanged: _player == null || total == Duration.zero
+                        onChanged: _playback == null || total == Duration.zero
                             ? null
-                            : (v) => _player!.seek(total * v),
+                            : (v) => _playback!.seek(total * v),
                       ),
                   ],
                 ),
