@@ -75,9 +75,20 @@ struct NotchView: View {
 
   private var call: CallDescription { model.call }
 
+  /// How the island grows. The black shape is what animates; the details are
+  /// already in place underneath it and only fade in.
+  ///
+  /// The details are laid out once, at the expanded width, centred under the
+  /// notch — and never moved. Inserting them as the island opened laid them
+  /// out against a frame still mid-animation, so the buttons slid in from the
+  /// left; here the growing shape simply uncovers them where they will stay.
   var body: some View {
-    let size = model.expanded ? model.geometry.expandedSize : model.geometry.compactSize
+    let geometry = model.geometry
+    let size = model.expanded ? geometry.expandedSize : geometry.compactSize
+    let shape = NotchShape(radius: model.expanded ? 22 : 10)
     VStack(spacing: 0) {
+      // The microphone and the timer ride the island's edges outward: they
+      // are there in both sizes, so they glide rather than appear.
       HStack(spacing: 0) {
         Image(systemName: call.microphoneSymbol)
           .font(.system(size: 12, weight: .semibold))
@@ -87,22 +98,27 @@ struct NotchView: View {
         trailing
           .frame(width: NotchGeometry.wing)
       }
-      .frame(height: model.geometry.height)
+      .frame(width: size.width, height: geometry.height)
 
-      if model.expanded {
-        details
-          .padding(.horizontal, 16)
-          .padding(.bottom, 12)
-          .transition(.opacity)
-      }
+      details
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+        .frame(width: geometry.expandedSize.width, alignment: .leading)
+        .opacity(model.expanded ? 1 : 0)
+        // Hidden under the compact island, so not clickable there either.
+        .allowsHitTesting(model.expanded)
     }
     .foregroundColor(.white)
+    // Wider and taller than the compact island while it is compact: the
+    // frame keeps it centred under the notch and hanging from the top, and
+    // the shape cuts it to the island's size at every step of the animation.
     .frame(width: size.width, height: size.height, alignment: .top)
-    .background(NotchShape(radius: model.expanded ? 22 : 10).fill(Color.black))
+    .background(shape.fill(Color.black))
+    .clipShape(shape)
     // The island grows inside a panel already at its largest, so it hangs
     // from the top centre and the rest of the panel is clear.
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    .animation(.easeOut(duration: 0.18), value: model.expanded)
+    .animation(.easeOut(duration: 0.2), value: model.expanded)
   }
 
   @ViewBuilder private var trailing: some View {
@@ -279,6 +295,9 @@ final class NotchController {
   private let panel = NotchPanel()
   private var model: NotchModel?
 
+  /// The island's SwiftUI, always the expanded island's size — see [resize].
+  private var host: NSView?
+
   /// The pending grow or shrink: hovering has to settle for a moment before
   /// the island changes, so that sweeping the pointer across the top of the
   /// screen does not flash it open.
@@ -301,14 +320,34 @@ final class NotchController {
     let host = NotchHostingView(rootView: NotchView(model: model))
     let tracking = NotchTrackingView()
     tracking.onHover = { [weak self] inside in self?.hover(inside) }
-    host.autoresizingMask = [.width, .height]
-    tracking.addSubview(host)
     panel.contentView = tracking
-    host.frame = tracking.bounds
+    tracking.addSubview(host)
+    self.host = host
 
     self.model = model
-    panel.setFrame(geometry.frame(for: geometry.compactSize), display: true)
+    resize(to: geometry.compactSize, of: geometry)
     panel.orderFrontRegardless()
+  }
+
+  /// Sizes the panel to [size] and puts the island's SwiftUI back where it
+  /// belongs in it: always the expanded island's size, hanging from the top
+  /// centre, whatever size the panel is.
+  ///
+  /// Resizing the panel then only changes how much of the view shows, never
+  /// where SwiftUI lays the island out — a view that grew with the panel was
+  /// re-centred in the same animation as the island opening, so everything
+  /// slid in from the left. Placed by hand each time rather than by
+  /// autoresizing, which does not split a change evenly between two margins
+  /// that are both zero, and left the closed island off-centre.
+  private func resize(to size: NSSize, of geometry: NotchGeometry) {
+    panel.setFrame(geometry.frame(for: size), display: false)
+    let expanded = geometry.expandedSize
+    host?.frame = NSRect(
+      x: (size.width - expanded.width) / 2,
+      y: size.height - expanded.height,
+      width: expanded.width,
+      height: expanded.height)
+    panel.display()
   }
 
   func hide() {
@@ -332,7 +371,7 @@ final class NotchController {
     guard let model, !model.expanded else { return }
     // The panel takes its largest size first and the island animates inside
     // it, rather than the window itself being animated.
-    panel.setFrame(model.geometry.frame(for: model.geometry.expandedSize), display: true)
+    resize(to: model.geometry.expandedSize, of: model.geometry)
     model.expanded = true
   }
 
@@ -344,6 +383,6 @@ final class NotchController {
     // the menu bar either side of it can be clicked again — unless the
     // pointer came back meanwhile.
     guard !Task.isCancelled, self.model === model, !model.expanded else { return }
-    panel.setFrame(model.geometry.frame(for: model.geometry.compactSize), display: true)
+    resize(to: model.geometry.compactSize, of: model.geometry)
   }
 }
