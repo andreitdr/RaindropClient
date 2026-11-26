@@ -165,7 +165,8 @@ jobs:
       - name: Use Strawberry Perl for OpenSSL
         if: startsWith(matrix.name, 'windows')
         run: |
-          perl_exe="$(ls -d /c/hostedtoolcache/windows/strawberry-perl/*/x64/perl/bin/perl.exe | sort | tail -n 1)"
+          # The architecture folder is x64, or arm64 on the ARM64 runner.
+          perl_exe="$(ls -d /c/hostedtoolcache/windows/strawberry-perl/*/*/perl/bin/perl.exe | sort | tail -n 1)"
           [ -n "$perl_exe" ] || { echo "Strawberry Perl not found" >&2; exit 1; }
           echo "OPENSSL_SRC_PERL=$(cygpath -m "$perl_exe")" >> "$GITHUB_ENV"
           echo "STRAWBERRY_PERL_BIN=$(dirname "$perl_exe")" >> "$GITHUB_ENV"
