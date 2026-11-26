@@ -1,12 +1,12 @@
 name: Release
 
-# Starts when release.sh pushes a version tag (vX.Y.Z). Builds and tests the tagged commit (ci.yml),
+# Starts when release.sh pushes a version tag (vX.Y.Z.T: major, minor, update, hotfix). Builds and tests the tagged commit (ci.yml),
 # packages the artefact, and only if all of that succeeded publishes a GitHub release for the tag
 # with the artefact attached. GitHub adds the source-code zip itself.
 
 on:
   push:
-    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+.[0-9]+"]
 
 permissions:
   contents: read
@@ -174,14 +174,18 @@ jobs:
         run: |
           if [ -n "${STRAWBERRY_PERL_BIN:-}" ]; then export PATH="$STRAWBERRY_PERL_BIN:$PATH"; fi
           VERSION="${GITHUB_REF_NAME#v}"
-          # Android only installs an update whose versionCode is higher than the installed one's, so
-          # derive it from the tag (1.2.3 -> 10203) rather than pubspec's fixed build number.
-          IFS=. read -r major minor patch <<< "$VERSION"
-          flutter build ${{ matrix.target }} --release --build-name "$VERSION" \
-            --build-number "$((major * 10000 + minor * 100 + patch))"
+          IFS=. read -r major minor update hotfix <<< "$VERSION"
+          # Apple takes at most three numbers for the version people see (CFBundleShortVersionString),
+          # so the build name is X.Y.Z and the hotfix rides in the build number. Android only installs
+          # an update whose versionCode is higher than the installed one's, so the build number is
+          # derived from all four (0.2.2.2 -> 20202), which also stays above the old vA.B.C tags'
+          # A*10000 + B*100 + C (v2.2.1 -> 20201). Each of Y, Z and T must stay below 100.
+          flutter build ${{ matrix.target }} --release --build-name "$major.$minor.$update" \
+            --build-number "$((major * 1000000 + minor * 10000 + update * 100 + hotfix))"
 
-      # Windows and macOS builds already carry libmpv (media_kit_libs_video). Linux does not, so it
-      # is copied in here, then wrapped as AppImage + .deb + .rpm.
+      # macOS builds already carry libmpv (media_kit_libs_macos_video), and Windows plays through
+      # Media Foundation instead (lib/core/media/). Linux uses the system's libmpv, so it is copied
+      # in here, then wrapped as AppImage + .deb + .rpm.
       - name: Package (linux)
         if: matrix.name == 'linux'
         run: |

@@ -267,7 +267,7 @@ rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-and
   It is signed with the release key when the repository has the secrets `ANDROID_KEYSTORE_BASE64`
   (the `.jks`, base64-encoded), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and
   `ANDROID_KEY_PASSWORD`; without them it carries the runner's throwaway debug key, so a newer release
-  only installs after the old one is uninstalled. The `versionCode` comes from the tag (1.2.3 → 10203).
+  only installs after the old one is uninstalled. The `versionCode` comes from the tag (0.2.2.2 → 20202; see `docs/ci-and-releases.md`).
 
 ### iOS
 
