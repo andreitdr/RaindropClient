@@ -58,7 +58,7 @@ class ChannelServiceClient extends $grpc.Client {
     return $createUnaryCall(_$createChannel, request, options: options);
   }
 
-  /// Rename it: needs rename_channels, or having created it.
+  /// Rename it: needs rename_channels.
   $grpc.ResponseFuture<$0.RenameChannelResponse> renameChannel(
     $0.RenameChannelRequest request, {
     $grpc.CallOptions? options,
@@ -66,7 +66,7 @@ class ChannelServiceClient extends $grpc.Client {
     return $createUnaryCall(_$renameChannel, request, options: options);
   }
 
-  /// Delete it and everything in it: needs delete_channels, or having created it.
+  /// Delete it and everything in it: needs delete_channels.
   $grpc.ResponseFuture<$0.DeleteChannelResponse> deleteChannel(
     $0.DeleteChannelRequest request, {
     $grpc.CallOptions? options,

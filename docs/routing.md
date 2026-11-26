@@ -14,6 +14,9 @@
 | `/settings/layout` | [`LayoutEditorScreen`](layout.md#the-editor) | — |
 | `/settings/theme-editor` | [`ThemeEditorScreen`](settings.md) | `(starting: AppThemeDefinition, editing: AppThemeDefinition?)` |
 | `/servers/:serverId/settings` | [`ServerSettingsScreen`](settings.md#serversettingsscreen) | — (the server id is in the path) |
+| `/servers/:serverId/roles` | [`RolesScreen`](roles.md#screens) | — |
+| `/servers/:serverId/roles/new` | [`RoleEditorScreen`](roles.md#screens) (creating) | — |
+| `/servers/:serverId/roles/:roleId` | [`RoleEditorScreen`](roles.md#screens) (editing) | — |
 
 ## Why routes are shallow
 

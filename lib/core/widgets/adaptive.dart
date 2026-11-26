@@ -16,7 +16,9 @@ class AdaptiveSwitch extends StatelessWidget {
   });
 
   final bool value;
-  final ValueChanged<bool> onChanged;
+
+  /// Null shows the switch disabled.
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {

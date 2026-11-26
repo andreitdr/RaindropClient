@@ -25,8 +25,10 @@ abstract final class ChannelTypeNames {
 ///
 /// A server running a newer build may send a name that is not here, which is
 /// why [ChannelSummary.yourPermissions] stays a list of strings — the extra
-/// name is simply one this client does not act on. `RoleService.ListPermissions`
-/// is where the full catalogue lives if a screen ever needs to render it.
+/// name is simply one this client does not act on. These are only for
+/// deciding which buttons to offer: the role editor draws its permissions
+/// from the server's own catalogue (`RoleService.ListPermissions`), never
+/// from this list.
 abstract final class ChannelPermissionNames {
   static const viewChannel = 'view_channel';
   static const sendMessages = 'send_messages';
@@ -40,6 +42,8 @@ abstract final class ChannelPermissionNames {
   static const speak = 'speak';
   static const muteMembers = 'mute_members';
   static const attachFiles = 'attach_files';
+  static const video = 'video';
+  static const screenShare = 'screen_share';
 }
 
 class ChannelSummary {
@@ -122,8 +126,7 @@ class ChannelsApi {
     )).channel,
   );
 
-  /// Renames a channel. Needs `rename_channels` in it, which the channel's
-  /// creator holds implicitly.
+  /// Renames a channel. Needs `rename_channels` in it.
   Future<ChannelSummary> rename(
     String token, {
     required String channelId,
@@ -139,7 +142,7 @@ class ChannelsApi {
   );
 
   /// Deletes a channel and every message in it. Needs `delete_channels` in
-  /// it, which the channel's creator holds implicitly.
+  /// it.
   Future<ChannelDeleted> delete(
     String token, {
     required String channelId,

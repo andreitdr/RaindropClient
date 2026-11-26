@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import '../../features/home/screens/home_shell.dart';
 import '../../features/onboarding/screens/connect_server_screen.dart';
 import '../../features/onboarding/screens/server_auth_screen.dart';
+import '../../features/roles/screens/role_editor_screen.dart';
+import '../../features/roles/screens/roles_screen.dart';
 import '../../features/settings/screens/device_settings_screen.dart';
 import '../../features/settings/screens/identity_settings_screen.dart';
 import '../../features/settings/screens/layout_editor_screen.dart';
@@ -56,6 +58,23 @@ final appRouter = GoRouter(
       path: '/servers/:serverId/settings',
       builder: (context, state) =>
           ServerSettingsScreen(serverId: state.pathParameters['serverId']!),
+    ),
+    GoRoute(
+      path: '/servers/:serverId/roles',
+      builder: (context, state) =>
+          RolesScreen(serverId: state.pathParameters['serverId']!),
+    ),
+    GoRoute(
+      path: '/servers/:serverId/roles/new',
+      builder: (context, state) =>
+          RoleEditorScreen(serverId: state.pathParameters['serverId']!),
+    ),
+    GoRoute(
+      path: '/servers/:serverId/roles/:roleId',
+      builder: (context, state) => RoleEditorScreen(
+        serverId: state.pathParameters['serverId']!,
+        roleId: state.pathParameters['roleId'],
+      ),
     ),
   ],
 );

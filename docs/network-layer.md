@@ -132,7 +132,7 @@ distinct from the feature-layer UI model built from it (`MemberSummary` → `Mem
 |---|---|---|
 | [`UsersApi`](../lib/core/network/users_api.dart) | `ServerService`, `UserService` (`server.proto`, `users.proto`) | [Connecting to a server](connecting-to-a-server.md), [Servers & sessions](servers-and-sessions.md) |
 | [`ChannelsApi`](../lib/core/network/channels_api.dart) | `ChannelService` (`channels.proto`) | [Channels](channels.md) |
-| [`RolesApi`](../lib/core/network/roles_api.dart) | `RoleService.GetMyRoles` (only) (`roles.proto`) | [Channels](channels.md#creating-renaming-and-deleting) |
+| [`RolesApi`](../lib/core/network/roles_api.dart) | `RoleService` (`roles.proto`): the caller's roles, the permission catalogue and role editing | [Roles](roles.md), [Channels](channels.md#creating-renaming-and-deleting) |
 | [`MembersApi`](../lib/core/network/members_api.dart) | `MemberService` (`members.proto`) | [Members & presence](members-presence.md) |
 | [`TextMessagesApi`](../lib/core/network/text_messages_api.dart) | `TextChannelService` (`text.proto`) | [Messages & chat](messages-chat.md) |
 | [`AttachmentsApi`](../lib/core/network/attachments_api.dart) | `AttachmentService` (`attachments.proto`): `upload` is a client stream of frames, `download` a server stream into a file | [Attachments](attachments.md) |
@@ -162,6 +162,9 @@ stream. It is the quickest way to check a change here:
 ```bash
 RAINDROP_TEST_SERVER=localhost:5001 flutter test test/integration/transport_test.dart
 ```
+
+[`test/integration/roles_test.dart`](../test/integration/roles_test.dart) does the same for `RolesApi`
+(needs a fresh database; see [Roles](roles.md#tests)).
 
 ## Related
 

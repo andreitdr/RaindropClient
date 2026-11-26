@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/models/server_profile.dart';
+import '../../roles/controllers/roles_controller.dart';
+import '../../roles/screens/roles_screen.dart';
 import '../../security/widgets/encryption_settings_section.dart';
 import '../../servers/controllers/servers_controller.dart';
 import '../../servers/widgets/server_actions.dart';
@@ -56,6 +58,25 @@ class ServerSettingsScreen extends ConsumerWidget {
               subtitle: Text('${server.host}:${server.port}'),
             ),
           ),
+          // Only for a server that offers role management and is signed in:
+          // the catalogue is what the Roles page is built from.
+          if (ref.watch(permissionCatalogueProvider(server.id)).valueOrNull !=
+              null) ...[
+            const SizedBox(height: 16),
+            const SettingsSectionLabel('Members'),
+            Card(
+              margin: EdgeInsets.zero,
+              child: ListTile(
+                leading: const Icon(Icons.shield_outlined),
+                title: const Text('Roles'),
+                subtitle: const Text(
+                  'What members of this server may do, and who holds which role.',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push(rolesRoute(server.id)),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           const SettingsSectionLabel('Encryption'),
           EncryptionSettingsSection(

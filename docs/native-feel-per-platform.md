@@ -47,7 +47,8 @@ Keeping every check in one file means a new target only needs updating here.
 [`adaptive.dart`](../lib/core/widgets/adaptive.dart) covers the handful of widgets Flutter doesn't
 already adapt automatically:
 
-- `AdaptiveSwitch` — `CupertinoSwitch` on Apple platforms, Material `Switch` elsewhere.
+- `AdaptiveSwitch` — `CupertinoSwitch` on Apple platforms, Material `Switch` elsewhere. Its `onChanged`
+  is nullable: null shows it disabled.
 - `AdaptiveActivityIndicator` — `CupertinoActivityIndicator` vs. a Material `CircularProgressIndicator`.
 - `showAdaptiveConfirm(context, {title, message, confirmLabel, destructive})` — a confirm/cancel dialog
   styled per platform (`CupertinoAlertDialog` vs. `AlertDialog`), returning `true` only when the

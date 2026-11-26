@@ -123,6 +123,8 @@ class Role extends $pb.GeneratedMessage {
   @$pb.TagNumber(4)
   void clearPosition() => $_clearField(4);
 
+  /// Only the permissions this server's build understands. A role saved by a newer build may hold names
+  /// an older one does not; the server keeps them but never sends or grants them.
   @$pb.TagNumber(5)
   $pb.PbList<$core.String> get permissions => $_getList(4);
 
@@ -138,15 +140,19 @@ class Role extends $pb.GeneratedMessage {
   $1.Timestamp ensureCreatedAt() => $_ensure(5);
 }
 
-/// One permission this build understands.
+/// One permission this build understands. Enough to show a permission a client has never heard of.
 class PermissionDescription extends $pb.GeneratedMessage {
   factory PermissionDescription({
     $core.String? name,
     $core.String? summary,
+    $core.String? title,
+    $core.String? category,
   }) {
     final result = PermissionDescription._();
     if (name != null) result.name = name;
     if (summary != null) result.summary = summary;
+    if (title != null) result.title = title;
+    if (category != null) result.category = category;
     return result;
   }
 
@@ -165,6 +171,8 @@ class PermissionDescription extends $pb.GeneratedMessage {
       createEmptyInstance: PermissionDescription.$_createMessage)
     ..aOS(1, _omitFieldNames ? '' : 'name')
     ..aOS(2, _omitFieldNames ? '' : 'summary')
+    ..aOS(3, _omitFieldNames ? '' : 'title')
+    ..aOS(4, _omitFieldNames ? '' : 'category')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -208,6 +216,27 @@ class PermissionDescription extends $pb.GeneratedMessage {
   $core.bool hasSummary() => $_has(1);
   @$pb.TagNumber(2)
   void clearSummary() => $_clearField(2);
+
+  /// A short label for an editor, e.g. "Manage roles". Absent from older servers: derive one from name.
+  @$pb.TagNumber(3)
+  $core.String get title => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set title($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasTitle() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearTitle() => $_clearField(3);
+
+  /// An open set grouping the editor: "general", "text", "voice", "channels", "moderation",
+  /// "administration". Empty from older servers, and a client files a group it does not know as other.
+  @$pb.TagNumber(4)
+  $core.String get category => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set category($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasCategory() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearCategory() => $_clearField(4);
 }
 
 /// A permission set whose presence means something: absent leaves a role's permissions alone, present
@@ -400,7 +429,8 @@ class GetMyRolesRequest extends $pb.GeneratedMessage {
   static GetMyRolesRequest? _defaultInstance;
 }
 
-/// The caller's roles (everyone first) and the expanded union of what they grant.
+/// The caller's roles (the everyone role included, highest position first, so it comes last) and the
+/// expanded union of what they grant.
 class GetMyRolesResponse extends $pb.GeneratedMessage {
   factory GetMyRolesResponse({
     $core.String? userId,
@@ -1180,7 +1210,8 @@ class GetMemberRolesRequest extends $pb.GeneratedMessage {
   void clearUserId() => $_clearField(1);
 }
 
-/// That member's roles (everyone first) and the expanded union of what they grant.
+/// That member's roles (the everyone role included, highest position first, so it comes last) and the
+/// expanded union of what they grant.
 class GetMemberRolesResponse extends $pb.GeneratedMessage {
   factory GetMemberRolesResponse({
     $core.String? userId,

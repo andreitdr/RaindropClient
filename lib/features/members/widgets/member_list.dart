@@ -5,6 +5,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/adaptive.dart';
 import '../../../core/widgets/panel.dart';
+import '../../roles/widgets/member_roles_sheet.dart';
 import '../controllers/members_controller.dart';
 import '../models/member.dart';
 
@@ -55,6 +56,7 @@ class MemberList extends ConsumerWidget {
                   ref.read(membersProvider(serverId).notifier).refresh(),
             ),
             data: (members) => _Roster(
+              serverId: serverId,
               groups: groupByPresence(members),
               currentUserId: currentUserId,
             ),
@@ -66,8 +68,13 @@ class MemberList extends ConsumerWidget {
 }
 
 class _Roster extends StatelessWidget {
-  const _Roster({required this.groups, required this.currentUserId});
+  const _Roster({
+    required this.serverId,
+    required this.groups,
+    required this.currentUserId,
+  });
 
+  final String serverId;
   final List<MemberGroup> groups;
   final String currentUserId;
 
@@ -89,6 +96,7 @@ class _Roster extends StatelessWidget {
           _GroupHeading(status: group.status, count: group.members.length),
           for (final member in group.members)
             _MemberTile(
+              serverId: serverId,
               member: member,
               isCurrentUser: member.id == currentUserId,
             ),
@@ -121,8 +129,13 @@ class _GroupHeading extends StatelessWidget {
 }
 
 class _MemberTile extends StatelessWidget {
-  const _MemberTile({required this.member, required this.isCurrentUser});
+  const _MemberTile({
+    required this.serverId,
+    required this.member,
+    required this.isCurrentUser,
+  });
 
+  final String serverId;
   final Member member;
   final bool isCurrentUser;
 
@@ -133,31 +146,41 @@ class _MemberTile extends StatelessWidget {
     // two groups readable at a glance without a second colour in the theme.
     final offline = member.presence == PresenceStatus.offline;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      child: Row(
-        children: [
-          _Avatar(member: member, dimmed: offline),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              member.username,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontWeight: FontWeight.w500,
-                color: offline
-                    ? scheme.onSurfaceVariant.withValues(alpha: 0.7)
-                    : scheme.onSurface,
+    // Tapping a member shows their roles, and hands roles out for a caller
+    // who may.
+    return InkWell(
+      onTap: () => showMemberRolesSheet(
+        context,
+        serverId: serverId,
+        userId: member.id,
+        username: member.username,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        child: Row(
+          children: [
+            _Avatar(member: member, dimmed: offline),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                member.username,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  color: offline
+                      ? scheme.onSurfaceVariant.withValues(alpha: 0.7)
+                      : scheme.onSurface,
+                ),
               ),
             ),
-          ),
-          if (isCurrentUser)
-            Text(
-              'you',
-              style: Theme.of(context).textTheme.labelSmall
-                  ?.copyWith(color: scheme.onSurfaceVariant),
-            ),
-        ],
+            if (isCurrentUser)
+              Text(
+                'you',
+                style: Theme.of(context).textTheme.labelSmall
+                    ?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+          ],
+        ),
       ),
     );
   }

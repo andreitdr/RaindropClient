@@ -24,6 +24,7 @@ the **app**; the other two projects keep their own, and a gap here is often a ga
 | Camera | Showing your camera in a call (grant before track, so a refusal never leaves a camera nobody can see), the camera-and-effects sheet with a live preview, camera and quality pickers, video tiles, and hiding one person's camera locally — which really stops the stream | [Voice](voice.md#camera) |
 | Camera effects | Background blur and background replacement, applied to the frames in place on macOS, iOS and Android, with no fork of the media library and no frame ever reaching Dart | [Voice](voice.md#camera-effects) |
 | Members | The roster pane, presence grouping, pushed presence updates | [Members & presence](members-presence.md) |
+| Roles | The server's permission catalogue, creating, editing, handing out and deleting roles, roles from the member list | [Roles](roles.md) |
 | Live updates | `EventStream` over the server's bidirectional gRPC stream with heartbeats and resubscribe on resume, `LiveSync` merging by id, reconnect with backoff and fallback polling | [Live updates](live-updates.md) |
 | Layout | A user-arranged main view: pane order, widths, buttons in slots, hiding, saved to a local layout file, edited in a layout editor | [Layout](layout.md) |
 | Theming | Two built-in themes, custom themes from asset/JSON definitions, a theme editor | [Theming](theming.md) |
@@ -68,9 +69,6 @@ the **app**; the other two projects keep their own, and a gap here is often a ga
   ("verified") identities in the vault; a prompt on paired devices when a new one starts pairing;
   removing a paired device from the device list; biometric unlock is not yet checked on Android, iOS
   or Windows hardware. [Identity](identity.md#limits)
-- **Role and permission editing.** `RolesApi` only reads the caller's own roles; the server's full
-  role API (create, update, assign, the permission catalogue) has no UI, so roles are granted from the
-  server's console. [Server roles doc](../../RaindropServer/docs/roles-and-permissions.md)
 - **A moderator view of reports.** The app can report an encrypted message; listing a channel's
   reports (`manage_messages`) is console-only today. [Messages & chat](messages-chat.md)
 

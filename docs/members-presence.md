@@ -72,6 +72,9 @@ text — which is what makes the two groups readable at a glance without needing
 Only `online` gets a dedicated color (`AppSurfaces.onlineIndicator`, see [Theming](theming.md));
 `offline` borrows `colorScheme.onSurfaceVariant` at reduced opacity.
 
+Tapping a member opens a sheet with their roles, which a caller holding `manage_roles` can change; see
+[Roles](roles.md#roles-from-the-member-list).
+
 ## Related
 
 - [Theming](theming.md) — `onlineIndicator`, the one presence-specific color.

@@ -30,8 +30,8 @@ class Channel {
   /// disabled when it wouldn't, rather than letting the send fail with a 403.
   final bool canSendMessages;
 
-  /// Whether we may rename this channel. The server counts its creator as
-  /// holding this whatever their roles say, and reports it that way.
+  /// Whether we may rename this channel: the caller's roles grant
+  /// `rename_channels`. Having created it counts for nothing.
   final bool canRename;
 
   /// Whether we may delete this channel and everything in it.

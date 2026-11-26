@@ -38,6 +38,7 @@ The sibling checkouts are not optional: `native/raindrop_crypto_builder` builds
 | [Live updates](live-updates.md) | The event stream: `EventStream`, `serverEventsProvider`, `LiveSync`, reconnects and fallback polling |
 | [Messages & chat](messages-chat.md) | `ChatController`, pushed messages, optimistic send, deleting a message, tombstones, history paging |
 | [Attachments](attachments.md) | End-to-end encrypted files: picking and dropping, the server's rules, streamed uploads, thumbnails, previews (image/video/audio), saving, what stays on disk |
+| [Roles](roles.md) | Editing roles and their permissions: the server's permission catalogue, the Roles page and editor, roles from the member list |
 | [Members & presence](members-presence.md) | The roster pane, presence grouping, pushed presence |
 | [Voice](voice.md) | Voice channels: joining a call, mute/deafen, per-member volume and mute, mute for everyone, the LiveKit engine and its pinning |
 | [Layout](layout.md) | The customizable main view: pane order/widths, buttons in slots, the layout file, the layout editor |
@@ -63,7 +64,7 @@ The sibling checkouts are not optional: `native/raindrop_crypto_builder` builds
 - **What's implemented:** connecting to a server (register/login/rejoin), reading and posting to text
   channels with **end-to-end encrypted messages**, end-to-end encrypted file attachments with inline
   image/video/audio previews, creating/renaming/deleting channels and deleting messages (each gated on
-  what the server says the account may do), viewing the member roster with presence, voice channels
+  what the server says the account may do), viewing the member roster with presence, editing roles and who holds them, voice channels
   (group calls with mute, deafen, per-member volume and mute, mute for everyone, and end-to-end
   encrypted media), live updates over the server's event stream (messages, deletions, channels, roster,
   presence and who is in which call arrive as they happen), device setup and linking for encryption,
@@ -75,7 +76,7 @@ The sibling checkouts are not optional: `native/raindrop_crypto_builder` builds
   channel's MLS group through the server's delivery service, so text, files and call media are all
   encrypted for real. See [Crypto](crypto.md).
 - **What's not implemented yet:** push-to-talk, camera effects on Windows and Linux, changing your
-  username from the app, any role-editing UI, and notifications. See
+  username from the app, and notifications. See
   [Roadmap](roadmap.md).
 
 ## Keeping this wiki current

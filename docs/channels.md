@@ -28,8 +28,8 @@ already falls back to another one (see [Selection](#selection)).
 
 What a member may do arrives two ways, and the difference matters:
 
-- **Per channel**, in `yourPermissions`: `rename_channels`, `delete_channels` and `manage_messages`. A
-  channel's *creator* holds the first three implicitly, and the server reports it that way.
+- **Per channel**, in `yourPermissions`: `rename_channels`, `delete_channels` and `manage_messages`. These
+  come from the caller's roles alone: creating a channel grants its creator nothing extra.
 - **Server-wide**: `create_channels` is not about any channel — and a server with no channels has nowhere
   to report it — so it is read once from `RoleService.GetMyRoles` by
   [`serverPermissionsProvider`](../lib/features/servers/controllers/server_permissions.dart)
