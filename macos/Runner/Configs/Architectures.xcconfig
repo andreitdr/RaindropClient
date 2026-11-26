@@ -1,0 +1,4 @@
+// The macOS app is built for Apple silicon only; Intel Macs are not supported.
+// An x86_64 slice would link tract-linalg's x86 kernels, whose `.align 16` means 64 KiB on Mach-O
+// and makes ld warn while linking raindrop_crypto_ffi. The Podfile sets the same for every pod.
+ARCHS = arm64

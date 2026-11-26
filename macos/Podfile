@@ -38,5 +38,10 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_macos_build_settings(target)
+    # Apple silicon only, like Runner (Runner/Configs/Architectures.xcconfig). cargokit builds the
+    # Rust core for the pod's ARCHS, so this also keeps the x86_64 Rust slice out of the app.
+    target.build_configurations.each do |config|
+      config.build_settings['ARCHS'] = 'arm64'
+    end
   end
 end

@@ -107,7 +107,7 @@ Triggered by a pushed version tag matching `v[0-9]+.[0-9]+.[0-9]+`.
    | Platform | Runner | Artefact |
    |---|---|---|
    | Linux | `ubuntu-22.04` (deliberately the oldest supported: a bundle runs on the glibc it was built with or newer) | AppImage, `.deb` and `.rpm`, via [`packaging/linux/bundle-libs.sh`](../packaging/linux/bundle-libs.sh) (which copies in libmpv) and [`build-packages.sh`](../packaging/linux/build-packages.sh) |
-   | macOS | `macos-latest` | `.dmg` with the app and an Applications shortcut (`ditto` keeps symlinks and signatures) |
+   | macOS | `macos-latest` | `.dmg` with the app and an Applications shortcut (`ditto` keeps symlinks and signatures). Apple silicon only — see below |
    | Windows | `windows-latest` | `.zip` with the Visual C++ runtime DLLs copied in beside the exe, so a clean PC can run it |
 
 3. **`release`** — reads the changelog from the annotated tag (its message minus the subject line,
@@ -127,6 +127,12 @@ tagging) or taken from `--notes-dir DIR/<Repo>.md`. Tagging by hand
 - **No mobile artefacts.** Desktop only; no `.apk`, `.aab` or TestFlight build. See
   [Roadmap](roadmap.md).
 - **No real code signing or notarisation.** macOS builds are ad-hoc signed, Windows unsigned.
+- **No Intel Mac build.** The macOS app is arm64 only: `ARCHS = arm64` in
+  [`macos/Runner/Configs/Architectures.xcconfig`](../macos/Runner/Configs/Architectures.xcconfig), and
+  the Podfile's `post_install` sets the same on every pod, which is also what tells cargokit to build
+  the Rust core for arm64 alone. An x86_64 slice would link tract-linalg's x86 kernels (the camera
+  effects' inference), whose `.align 16` is 64 KiB on Mach-O, so `ld` warns while linking
+  `raindrop_crypto_ffi` — and a warning fails the release.
 - **No integration tests**, for want of a server.
 - No PR trigger: `push` to `main` only.
 
