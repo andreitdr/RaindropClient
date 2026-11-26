@@ -105,7 +105,8 @@ desktop build is.
 `ios` alongside the desktop targets, so a change to either platform's configuration is not verified
 until that runs. An Android build needs a Rust target per ABI
 (`rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`). See
-`docs/mobile.md`.
+`docs/mobile.md`, which also covers installing the iOS app on a physical iPhone (signing, wireless
+install, and declining Xcode's "Update to recommended settings").
 
 ## Warnings are errors; no release with either
 

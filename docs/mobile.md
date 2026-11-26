@@ -146,8 +146,8 @@ the app that can only be tried on one.
 
 ## Building
 
-Neither toolchain is set up on the reference dev machine, so **CI is where these two are proven**:
-`.github/workflows/ci.yml` builds `android` on Linux and `ios` on macOS alongside the desktop targets.
+Both build locally (an Android emulator or device, and an iPhone — see [On a physical iPhone](#on-a-physical-iphone)),
+and **CI proves them on every push**: `.github/workflows/ci.yml` builds `android` on Linux and `ios` on macOS alongside the desktop targets.
 
 ```bash
 flutter run -d ios          # or a device/simulator id from `flutter devices`
@@ -187,6 +187,32 @@ rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-and
   [`CLAUDE.md`](../CLAUDE.md).
 - CI builds `--no-codesign`, which still compiles the Rust core for arm64 and links every pod — the
   parts that actually break.
+
+#### On a physical iPhone
+
+- **Signing is automatic**, with the developer's own team (`DEVELOPMENT_TEAM` in
+  `ios/Runner.xcodeproj`; a free Personal Team is enough). Xcode has to be signed in to that Apple ID
+  (Xcode > Settings > Accounts), or `flutter build ios` fails with "No Accounts" / "No profiles for
+  'com.raindrop.raindropClient' were found". The phone must also be paired with the Mac once, by cable
+  or from Xcode's Devices window, so its UDID gets into the Xcode-managed profile.
+- **Build** with `flutter build ios --release`; the app is `build/ios/iphoneos/Runner.app`.
+- **Install wirelessly** with the phone paired, on the same network and unlocked. Find its UDID, then
+  install:
+
+  ```bash
+  xcrun devicectl list devices
+  xcrun devicectl device install app --device <UDID> build/ios/iphoneos/Runner.app
+  ```
+
+- **A free Personal Team** accepts the App Group (`group.com.raindrop.raindropClient`, shared with the
+  `RaindropBroadcast` extension). Its profiles expire after 7 days, so the app has to be reinstalled
+  then. On the first install, trust the developer profile in Settings > General > VPN & Device
+  Management.
+- **Decline Xcode's "Update to recommended settings"** when it opens the project (or revert
+  `ios/Runner.xcodeproj` if it was accepted). It replaces the targets' fixed `IPHONEOS_DEPLOYMENT_TARGET`
+  values (15.0) with `$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)`,
+  which CocoaPods 1.17 cannot parse (`pod install` fails with "Malformed version number string
+  $(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)"), and moves `DEVELOPMENT_TEAM` to the project level.
 
 ## Permissions
 
