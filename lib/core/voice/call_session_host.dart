@@ -12,11 +12,23 @@
 ///   notification, for as long as the call lasts — see
 ///   `android/app/src/main/kotlin/.../CallForegroundService.kt`.
 /// * **Desktop** windows are never stopped for being in the background.
+///   A desktop's host still has something to do: it shows the call — the
+///   notch or the menu bar, the notification area, the tray
+///   ([DesktopCallSessionHost]).
+///
+/// It is also how the call is *shown* outside the app — the notch or the menu
+/// bar on a Mac, the Dynamic Island and the Lock Screen on an iPhone, the
+/// ongoing notification (and a Live Update, where there is one) on Android,
+/// the tray on Windows and Linux — and how that surface's controls (mute,
+/// deafen, leave) come back. So the description is the whole call as a glance
+/// shows it, sent again whenever any of it changes, and [CallSessionHost.actions]
+/// is what the person pressed out there.
 ///
 /// [CallSessionHost] is the seam between those: the call controller begins a
-/// session when a call starts, renames it when the call moves, and ends it
-/// when the call does. A platform with nothing to do gets [InactiveCallSessionHost],
-/// not a branch at the call site.
+/// session when a call starts, updates it whenever what it shows changes, and
+/// ends it when the call does — not while a dropped call is being rejoined,
+/// which is still the same call. A platform with nothing to do gets
+/// [InactiveCallSessionHost], not a branch at the call site.
 library;
 
 import 'dart:async';
@@ -26,10 +38,26 @@ import 'package:flutter/services.dart';
 import '../platform/platform_info.dart';
 
 /// What the OS shows about the call it is being asked to keep alive. Android
-/// puts these in the ongoing notification; a host that shows nothing ignores
-/// them.
+/// puts these in the ongoing notification, iOS in the Live Activity, a Mac in
+/// the notch or the menu bar; a host that shows nothing ignores them.
+///
+/// Compared by value, so the call controller can send it again only when
+/// something on it has actually changed. Nothing here ticks: the timer is
+/// [connectedAt], and every surface draws its own clock from it.
 class CallSessionDescription {
-  const CallSessionDescription({required this.title, required this.body});
+  const CallSessionDescription({
+    required this.title,
+    required this.body,
+    this.connectedAt,
+    this.micOn = true,
+    this.deafened = false,
+    this.reconnecting = false,
+    this.participants = 0,
+    this.sharingScreen = false,
+    this.encrypted = false,
+    this.concealed = false,
+    this.showOutsideApp = true,
+  });
 
   /// The call, in a few words — the channel being talked in.
   final String title;
@@ -37,14 +65,107 @@ class CallSessionDescription {
   /// Where that channel is: the server's name.
   final String body;
 
+  /// When this call first connected, or null before it has. A dropped call
+  /// that was picked back up keeps the time it began, so its timer does not
+  /// start again from nothing.
+  final DateTime? connectedAt;
+
+  /// Whether anybody can hear this member: the microphone is on, and no
+  /// moderator, missing permission or failed device is keeping it silent.
+  final bool micOn;
+
+  /// This member hears nobody.
+  final bool deafened;
+
+  /// The connection dropped and the call is being put back together.
+  final bool reconnecting;
+
+  /// How many members are in the call, this one included. 0 while the
+  /// roster has not been read yet.
+  final int participants;
+
+  /// This member is sharing their screen.
+  final bool sharingScreen;
+
+  /// The call's media is end-to-end encrypted.
+  final bool encrypted;
+
+  /// The app is locked, so [title] and [body] are already the generic words
+  /// and the surface should name nothing else either — not the channel, the
+  /// server or anybody in the call.
+  final bool concealed;
+
+  /// The person wants the call shown prominently outside the app — the
+  /// Dynamic Island and the Lock Screen, Android's Live Update chip and the
+  /// Now Bar. A platform that has to show *something* for a call to keep
+  /// running (Android's ongoing notification) still does, just not promoted.
+  final bool showOutsideApp;
+
+  /// The description as a platform channel carries it.
+  Map<String, Object?> toMap() => {
+    'title': title,
+    'body': body,
+    'connectedAt': connectedAt?.millisecondsSinceEpoch,
+    'micOn': micOn,
+    'deafened': deafened,
+    'reconnecting': reconnecting,
+    'participants': participants,
+    'sharingScreen': sharingScreen,
+    'encrypted': encrypted,
+    'concealed': concealed,
+    'showOutsideApp': showOutsideApp,
+  };
+
   @override
   bool operator ==(Object other) =>
       other is CallSessionDescription &&
       other.title == title &&
-      other.body == body;
+      other.body == body &&
+      other.connectedAt == connectedAt &&
+      other.micOn == micOn &&
+      other.deafened == deafened &&
+      other.reconnecting == reconnecting &&
+      other.participants == participants &&
+      other.sharingScreen == sharingScreen &&
+      other.encrypted == encrypted &&
+      other.concealed == concealed &&
+      other.showOutsideApp == showOutsideApp;
 
   @override
-  int get hashCode => Object.hash(title, body);
+  int get hashCode => Object.hash(
+    title,
+    body,
+    connectedAt,
+    micOn,
+    deafened,
+    reconnecting,
+    participants,
+    sharingScreen,
+    encrypted,
+    concealed,
+    showOutsideApp,
+  );
+}
+
+/// A control the person pressed on the call's surface outside the app.
+///
+/// The names are what the platform sends ([CallSessionAction.name]), so a
+/// native side and this enum cannot drift apart silently: a name this build
+/// does not know is ignored.
+enum CallSessionAction {
+  /// Flip the microphone, as the call bar's mute button does.
+  toggleMute,
+
+  /// Flip deafen, as the call bar's headset button does.
+  toggleDeafen,
+
+  /// Hang up.
+  leave;
+
+  /// The action [name] stands for, or null for one this build has never
+  /// heard of.
+  static CallSessionAction? named(Object? name) =>
+      values.where((action) => action.name == name).firstOrNull;
 }
 
 /// Tells the OS a call is in progress, for as long as one is.
@@ -59,8 +180,8 @@ abstract class CallSessionHost {
   /// A call has started.
   Future<void> begin(CallSessionDescription description);
 
-  /// The same call, described differently — the channel was renamed, or this
-  /// client moved to another one.
+  /// The same call, described differently — muted, a member joined, the
+  /// channel was renamed, the connection is being rebuilt.
   Future<void> update(CallSessionDescription description);
 
   /// The call is over.
@@ -85,6 +206,16 @@ abstract class CallSessionHost {
   /// control, or the screen locking). The media library reports neither, so
   /// without this a share would go on being announced with nothing behind it.
   Stream<void> get screenCaptureEnded;
+
+  /// What the person pressed on the call's surface outside the app. The
+  /// controller applies each the way the matching in-app button would.
+  Stream<CallSessionAction> get actions;
+
+  /// Whether this host shows the call somewhere the person may choose to do
+  /// without ([CallSessionDescription.showOutsideApp]) — which is what puts
+  /// the choice in Settings. False where nothing is shown, and where what is
+  /// shown is the price of the call running at all.
+  bool get showsCallOutsideApp;
 }
 
 /// The host for platforms that keep a backgrounded app running on their own
@@ -106,25 +237,42 @@ class InactiveCallSessionHost implements CallSessionHost {
 
   @override
   Stream<void> get screenCaptureEnded => const Stream.empty();
+
+  @override
+  Stream<CallSessionAction> get actions => const Stream.empty();
+
+  @override
+  bool get showsCallOutsideApp => false;
 }
 
-/// Android's foreground service, over the channel `MainActivity` answers.
-class AndroidCallSessionHost implements CallSessionHost {
-  const AndroidCallSessionHost();
+/// A host whose platform side answers over `raindrop/call_session`: Android's
+/// foreground service (`MainActivity`), and each desktop runner's shell
+/// ([DesktopCallSessionHost]). The messages are the same on both —
+/// `begin`/`update` with [CallSessionDescription.toMap], `end`, and `action`
+/// coming back — so only what differs is in the subclasses.
+abstract class ChannelCallSessionHost implements CallSessionHost {
+  const ChannelCallSessionHost();
 
   static const _channel = MethodChannel('raindrop/call_session');
 
-  /// What the service says back. One listener for the process, set the first
+  /// What the platform says back. One listener for the process, set the first
   /// time anybody asks: the channel has a single handler, and hosts are
   /// `const` and interchangeable.
   static final _captureEnded = StreamController<void>.broadcast();
+  static final _actions = StreamController<CallSessionAction>.broadcast();
   static bool _listening = false;
 
   static void _listen() {
     if (_listening) return;
     _listening = true;
     _channel.setMethodCallHandler((call) async {
-      if (call.method == 'captureEnded') _captureEnded.add(null);
+      switch (call.method) {
+        case 'captureEnded':
+          _captureEnded.add(null);
+        case 'action':
+          final action = CallSessionAction.named(call.arguments);
+          if (action != null) _actions.add(action);
+      }
     });
   }
 
@@ -135,20 +283,9 @@ class AndroidCallSessionHost implements CallSessionHost {
   }
 
   @override
-  Future<bool> setScreenCapture(bool capturing) async {
+  Stream<CallSessionAction> get actions {
     _listen();
-    try {
-      return await _channel.invokeMethod<bool>('capture', {
-            'capturing': capturing,
-          }) ??
-          false;
-    } on PlatformException {
-      // The service is not running (no call), or the system refused it the
-      // type — which it does when the user has not agreed to a capture.
-      return false;
-    } on MissingPluginException {
-      return false;
-    }
+    return _actions.stream;
   }
 
   @override
@@ -164,28 +301,84 @@ class AndroidCallSessionHost implements CallSessionHost {
     try {
       await _channel.invokeMethod<void>('end');
     } on PlatformException {
-      // Nothing to do about it: the notification outliving the call is
-      // untidy, but the call itself has already ended.
+      // Nothing to do about it: the surface outliving the call is untidy,
+      // but the call itself has already ended.
+    } on MissingPluginException {
+      // A build without the platform side: there was nothing to end.
     }
   }
 
   Future<void> _send(String method, CallSessionDescription description) async {
+    _listen();
     try {
-      await _channel.invokeMethod<void>(method, {
-        'title': description.title,
-        'body': description.body,
-      });
+      await _channel.invokeMethod<void>(method, description.toMap());
     } on PlatformException {
-      // The service could not be started — the notification permission is
-      // denied, or the OS refused a background start. The call goes ahead
-      // either way; it just will not survive leaving the app.
+      // The platform could not show or keep the call — on Android the
+      // notification permission is denied, or the OS refused a background
+      // start. The call goes ahead either way.
+    } on MissingPluginException {
+      // A build without the platform side: the call just is not shown.
     }
   }
+}
+
+/// Android's foreground service, over the channel `MainActivity` answers.
+class AndroidCallSessionHost extends ChannelCallSessionHost {
+  const AndroidCallSessionHost();
+
+  /// Not yet: the ongoing notification is what keeps the call running, so it
+  /// is not the person's to turn off. Promoting it — the status bar chip, the
+  /// Now Bar — will be.
+  @override
+  bool get showsCallOutsideApp => false;
+
+  @override
+  Future<bool> setScreenCapture(bool capturing) async {
+    ChannelCallSessionHost._listen();
+    try {
+      return await ChannelCallSessionHost._channel.invokeMethod<bool>(
+            'capture',
+            {'capturing': capturing},
+          ) ??
+          false;
+    } on PlatformException {
+      // The service is not running (no call), or the system refused it the
+      // type — which it does when the user has not agreed to a capture.
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+}
+
+/// The desktops' call surface, over the channel each runner's shell answers:
+/// the Mac's notch, or its menu bar where there is no notch
+/// (`macos/Runner/RaindropShell.swift`); the notification-area icon on Windows
+/// (`windows/runner/raindrop_shell.cpp`); the tray on Linux
+/// (`linux/runner/raindrop_shell.cc`).
+///
+/// A desktop keeps a call running whatever its window does, so this is only
+/// about showing it — always, for as long as the call lasts. Nothing about it
+/// is the person's to turn off: it is the call they are in, shown where they
+/// can see it, the way a phone's call shows in its status bar.
+class DesktopCallSessionHost extends ChannelCallSessionHost {
+  const DesktopCallSessionHost();
+
+  @override
+  bool get showsCallOutsideApp => false;
+
+  /// A desktop asks nothing of the app before a capture; the Mac's Screen
+  /// Recording permission is the system's own, asked by the share picker.
+  @override
+  Future<bool> setScreenCapture(bool capturing) async => true;
 }
 
 /// The host for the platform this build is running on. Swappable in tests and
 /// by anything that wants a call announced differently.
 CallSessionHost createCallSessionHost() => switch (currentPlatform) {
   RaindropPlatform.android => const AndroidCallSessionHost(),
+  RaindropPlatform.macos ||
+  RaindropPlatform.windows ||
+  RaindropPlatform.linux => const DesktopCallSessionHost(),
   _ => const InactiveCallSessionHost(),
 };

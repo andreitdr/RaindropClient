@@ -39,7 +39,7 @@ compilation error or a warning: `release.yml` runs this workflow first and packa
 | Objective-C, camera-effects plugin | `.treatAllWarnings(as: .error)` in both `Package.swift` files (tools 6.2, hence the newest stable Xcode on the Apple runners) |
 | Kotlin / Java, Android app | `allWarningsAsErrors` and `-Xlint:all -Werror` in `android/app/build.gradle.kts` |
 | Java, the two local plugins | `-Xlint:all -Werror` in their `android/build.gradle` |
-| C++, Windows and Linux runners | `/W4 /WX` and `-Wall -Werror` in `apply_standard_settings` (Flutter's template) |
+| C++, Windows and Linux runners | `/W4 /WX` and `-Wall -Werror` in `apply_standard_settings` (Flutter's template); this covers each runner's `raindrop_shell` too |
 
 Third-party plugins and pods build under their own settings and still print warnings (OpenGL ES
 deprecations in `media_kit_video`, Java 8 targets, the Kotlin Gradle plugin deprecation); those are
@@ -109,6 +109,12 @@ Triggered by a pushed version tag matching `v[0-9]+.[0-9]+.[0-9]+`.
    | Linux | `ubuntu-22.04` (deliberately the oldest supported: a bundle runs on the glibc it was built with or newer) | AppImage, `.deb` and `.rpm`, via [`packaging/linux/bundle-libs.sh`](../packaging/linux/bundle-libs.sh) (which copies in libmpv) and [`build-packages.sh`](../packaging/linux/build-packages.sh) |
    | macOS | `macos-latest` | `.dmg` with the app and an Applications shortcut (`ditto` keeps symlinks and signatures). Apple silicon only — see below |
    | Windows | `windows-latest` | `.zip` with the Visual C++ runtime DLLs copied in beside the exe, so a clean PC can run it |
+
+   The Linux packages **recommend**, and do not depend on, the tray icon's library: `libayatana-appindicator3-1`
+   in the `.deb`, `libayatana-appindicator-gtk3` in the `.rpm` (`build-packages.sh`). The runner opens it
+   with `dlopen` at runtime, so **no new build dependency** was added (nor a Dart package), and the
+   AppImage uses the host's copy when there is one. The Windows and Linux tray code first really builds in
+   this workflow.
 
 3. **`release`** — reads the changelog from the annotated tag (its message minus the subject line,
    written there by `release.sh`) and runs `gh release create <tag> dist/* --verify-tag

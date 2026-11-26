@@ -13,9 +13,11 @@ import '../../../core/network/voice_api.dart';
 import '../../../core/voice/call_session_host.dart';
 import '../../../core/voice/voice_engine.dart';
 import '../../channels/controllers/channels_controller.dart';
+import '../../identity/controllers/app_lock.dart';
 import '../../security/controllers/channel_groups.dart';
 import '../../servers/controllers/server_events.dart';
 import '../../servers/controllers/session_controller.dart';
+import '../../settings/controllers/background_settings_controller.dart';
 import '../models/member_media.dart';
 import '../models/voice_settings.dart';
 import 'member_media_controller.dart';
@@ -288,6 +290,42 @@ const _rejoinBackoff = [
   Duration(seconds: 10),
 ];
 
+/// What the OS is told about [call] — see [CallSessionDescription].
+///
+/// [channelName] and [serverName] are null until they are known; [locked]
+/// is the app lock being engaged, which leaves the call described in generic
+/// words only. Nothing here reads a clock or a provider, so the same call
+/// always describes the same way and an unchanged call is never re-sent.
+CallSessionDescription describeCall({
+  required VoiceCallState call,
+  required VoiceSettings settings,
+  required String? channelName,
+  required String? serverName,
+  required int participants,
+  required DateTime? connectedAt,
+  required bool locked,
+  required bool showOutsideApp,
+}) => CallSessionDescription(
+  title: locked || channelName == null ? 'In a voice call' : 'In $channelName',
+  body: locked ? '' : serverName ?? '',
+  connectedAt: connectedAt,
+  // What everybody else hears, the way the mute button shows it: a
+  // moderator's mute, a missing `speak` and a microphone that would not
+  // open all read as muted.
+  micOn:
+      settings.micOn &&
+      !call.serverMuted &&
+      !call.suppressed &&
+      !call.microphoneFailed,
+  deafened: settings.selfDeaf,
+  reconnecting: call.status == VoiceCallStatus.reconnecting,
+  participants: participants,
+  sharingScreen: call.screenShare.on,
+  encrypted: call.encryption != VoiceEncryption.none,
+  concealed: locked,
+  showOutsideApp: showOutsideApp,
+);
+
 /// What tells the operating system a call is in progress, so a phone keeps
 /// it running while the app is not on screen. Overridden in tests, and by
 /// anything that wants a call announced its own way.
@@ -384,9 +422,34 @@ class VoiceCallController extends Notifier<VoiceCallState> {
   /// The last call's media still being released, if it is.
   Future<void>? _disposing;
 
+  /// When the call in progress first connected — kept across a rejoin, so the
+  /// timer shown outside the app does not start over. Cleared when the call
+  /// settles.
+  DateTime? _connectedAt;
+
+  /// What the OS was last told about the call, or null while it has been told
+  /// of none. Non-null is a session the host has open.
+  CallSessionDescription? _announced;
+
   @override
   VoiceCallState build() {
     ref.listen(voiceSettingsProvider, _onSettingsChanged);
+
+    // Whatever the OS shows about the call follows the call, its settings and
+    // the lock: each change is offered to the host, which hears it only when
+    // the description really changed.
+    listenSelf((_, _) => _refreshSession());
+    ref.listen(voiceSettingsProvider, (_, _) => _refreshSession());
+    ref.listen(appLockProvider, (_, _) => _refreshSession());
+    ref.listen(backgroundSettingsProvider, (_, _) => _refreshSession());
+
+    // The surface's own buttons: mute, deafen and hang up from the notch, the
+    // Dynamic Island, the notification or the tray.
+    final actions = ref
+        .read(callSessionHostProvider)
+        .actions
+        .listen(_onSessionAction);
+    ref.onDispose(actions.cancel);
     ref.listen(memberAudioProvider, (_, _) {
       _applyVolumes();
       _applyVideoVisibility();
@@ -430,6 +493,14 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     if (state.isIn(serverId, channelId)) return;
     _rejoin = null;
     await leave();
+    // A rejoin abandoned between two of its tries holds no call in [state] —
+    // so [leave] had nothing to end — but still holds the OS's session. This
+    // is a new call: it starts its own session, and its own timer.
+    if (_announced != null) {
+      _announced = null;
+      unawaited(ref.read(callSessionHostProvider).end());
+    }
+    _connectedAt = null;
     await _connect(serverId, channelId, VoiceCallStatus.joining);
   }
 
@@ -566,8 +637,12 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     }
 
     // Only now: a call the OS is told about is one that is actually up, so a
-    // join that failed never leaves a notification behind.
-    if (generation == _generation) _describeSession(serverId, channelId);
+    // join that failed never leaves a notification behind. A rejoin finds the
+    // session still open, and only updates it.
+    if (generation == _generation) {
+      _connectedAt ??= DateTime.now();
+      _announceSession();
+    }
 
     // The group may have moved on while connecting; make sure the call
     // starts on the current key.
@@ -1276,6 +1351,7 @@ class VoiceCallController extends Notifier<VoiceCallState> {
               // Same session, rebuilt (a renamed server): keep using the live
               // client — the old one was closed with the old instance.
               _session = current;
+              _refreshSession();
             }
           },
         ),
@@ -1289,7 +1365,12 @@ class VoiceCallController extends Notifier<VoiceCallState> {
           // A member who joined after a hide wish was recorded is covered
           // here: the roster naming them is the first chance to apply it.
           _applyVideoVisibility();
+          _refreshSession();
         }),
+      )
+      ..add(
+        // A renamed channel is renamed outside the app too.
+        ref.listen(channelsProvider(serverId), (_, _) => _refreshSession()),
       );
   }
 
@@ -1427,8 +1508,11 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     _rejoin = token;
 
     // The engine is finished; the call is not. Everything this call was
-    // following goes with it, and [_connect] sets it all up again.
-    _teardown();
+    // following goes with it, and [_connect] sets it all up again — but not
+    // the session the OS holds, which is still this call: Android will not
+    // start a microphone service again from the background, nor iOS a Live
+    // Activity, so it stays open and says the call is reconnecting.
+    _teardown(keepSession: true);
     state = state.copyWith(status: VoiceCallStatus.reconnecting);
 
     // Tell the server this device is out, so the roster does not show it in
@@ -1593,28 +1677,79 @@ class VoiceCallController extends Notifier<VoiceCallState> {
 
   // ── Telling the OS about the call ──────────────────────────────────────────
 
-  /// Asks the platform to keep this call running while the app is not on
-  /// screen, described by where it is: the channel, on the server. Does
-  /// nothing on platforms that need no telling — see [CallSessionHost].
-  void _describeSession(String serverId, String channelId) {
+  /// What the OS should be told about the call right now, or null when there
+  /// is no call to tell it about.
+  CallSessionDescription? _describe() {
+    final serverId = state.serverId;
+    final channelId = state.channelId;
+    if (!state.inCall || serverId == null || channelId == null) return null;
+
     final channel = ref
         .read(channelsProvider(serverId))
         .valueOrNull
         ?.where((c) => c.id == channelId)
         .firstOrNull;
+    final participants = ref
+        .read(voiceRosterProvider(serverId))
+        .valueOrNull
+        ?.inChannel(channelId)
+        .length;
 
-    unawaited(
-      ref
-          .read(callSessionHostProvider)
-          .begin(
-            CallSessionDescription(
-              // Before the channel list has loaded there is still a call to
-              // announce; it is named as plainly as it can be.
-              title: channel == null ? 'In a voice call' : 'In ${channel.name}',
-              body: _session?.profile.displayName ?? '',
-            ),
-          ),
+    return describeCall(
+      call: state,
+      settings: ref.read(voiceSettingsProvider),
+      channelName: channel?.name,
+      serverName: _session?.profile.displayName,
+      participants: participants ?? 0,
+      connectedAt: _connectedAt,
+      locked: !ref.read(appLockProvider),
+      showOutsideApp: ref.read(backgroundSettingsProvider).showCallOutsideApp,
     );
+  }
+
+  /// Asks the platform to keep this call running while the app is not on
+  /// screen, and to show it — opening the session, or bringing an open one up
+  /// to date after a rejoin. Does nothing on platforms that need no telling —
+  /// see [CallSessionHost].
+  void _announceSession() {
+    final description = _describe();
+    if (description == null) return;
+    final host = ref.read(callSessionHostProvider);
+    final opened = _announced != null;
+    _announced = description;
+    unawaited(opened ? host.update(description) : host.begin(description));
+  }
+
+  /// Sends the OS the call as it is now, if it has a session open and the
+  /// description changed. In between tries of a rejoin there is a moment with
+  /// no call in [state]; that is skipped rather than described.
+  void _refreshSession() {
+    final announced = _announced;
+    if (announced == null) return;
+    final description = _describe();
+    if (description == null || description == announced) return;
+    _announced = description;
+    unawaited(ref.read(callSessionHostProvider).update(description));
+  }
+
+  /// A control pressed on the call's surface outside the app, applied the way
+  /// the call bar's matching button applies it.
+  void _onSessionAction(CallSessionAction action) {
+    if (!state.inCall) return;
+    final settings = ref.read(voiceSettingsProvider.notifier);
+    switch (action) {
+      case CallSessionAction.toggleMute:
+        // While the microphone is the problem, the button retries it.
+        if (state.microphoneFailed) {
+          unawaited(retryMicrophone());
+        } else {
+          settings.toggleMute();
+        }
+      case CallSessionAction.toggleDeafen:
+        settings.toggleDeafen();
+      case CallSessionAction.leave:
+        unawaited(leave());
+    }
   }
 
   // ── Ending ─────────────────────────────────────────────────────────────────
@@ -1634,7 +1769,10 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     final session = _session;
     final channelId = state.channelId;
 
-    _teardown();
+    // One failed try inside a rejoin leaves the OS's session to the rejoin,
+    // which either gets the call back or ends it for good.
+    _teardown(keepSession: !settles);
+    if (settles) _connectedAt = null;
     state = VoiceCallState(notice: notice);
 
     if (reportLeave && session != null && channelId != null) {
@@ -1654,10 +1792,16 @@ class VoiceCallController extends Notifier<VoiceCallState> {
     }
   }
 
-  void _teardown() {
+  /// Lets go of everything the call holds. [keepSession] leaves the OS's
+  /// session open, for a rejoin — the one case where the engine is finished
+  /// and the call is not.
+  void _teardown({bool keepSession = false}) {
     // Before anything else: whatever went wrong with the call, the OS must
     // not be left believing one is still running.
-    unawaited(ref.read(callSessionHostProvider).end());
+    if (!keepSession) {
+      _announced = null;
+      unawaited(ref.read(callSessionHostProvider).end());
+    }
 
     for (final subscription in _subscriptions) {
       unawaited(subscription.cancel());

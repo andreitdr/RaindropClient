@@ -11,7 +11,9 @@ anything about server rails or chat views.
 lib/
   app.dart, main.dart
   core/
-    platform/   — the only place that branches on OS (RaindropPlatform, isApplePlatform, …)
+    platform/   — the only place that branches on OS (RaindropPlatform, isApplePlatform, …) and
+                  AppResidency (whether closing the window keeps a desktop app running; implemented
+                  on every desktop: the menu bar, the notification area, the tray)
     theme/      — AppThemeDefinition (JSON-backed theme model), AppTheme's ThemeData builder, the
                   AppSurfaces color-role extension, and the catalog/active-theme controllers
     widgets/    — Panel (flat chrome surface), AdaptiveSwitch/AdaptiveActivityIndicator/showAdaptiveConfirm
@@ -21,7 +23,10 @@ lib/
                   sockets), EventStream, and one wrapper per service with its models: UsersApi,
                   ChannelsApi, TextMessagesApi, MembersApi, RolesApi, VoiceApi, E2eeApi, AttachmentsApi
     voice/      — VoiceEngine (a call's audio, transport-agnostic) and LiveKitVoiceEngine, the only
-                  code that imports livekit_client / flutter_webrtc
+                  code that imports livekit_client / flutter_webrtc, and CallSessionHost (keeps a
+                  call running off screen, shows it outside the app and carries its controls back; on
+                  the desktops it shows the call in the notch or menu bar, the notification-area
+                  icon, or the tray)
     storage/    — AppPrefs (plain prefs) and SecureStore (Keychain/Credential Manager/libsecret/Keystore)
     layout/     — LayoutConfig (the main view's pane order/widths and slot buttons, as JSON),
                   LayoutStore (the layout file), LayoutScope/LayoutRow/LayoutSlot, and the editor's

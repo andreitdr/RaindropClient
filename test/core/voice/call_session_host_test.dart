@@ -64,7 +64,36 @@ void main() {
       expect(activity.calls.single.arguments, {
         'title': 'In General',
         'body': 'Andrei’s server',
+        'connectedAt': null,
+        'micOn': true,
+        'deafened': false,
+        'reconnecting': false,
+        'participants': 0,
+        'sharingScreen': false,
+        'encrypted': false,
+        'concealed': false,
+        'showOutsideApp': true,
       });
+    });
+
+    // The surface draws its own clock from this, so it has to survive the
+    // channel as a plain number.
+    test('sends when the call connected as milliseconds', () async {
+      final at = DateTime.utc(2026, 11, 26, 9, 30);
+      await host.begin(
+        CallSessionDescription(
+          title: 'In General',
+          body: 'A server',
+          connectedAt: at,
+          micOn: false,
+          participants: 3,
+        ),
+      );
+
+      final sent = activity.calls.single.arguments as Map;
+      expect(sent['connectedAt'], at.millisecondsSinceEpoch);
+      expect(sent['micOn'], isFalse);
+      expect(sent['participants'], 3);
     });
 
     test('ends the session with no arguments to get wrong', () async {
@@ -141,6 +170,37 @@ void main() {
 
       expect(ended, 1);
     });
+
+    // Mute, deafen and hang up from the notification come back by name.
+    test('hears the controls pressed outside the app', () async {
+      final heard = <CallSessionAction>[];
+      final subscription = host.actions.listen(heard.add);
+      addTearDown(subscription.cancel);
+
+      Future<void> press(Object? name) => activity.messenger
+          .handlePlatformMessage(
+            'raindrop/call_session',
+            const StandardMethodCodec().encodeMethodCall(
+              MethodCall('action', name),
+            ),
+            (_) {},
+          );
+
+      await press('toggleMute');
+      await press('leave');
+      // A newer native side's control this build does not know is ignored,
+      // not guessed at.
+      await press('raiseHand');
+      await press(null);
+
+      expect(heard, [CallSessionAction.toggleMute, CallSessionAction.leave]);
+    });
+
+    // The ongoing notification is the price of the call running at all, so
+    // there is nothing for Settings to offer to turn off.
+    test('does not offer its notification as something to turn off', () {
+      expect(host.showsCallOutsideApp, isFalse);
+    });
   });
 
   group('InactiveCallSessionHost', () {
@@ -166,6 +226,13 @@ void main() {
       expect(await host.screenCaptureEnded.isEmpty, isTrue);
       expect(activity.calls, isEmpty);
     });
+
+    test('has no controls of its own, and nothing to turn off', () async {
+      const host = InactiveCallSessionHost();
+
+      expect(await host.actions.isEmpty, isTrue);
+      expect(host.showsCallOutsideApp, isFalse);
+    });
   });
 
   group('CallSessionDescription', () {
@@ -178,12 +245,105 @@ void main() {
       expect(a.hashCode, b.hashCode);
       expect(a, isNot(c));
     });
+
+    // Every field is something a surface shows, so a change to any of them
+    // has to reach the platform.
+    test('a change to anything it shows is a different description', () {
+      const base = CallSessionDescription(title: 'In General', body: 'A');
+      final variants = [
+        CallSessionDescription(
+          title: 'In General',
+          body: 'A',
+          connectedAt: DateTime.utc(2026),
+        ),
+        const CallSessionDescription(
+          title: 'In General',
+          body: 'A',
+          micOn: false,
+        ),
+        const CallSessionDescription(
+          title: 'In General',
+          body: 'A',
+          deafened: true,
+        ),
+        const CallSessionDescription(
+          title: 'In General',
+          body: 'A',
+          reconnecting: true,
+        ),
+        const CallSessionDescription(
+          title: 'In General',
+          body: 'A',
+          participants: 2,
+        ),
+        const CallSessionDescription(
+          title: 'In General',
+          body: 'A',
+          sharingScreen: true,
+        ),
+        const CallSessionDescription(
+          title: 'In General',
+          body: 'A',
+          encrypted: true,
+        ),
+        const CallSessionDescription(
+          title: 'In General',
+          body: 'A',
+          concealed: true,
+        ),
+        const CallSessionDescription(
+          title: 'In General',
+          body: 'A',
+          showOutsideApp: false,
+        ),
+      ];
+      for (final variant in variants) {
+        expect(variant, isNot(base), reason: '${variant.toMap()}');
+      }
+    });
+  });
+
+  group('CallSessionAction', () {
+    test('is found by the name the platform sends', () {
+      for (final action in CallSessionAction.values) {
+        expect(CallSessionAction.named(action.name), action);
+      }
+      expect(CallSessionAction.named('raiseHand'), isNull);
+      expect(CallSessionAction.named(null), isNull);
+    });
+  });
+
+  group('DesktopCallSessionHost', () {
+    const host = DesktopCallSessionHost();
+
+    // The desktops' shells read the same messages Android's service does,
+    // so no platform's side can drift from the others.
+    test('sends the call over the same channel as Android', () async {
+      await host.begin(
+        const CallSessionDescription(title: 'In General', body: 'A server'),
+      );
+      await host.end();
+
+      expect(activity.methods, ['begin', 'end']);
+      expect((activity.calls.first.arguments as Map)['title'], 'In General');
+    });
+
+    // A desktop asks nothing of the app before a capture, and has nothing
+    // to ask the platform to arrange.
+    test('lets a capture go ahead without asking the platform', () async {
+      expect(await host.setScreenCapture(true), isTrue);
+      expect(activity.calls, isEmpty);
+    });
+
+    // The call shows for as long as it lasts: nothing for Settings to offer.
+    test('does not offer the call as something to turn off', () {
+      expect(host.showsCallOutsideApp, isFalse);
+    });
   });
 
   group('createCallSessionHost', () {
-    // Android is the one platform that needs to be told about a call at
-    // runtime; everywhere else the static configuration (iOS) or the OS
-    // itself (desktop) covers it.
+    // Android has to be told about a call to keep it alive, and a desktop to
+    // show it; iOS needs only its static configuration, for now.
     tearDown(() => debugDefaultTargetPlatformOverride = null);
 
     test('keeps Android calls alive through the platform', () {
@@ -191,9 +351,8 @@ void main() {
       expect(createCallSessionHost(), isA<AndroidCallSessionHost>());
     });
 
-    test('is inactive everywhere else', () {
+    test('shows the call on every desktop', () {
       for (final platform in [
-        TargetPlatform.iOS,
         TargetPlatform.macOS,
         TargetPlatform.windows,
         TargetPlatform.linux,
@@ -201,10 +360,15 @@ void main() {
         debugDefaultTargetPlatformOverride = platform;
         expect(
           createCallSessionHost(),
-          isA<InactiveCallSessionHost>(),
-          reason: '$platform needs no runtime call session',
+          isA<DesktopCallSessionHost>(),
+          reason: '$platform',
         );
       }
+    });
+
+    test('is inactive on iOS', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      expect(createCallSessionHost(), isA<InactiveCallSessionHost>());
     });
   });
 }

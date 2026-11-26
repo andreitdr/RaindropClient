@@ -15,6 +15,7 @@ is the one rule to keep straight when adding any new piece of persisted state.
 | `servers.list` | The connected-servers list, as a raw JSON array (`serverProfilesJson`) |
 | `voice.settings` | Voice preferences as a raw JSON map (`voiceSettingsJson`): output volume, devices, audio processing, and whether this client is muted/deafened — see [Voice](voice.md) |
 | `voice.member_audio` | Per-member volume, local mute, hidden camera and share volume (`screenVolume`; absent in what older builds wrote, which reads as 1.0), as a raw JSON map keyed `serverId/userId` (`memberAudioJson`); members left at the default are not stored. The key kept its name when per-member *audio* became per-member *media* — renaming it would silently throw away every volume anybody had set |
+| `settings.background` | What Raindrop does when it is not in front, as a raw JSON map (`backgroundSettingsJson`): `keepRunningWhenClosed` (desktop) and `showCallOutsideApp` (phones), both true by default; a missing or mistyped value reads as the default, so a setting added later starts on — see [Settings](settings.md#background) |
 
 Deliberately format-agnostic: `customThemesJson` and `serverProfilesJson` return raw
 `List<Map<String, dynamic>>` rather than `AppThemeDefinition`/`ServerProfile`, so this storage layer

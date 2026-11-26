@@ -13,13 +13,15 @@ import '../../identity/controllers/vault_sync.dart';
 import '../../servers/controllers/servers_controller.dart';
 import '../../servers/widgets/server_actions.dart';
 import '../../voice/widgets/voice_settings_section.dart';
+import '../widgets/background_settings_section.dart';
 import '../widgets/settings_app_bar.dart';
 import '../widgets/settings_section_label.dart';
 import 'layout_editor_screen.dart';
 
 /// Settings for this device (`/settings`), opened from the button beside
 /// the person's name: the theme, the main view's layout, voice and video,
-/// the way to Identity & devices, and the servers this device is in.
+/// what happens in the background, the way to Identity & devices, and the
+/// servers this device is in.
 ///
 /// What belongs to one server — its encryption, and leaving it — is that
 /// server's own settings page (`ServerSettingsScreen`).
@@ -99,6 +101,7 @@ class DeviceSettingsScreen extends ConsumerWidget {
           const SizedBox(height: 16),
           const SettingsSectionLabel('Voice & video'),
           const VoiceSettingsSection(),
+          const BackgroundSettingsSection(),
           const SizedBox(height: 16),
           const SettingsSectionLabel('Identity & devices'),
           const _IdentityLink(),

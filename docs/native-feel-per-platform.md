@@ -77,18 +77,20 @@ behind the **Members** button, wherever the layout put it. See [Members & presen
 
 ## What is *not* shared
 
-Three things a phone does that a desktop does not could not be papered over by a responsive layout,
+Four things a phone or desktop does that the shared UI could not paper over with a responsive layout,
 so each sits behind its own seam rather than a branch at the call site:
 
 | | Seam | Why |
 |---|---|---|
-| Keeping a call alive off screen | `CallSessionHost` (`core/voice/`) | iOS needs static configuration, Android a foreground service, desktop nothing |
+| Keeping a call alive off screen, and showing it there | `CallSessionHost` (`core/voice/`) | iOS needs static configuration, Android a foreground service, desktop nothing; showing the call outside the app (and taking its controls back) goes through the same seam. On macOS it shows the call in the notch or the menu bar, on Windows in the notification-area icon's tooltip and menu, on Linux in the tray's menu and a timer label (`DesktopCallSessionHost`) |
 | Re-reading everything after suspension | `AppLifecycleListener` → `EventStream.resubscribe()` | A suspended phone may have missed any amount of events; a fresh `ready` makes every controller re-read |
+| Staying running with the window closed | `AppResidency` (`core/platform/`) | A desktop decides by what its close button does: hide to a menu bar / notification area / tray icon, or quit. Implemented on all three desktops by `DesktopAppResidency`: a menu bar item on macOS, a notification-area icon on Windows, a tray icon on Linux, each written in its runner (not with `tray_manager`, whose build hook compiles a large C++ library for every target); a phone has `NoAppResidency`. Windows and Linux are not yet built or run |
 | Earpiece vs. loudspeaker | `VoiceEngine.setSpeakerphone` | Desktop picks a device instead; phones have no picker |
 
-Each is inert off the platform that needs it — `InactiveCallSessionHost`, a lifecycle state that never
+Each is inert off the platform that needs it — `InactiveCallSessionHost`, `NoAppResidency`, a lifecycle state that never
 leaves `resumed`, a button that draws nothing — so the desktop builds are unchanged by their
-existence. Full detail: [Android and iOS](mobile.md).
+existence. Full detail: [Android and iOS](mobile.md) and
+[Background and live calls](background-and-live-calls.md).
 
 ## Related
 

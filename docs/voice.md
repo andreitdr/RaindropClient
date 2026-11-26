@@ -651,7 +651,9 @@ sees you unmuted for a moment. It then creates the engine and connects.
   as `reconnecting` the whole time. Each try is a fresh join, so it gets a new token and, on an
   end-to-end encrypted server, a fresh media key; LiveKit has already used up its own reconnects by
   the time this runs. A try that fails is silent — the rejoin speaks for the call once, when it gives
-  up.
+  up. The operating system's call session stays open through the tries, saying "reconnecting", and
+  ends only when the call settles: Android will not start a microphone foreground service again from
+  the background, nor iOS a Live Activity ([Android and iOS](mobile.md#a-call-that-drops-picks-itself-back-up)).
 
   It does **not** rejoin after anything somebody decided, because those will decide the same way
   again. It ends the call with a notice when:
@@ -838,8 +840,13 @@ platforms and so goes through `CallSessionHost` (`core/voice/call_session_host.d
 being branched on at the call site: iOS needs only the background mode above, Android a foreground
 service of type `microphone`. The media stack is also initialized once at startup
 (`initializeVoice()` from `main`), because on a phone the kind of audio session a call needs is fixed
-when the media library first initializes, not when a call starts. Full detail:
-[Android and iOS](mobile.md).
+when the media library first initializes, not when a call starts. The same session is how the call is
+shown outside the app: the controller opens it once the call connects and sends it again whenever what
+a glance shows changes (muted, deafened, reconnecting, who is in the call, a share, the app lock), and
+applies the mute, deafen and leave controls pressed there as the call bar's buttons would. While the
+app is locked it describes the call in generic words only. `describeCall` builds the description.
+Full detail: [Android and iOS](mobile.md), and [Background and live calls](background-and-live-calls.md)
+for what is still to do.
 
 ## Not yet
 

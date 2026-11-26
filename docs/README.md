@@ -32,6 +32,7 @@ The sibling checkouts are not optional: `native/raindrop_crypto_builder` builds
 | [Native feel per platform](native-feel-per-platform.md) | Platform branching, adaptive widgets, the responsive shell |
 | [Building on Windows](building-on-windows.md) | Everything a Windows PC needs to build and run the app — Visual Studio, Rust, Strawberry Perl, NASM, Developer Mode — with download links, the path-length workaround, and common errors |
 | [Android and iOS](mobile.md) | What a phone needs that a desktop does not: background voice, resuming after suspension, rejoining a dropped call, the speaker, building and permissions |
+| [Background and live calls](background-and-live-calls.md) | Showing the ongoing call outside the app and running with the window closed: what exists (the call description, its controls, the residency seam, the Background settings), the notch and menu bar on a Mac, the notification-area icon on Windows, the tray on Linux, and the plan for the rest |
 | [Connecting to a server](connecting-to-a-server.md) | `ConnectServerFlow`, registration/login/rejoin, fingerprint pinning |
 | [Servers & sessions](servers-and-sessions.md) | The local server list, `ServerSession`, cold-start session resolution, reauth |
 | [Channels](channels.md) | The channel list, creating/renaming/deleting channels, the sidebar |
@@ -42,7 +43,7 @@ The sibling checkouts are not optional: `native/raindrop_crypto_builder` builds
 | [Members & presence](members-presence.md) | The roster pane, presence grouping, pushed presence |
 | [Voice](voice.md) | Voice channels: joining a call, mute/deafen, per-member volume and mute, mute for everyone, the LiveKit engine and its pinning |
 | [Layout](layout.md) | The customizable main view: pane order/widths, buttons in slots, the layout file, the layout editor |
-| [Settings](settings.md) | Device settings (theme and its editor, the layout editor, voice & video, the servers on this device), Identity & devices, and each server's settings (encryption, leaving) |
+| [Settings](settings.md) | Device settings (theme and its editor, the layout editor, voice & video, background, the servers on this device), Identity & devices, and each server's settings (encryption, leaving) |
 | [Network layer](network-layer.md) | gRPC: `RaindropChannel`, the generated code and how to regenerate it, `ApiException`, `CertificatePinner`, the per-service API wrappers |
 | [Storage](storage.md) | `AppPrefs` vs. `SecureStore` — what goes where and why |
 | [End-to-end encryption](crypto.md) | The Rust MLS core in [`../RaindropCrypto`](../../RaindropCrypto/docs/README.md), the bridge and its build glue, `CryptoEngine`, the encrypted store |

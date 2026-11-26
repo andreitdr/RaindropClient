@@ -188,6 +188,39 @@ bool isWindowStillOpen(String windowId) {
 /// never offered together.
 bool get canUseSpeakerphone => isMobilePlatform;
 
+/// What Device settings calls keeping the app running once its window is
+/// closed — named for where its icon then lives on this desktop.
+String get keepRunningSettingTitle => switch (currentPlatform) {
+  RaindropPlatform.macos => 'Keep running in the menu bar',
+  RaindropPlatform.windows => 'Keep running in the notification area',
+  _ => 'Keep running in the tray',
+};
+
+/// What Device settings says keeping the app running means here, while it is
+/// on. Linux says the most, because a desktop with no tray (GNOME without its
+/// AppIndicator extension) has nowhere to quit from but the window: there the
+/// window is only minimised while a call is up, and otherwise closes as usual.
+String get keepRunningSettingDetail => switch (currentPlatform) {
+  RaindropPlatform.macos =>
+    'Closing the window leaves Raindrop signed in, online and in your call. '
+        'Quit from its menu bar icon to leave.',
+  RaindropPlatform.windows =>
+    'Closing the window leaves Raindrop signed in, online and in your call. '
+        'Quit from its icon in the notification area to leave.',
+  _ =>
+    'Closing the window leaves Raindrop signed in, online and in your call, '
+        'behind its tray icon. On a desktop with no tray it is minimised '
+        'instead while you are in a call.',
+};
+
+/// What Device settings calls showing a call outside the app — named for
+/// where this phone shows it.
+String get showCallSettingTitle => switch (currentPlatform) {
+  RaindropPlatform.ios => 'Show calls in the Dynamic Island',
+  RaindropPlatform.android => 'Show calls in the status bar',
+  _ => 'Show calls outside the app',
+};
+
 /// Whether the camera can scan a QR code here — the device-link code another
 /// device shows. `mobile_scanner` covers iOS, Android and macOS; elsewhere
 /// the code is typed or pasted instead.

@@ -34,6 +34,38 @@ connection is actually up — so a join that failed never leaves a notification 
 there is no branch at the call site. The host is behind `callSessionHostProvider`, which is what to
 override to announce a call differently.
 
+### Showing the call, and the controls coming back
+
+The session is also how a call is going to be *shown* outside the app (see
+[Background and live calls](background-and-live-calls.md)), so what it carries is no longer a title and
+a line of text but the whole call as a glance shows it: `CallSessionDescription` holds the title and
+body, `connectedAt`, `micOn`, `deafened`, `reconnecting`, `participants`, `sharingScreen`, `encrypted`,
+`concealed` and `showOutsideApp`. Three details matter to whoever draws it:
+
+- **Nothing ticks.** The timer is `connectedAt`, and each surface draws its own clock from it. A
+  rejoined call keeps its `connectedAt`, so the timer does not start again.
+- **`micOn` is what others hear.** It is false when the person muted themselves, a moderator muted
+  them, they are suppressed, or the microphone failed to open — the same cases in which the call bar's
+  mute button reads muted.
+- **`concealed` means the app lock is engaged.** The title is then the generic "In a voice call", the
+  body is empty, and a surface must name nothing else either.
+
+The description is compared by value and sent over the channel with `toMap()` (`connectedAt` as
+milliseconds since the epoch). `VoiceCallController` opens the session once the call connects and sends
+it again only when it really changed.
+
+The way back is `CallSessionHost.actions`, a stream of `CallSessionAction` (`toggleMute`,
+`toggleDeafen`, `leave`) for the controls pressed on the surface outside the app. The controller applies
+each as the call bar's button would, so a mute pressed while the microphone has failed retries it. The
+channel hosts (`ChannelCallSessionHost`, which Android's and macOS's extend) relay the channel method
+`action`, whose argument is the action's name; a name this build does not know is ignored. **The Kotlin
+side does not send it yet**; macOS does.
+
+`CallSessionHost.showsCallOutsideApp` says whether the host shows the call somewhere the person may do
+without, which is what puts the setting in [Settings](settings.md#background). It is false on every
+host today (macOS always shows its call, so it is not offered there either): on Android the ongoing notification is the price of the call running at all, so it is not
+offered as something to turn off yet.
+
 Two rules the Android side follows, both because the call's real state lives in Dart:
 
 - The service holds no call state. It is told what to show and when to stop, nothing more.
@@ -78,6 +110,13 @@ the time this runs, which is why picking the call up means joining again rather 
 What is **not** retried is anything somebody decided: replaced by another device, removed, the call
 ended, or a server refusal that will refuse again (the channel is gone, the call filled up, the
 member may no longer connect). Those end the call with a notice, as before. See [Voice](voice.md).
+
+**The operating-system session stays open across a rejoin.** The controller tears the engine down
+between tries but keeps the session (`_teardown(keepSession: true)`) and describes it as
+`reconnecting`; it is ended only when the call settles. Ending it and opening a new one would not
+work: Android will not start a microphone foreground service again from the background, and iOS will
+not start a Live Activity from there either, so a call dropped while the app is off screen could never
+be shown again.
 
 ## The speaker
 

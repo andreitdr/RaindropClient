@@ -73,7 +73,8 @@ fresh database; see `docs/crypto.md#tests`.
 Unit tests live under `test/` (`flutter test`) — pure logic only (models, merges, settings round-trips,
 the payload encodings), plus one widget test for the layout editor's hit-testing (`test/core/layout/`)
 and two that stand a fake platform up behind a channel or a binding
-(`test/core/voice/call_session_host_test.dart`, `test/core/platform/app_lifecycle_test.dart`). Note that
+(`test/core/voice/call_session_host_test.dart`, `test/core/platform/app_lifecycle_test.dart`,
+`test/core/platform/app_residency_test.dart`). Note that
 `flutter test` reports `defaultTargetPlatform` as **android**, so anything that branches on the platform
 has to say which one it means (`debugDefaultTargetPlatformOverride`) rather than relying on the default.
 To check the network layer against a real server, run the server per its own CLAUDE.md
@@ -135,7 +136,9 @@ core/
   platform/   — the only place that branches on OS (RaindropPlatform, isApplePlatform, …),
                 windows_processes (which process owns a window, over dart:ffi, for screen sharing), and
                 appLifecycleProvider (whether the app is on screen — a phone suspends a backgrounded
-                app outright, and calls have to be told)
+                app outright, and calls have to be told), and AppResidency (whether closing the
+                window keeps a desktop app running; DesktopAppResidency on all three desktops: the
+                menu bar, the notification area, the tray)
   theme/      — AppThemeDefinition (JSON-backed theme model), AppTheme's ThemeData builder, the
                 AppSurfaces color-role extension, and the catalog/active-theme controllers
   widgets/    — Panel (flat chrome surface), AdaptiveSwitch/AdaptiveActivityIndicator/showAdaptiveConfirm
@@ -151,8 +154,11 @@ core/
                 LiveKitVoiceEngine, the only code that imports livekit_client / flutter_webrtc, and
                 VoiceVideoView (draws a feed, which builds its own surface — so no widget outside
                 core/voice/ ever names a track type), and CallSessionHost (keeping a call running
-                while the app is off screen, and telling Android a call is capturing the screen:
-                a no-op except on Android)
+                while the app is off screen, telling Android a call is capturing the screen, and
+                showing the call outside the app with its mute/deafen/leave controls coming back
+                as `actions`: a no-op except on Android, where it is the foreground service, and on the
+                desktops (DesktopCallSessionHost), where it shows the call in the notch or the menu
+                bar, the notification-area icon, or the tray)
   video/      — VoiceCameraEffect (what the user chose to do to their camera's background) and
                 CameraEffects, the handle on the running native effects — the only file outside
                 crypto/ that imports the generated bridge, because the effects ride in the same Rust
@@ -526,6 +532,13 @@ camera and moderate; the media goes over the transport it names on join (`liveki
   iOS a background mode in `Info.plist`, Android a `microphone` foreground service — so both go
   through `core/voice/CallSessionHost`, and `InactiveCallSessionHost` covers everywhere that needs
   nothing. See `docs/mobile.md`.
+- **A rejoin keeps the OS session open** (`_teardown(keepSession: true)`, saying "reconnecting"):
+  Android will not start a microphone foreground service again from the background, nor iOS a Live
+  Activity. The session carries the whole call as a glance shows it (`describeCall`), re-sent only when
+  it really changes, with only the app lock's generic words while locked. Showing it outside the app
+  is built on the desktops (a Mac's notch and menu bar, Windows' notification-area icon, Linux's tray;
+  written in each runner, not with `tray_manager`) and in progress elsewhere: `docs/background-and-live-calls.md`. Quitting is never done by
+  `AppResidency`; every way out goes through Flutter's exit request, where `leaveNow` leaves the call.
 - **Hanging up lets go of every device at once.** The microphone, camera and share stop immediately,
   without `Room.disconnect()`, which waits 10 s for an acknowledgement before stopping the tracks.
   **Quitting the app leaves the call first** (`leaveNow`, bounded to 1.5 s), and the server drops a
@@ -538,6 +551,11 @@ camera and moderate; the media goes over the transport it names on join (`liveki
   window's sound on macOS and Linux, sixty frames a second from an iOS screen share, a hardware codec
   for shares, microphone gain; changing your username from the app; replacing the root identity
   after a device is stolen; any report-moderation UI.
+- **Showing a call outside the app** on iOS (a Live Activity), Android (CallStyle and Live Updates) and
+  macOS 27.3 (Live Activities). The three desktops show it and stay running with the window closed (the
+  notch and menu bar, the notification-area icon, the tray); the Mac is not yet tried with a real call,
+  and the Windows and Linux runners have never been built or run (CI is their first build) — see
+  `docs/background-and-live-calls.md`.
 - **Notifications**, including for messages that arrive while the app is closed. Raindrop is self-hosted
   with no push infrastructure; `docs/roadmap.md` lays out what closing that would cost.
 

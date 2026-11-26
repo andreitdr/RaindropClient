@@ -10,6 +10,11 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
+    // What closing this window does, the menu bar item, and the call at the
+    // notch — see RaindropShell.
+    RaindropShell.shared.attach(
+      window: self, messenger: flutterViewController.engine.binaryMessenger)
+
     super.awakeFromNib()
   }
 }

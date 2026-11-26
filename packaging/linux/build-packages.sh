@@ -64,7 +64,13 @@ common=(-s dir -n raindrop-client -v "$VERSION" -C "$STAGE"
         --description "Raindrop chat client" --license "UNLICENSED" --vendor "Raindrop"
         --url "https://github.com/andreitdr/RaindropClient" --maintainer "Raindrop")
 
-fpm "${common[@]}" -t deb -a amd64 -d "libgtk-3-0 | libgtk-3-0t64" -p "$OUT/RaindropClient-$VERSION-linux-amd64.deb" .
-fpm "${common[@]}" -t rpm -a x86_64 -d gtk3 -p "$OUT/RaindropClient-$VERSION-linux-x86_64.rpm" .
+# The tray icon's library is recommended, not required: the app opens it when it is there
+# (linux/runner/raindrop_shell.cc) and minimises its window instead when it is not.
+fpm "${common[@]}" -t deb -a amd64 -d "libgtk-3-0 | libgtk-3-0t64" \
+  --deb-recommends libayatana-appindicator3-1 \
+  -p "$OUT/RaindropClient-$VERSION-linux-amd64.deb" .
+fpm "${common[@]}" -t rpm -a x86_64 -d gtk3 \
+  --rpm-tag "Recommends: libayatana-appindicator-gtk3" \
+  -p "$OUT/RaindropClient-$VERSION-linux-x86_64.rpm" .
 
 ls -lh "$OUT"

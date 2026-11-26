@@ -28,12 +28,33 @@ the **app**; the other two projects keep their own, and a gap here is often a ga
 | Live updates | `EventStream` over the server's bidirectional gRPC stream with heartbeats and resubscribe on resume, `LiveSync` merging by id, reconnect with backoff and fallback polling | [Live updates](live-updates.md) |
 | Layout | A user-arranged main view: pane order, widths, buttons in slots, hiding, saved to a local layout file, edited in a layout editor | [Layout](layout.md) |
 | Theming | Two built-in themes, custom themes from asset/JSON definitions, a theme editor | [Theming](theming.md) |
-| Settings | Theme, layout, voice & video (including camera and effects), encryption (devices, linking, new recovery key), connected servers | [Settings](settings.md) |
+| Settings | Theme, layout, voice & video (including camera and effects), the Background section (the desktops only so far), encryption (devices, linking, new recovery key), connected servers | [Settings](settings.md) |
 | Network | gRPC over one pinned connection per server (`RaindropChannel`), code generated from RaindropProto, per-service API wrappers | [Network layer](network-layer.md) |
 | Storage | `AppPrefs` for preferences, `SecureStore` for tokens and store keys, the encrypted crypto store per server | [Storage](storage.md) |
 | CI | Build on Linux/macOS/Windows and `flutter analyze` + `flutter test` on every push to `main`; desktop installers on a version tag | [CI & releases](ci-and-releases.md) |
 
 ## Not implemented yet
+
+### Background and live calls (in progress)
+The shared foundation, macOS, Windows and Linux are done: the call session describes the whole call and
+carries its controls back, a rejoin keeps the session, a Mac shows the call in the notch or the menu bar,
+Windows in its notification-area icon and Linux in its tray, and each stays running with the window
+closed. Still to do, each on its own platform:
+
+- **macOS, to verify:** none of it has been tried on a real Mac with a real call yet: hover and clicks
+  on the island, close-to-hide, App Nap behaviour and external displays.
+- **Windows and Linux, to verify:** the runners were only compiled for syntax, never built or run.
+  CI is their first real build; hiding, the tray, its menu, Quit, Explorer restarting, GNOME without the
+  AppIndicator extension and KDE's timer label are untested.
+- **Windows, follow-ups:** Mute and Leave buttons on the taskbar thumbnail (`ITaskbarList3`), and a
+  one-off "still running" notice the first time the window is closed.
+- **Linux, follow-up:** a resident freedesktop notification with Mute and Leave, for desktops with no
+  tray.
+- **iOS:** a Live Activity (Dynamic Island, Lock Screen).
+- **Android:** a CallStyle notification and Live Updates, and the Kotlin side sending `action`.
+- **macOS 27.3:** Live Activities.
+
+See [Background and live calls](background-and-live-calls.md).
 
 ### Voice
 - **CallKit / ConnectionService.** A call is started from inside the app and never rings, so it does

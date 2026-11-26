@@ -57,6 +57,27 @@ with a reason where effects cannot run (Windows and Linux, or a build with no se
 effect, never whether the camera is on: mute and deafen are states that carry over from one call to
 the next, and a camera is not. See [Voice](voice.md#camera).
 
+### Background
+
+[`BackgroundSettingsSection`](../lib/features/settings/widgets/background_settings_section.dart), after
+Voice & video, reading and writing `backgroundSettingsProvider` (`BackgroundSettings`, saved in
+`AppPrefs` as `settings.background`). Two switches, both on by default:
+
+- **Keep running when closed** (desktops; titled per platform by `keepRunningSettingTitle` — menu bar,
+  notification area or tray): closing the window hides it instead of quitting.
+- **Show calls outside the app** (phones; `showCallSettingTitle`): the call on the Lock Screen, the
+  Dynamic Island, the status bar.
+
+Each row appears only where it can be honoured — the first where `AppResidency.available`, the second
+where `CallSessionHost.showsCallOutsideApp` — and the whole section, heading included, is not drawn
+where neither is. **Today that is the three desktops**, with the one switch, titled "Keep running in the menu
+bar" on a Mac, "…in the notification area" on Windows and "…in the tray" on Linux. Its on-state subtitle
+is `keepRunningSettingDetail`: the same on Mac and Windows apart from where to quit from, and on Linux
+it adds that a desktop with no tray minimises the window instead while you are in a call. The call
+setting is not offered anywhere yet (a desktop always shows its call), and the phones still draw no
+Background section until their per-platform work lands. See
+[Background and live calls](background-and-live-calls.md).
+
 ### Identity & devices
 
 One row — this device's name and how many other devices are paired — opening `/settings/identity`.

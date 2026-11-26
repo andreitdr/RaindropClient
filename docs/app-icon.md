@@ -32,6 +32,13 @@ generated file by hand: the next run overwrites it.
 | Windows | `windows/runner/resources/app_icon.ico`, 16–256px | — |
 | Linux | `packaging/linux/raindrop.png` (512px) and `raindrop.svg` (scalable) | Any size; `build-packages.sh` installs both into `hicolor` |
 
+The macOS menu bar item has its own, smaller mark: `macos_menubar.svg`, the mark's one-colour cutout in
+black, scaled 1.38 to fill its square. `gen_icons.sh` renders it at 18 and 36px into
+`macos/Runner/Assets.xcassets/MenuBarIcon.imageset`, copying that set's `Contents.json` from
+[`tool/icons/menubar-imageset.json`](../tool/icons/menubar-imageset.json), which marks it a template image
+so the system tints it for the light or dark menu bar. See
+[Background and live calls](background-and-live-calls.md).
+
 Both Apple projects carry their own copy of `AppIcon.icon`, listed in each `project.pbxproj` under the
 Runner's resources. When Xcode 26 or later builds the app, the `.icon` supplies the icon on OS 26+ and
 the asset catalog of the same name (`AppIcon`) is the fallback for older systems.

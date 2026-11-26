@@ -8,6 +8,7 @@
 #   macos/Runner/AppIcon.icon               Liquid Glass, macOS 26+
 #   ios/.../AppIcon.appiconset              iOS/iPadOS 15-25: light, dark and tinted, 1024 single-size
 #   macos/.../AppIcon.appiconset            macOS 11-25
+#   macos/.../MenuBarIcon.imageset          the menu bar item's template image
 #   android/.../mipmap-anydpi-v26           adaptive icon: background, foreground, monochrome
 #   android/.../mipmap-*/ic_launcher.png    legacy launchers
 #   windows/runner/resources/app_icon.ico   16-256px
@@ -45,6 +46,13 @@ render() { "$WORK/render" "$SRC/$1" "$2" "$3" ${4:-}; }
 for s in 16 32 64 128 256 512 1024; do
   render icon_macos.svg "macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_$s.png" "$s"
 done
+
+# The macOS menu bar item: an 18pt template image (RaindropShell.swift), at 1x and 2x.
+SET=macos/Runner/Assets.xcassets/MenuBarIcon.imageset
+mkdir -p "$SET"
+render macos_menubar.svg "$SET/menubar_18.png" 18
+render macos_menubar.svg "$SET/menubar_36.png" 36
+cp "$HERE/menubar-imageset.json" "$SET/Contents.json"
 
 # iOS/iPadOS 15-25: one 1024 image per appearance; Xcode derives every size and idiom.
 SET=ios/Runner/Assets.xcassets/AppIcon.appiconset

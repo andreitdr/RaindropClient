@@ -29,6 +29,7 @@ class AppPrefs {
   static const _kIdentityVault = 'identity.vault';
   static const _kHiddenServers = 'identity.hidden_servers';
   static const _kDeviceName = 'identity.device_name';
+  static const _kBackgroundSettings = 'settings.background';
 
   /// The id of the currently selected theme: `"system"`, one of the two
   /// built-in ids (`"light"`/`"dark"`), or a custom theme's generated id.
@@ -83,6 +84,17 @@ class AppPrefs {
 
   Future<void> setVoiceSettingsJson(Map<String, dynamic> settings) =>
       _prefs.setString(_kVoiceSettings, jsonEncode(settings));
+
+  /// Whether closing the window keeps the app running, and whether a call is
+  /// shown outside the app, as a raw JSON map — see `BackgroundSettings.toJson`.
+  Map<String, dynamic> get backgroundSettingsJson {
+    final raw = _prefs.getString(_kBackgroundSettings);
+    if (raw == null) return {};
+    return (jsonDecode(raw) as Map).cast<String, dynamic>();
+  }
+
+  Future<void> setBackgroundSettingsJson(Map<String, dynamic> settings) =>
+      _prefs.setString(_kBackgroundSettings, jsonEncode(settings));
 
   /// Per-member volume, local mute and hidden camera, keyed `serverId/userId`
   /// — a member's UUID only means something on one server.

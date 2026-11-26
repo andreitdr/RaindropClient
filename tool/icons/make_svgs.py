@@ -85,6 +85,9 @@ files = {
     "android_foreground.svg": svg(scaled(LIGHT_MARK, 0.72), LIGHT_DEFS),
     # Android 13+ themed icon: one colour, the launcher tints it.
     "android_monochrome.svg": svg(scaled(mark_cutout("#FFFFFF"), 0.72), DOTS_MASK),
+    # macOS menu bar item: a template image, black on clear, filling its square — AppKit
+    # recolours it for the menu bar's appearance and for the item being highlighted.
+    "macos_menubar.svg": svg(scaled(mark_cutout("#000000"), 1.38), DOTS_MASK),
 }
 
 # Icon Composer layers: the drop and the dots separately, so Liquid Glass gives them depth.
