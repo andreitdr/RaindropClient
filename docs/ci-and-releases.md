@@ -106,16 +106,16 @@ Triggered by a pushed version tag matching `v[0-9]+.[0-9]+.[0-9]+`.
 
 1. **`ci`** — reruns `ci.yml` against the tagged commit, so nothing is published that did not build
    on every platform without an error or a warning, analyse clean and pass its tests.
-2. **`package`** — builds `flutter build <platform> --release` and wraps the bundle. A tag
-   `vX.Y.Z.T` becomes `--build-name X.Y.Z` (Apple's version string takes at most three numbers) and
-   `--build-number X*1000000 + Y*10000 + Z*100 + T` (Android's `versionCode`, which has to rise with
-   every release, hotfixes included); the artefacts' file names carry all four:
+2. **`package`** — builds `flutter build <platform> --release --build-name YY.M.P` and
+   `--build-number YY*10000 + M*100 + P` (Android's `versionCode`, which has to rise with every
+   release: `v26.11.3` is 261103), and wraps the bundle:
 
    | Platform | Runner | Artefact |
    |---|---|---|
    | Linux | `ubuntu-22.04` (deliberately the oldest supported: a bundle runs on the glibc it was built with or newer) | AppImage, `.deb` and `.rpm`, via [`packaging/linux/bundle-libs.sh`](../packaging/linux/bundle-libs.sh) (which copies in libmpv) and [`build-packages.sh`](../packaging/linux/build-packages.sh) |
    | macOS | `macos-latest` | `.dmg` with the app and an Applications shortcut (`ditto` keeps symlinks and signatures). Apple silicon only — see below |
-   | Windows | `windows-latest` | `.zip` with the Visual C++ runtime DLLs copied in beside the exe, so a clean PC can run it |
+   | Windows x64 | `windows-latest` | `RaindropClient-<version>-windows-x64.zip` with the Visual C++ runtime DLLs copied in beside the exe, so a clean PC can run it |
+   | Windows ARM64 | `windows-11-arm` (Flutter builds for the machine it runs on) | `RaindropClient-<version>-windows-arm64.zip`, the same with the ARM64 runtime. Flutter comes from a clone of its release tag (subosito/flutter-action installs only x64 on Windows), clang from Visual Studio for tract-linalg, and OpenSSL builds without NASM |
 
    The Linux packages **recommend**, and do not depend on, the tray icon's library: `libayatana-appindicator3-1`
    in the `.deb`, `libayatana-appindicator-gtk3` in the `.rpm` (`build-packages.sh`). The runner opens it
@@ -132,13 +132,14 @@ Each project is tagged in its own repository, and the workflow comments point at
 the folder that holds all three checkouts. That script is not part of this repository. Every release
 it makes carries a changelog: drafted from the commit subjects since the previous tag (editable before
 tagging) or taken from `--notes-dir DIR/<Repo>.md`. Tagging by hand
-(`git tag vX.Y.Z.T && git push origin vX.Y.Z.T`) triggers the same workflow; use an annotated tag
-(`git tag -a vX.Y.Z.T --cleanup=verbatim -F notes`) to keep the changelog.
+(`git tag vYY.M.P && git push origin vYY.M.P`) triggers the same workflow; use an annotated tag
+(`git tag -a vYY.M.P --cleanup=verbatim -F notes`) to keep the changelog.
 
-Versions are **X.Y.Z.T**: major (still 0), minor (what a release was before this scheme), update (an
-update of the minor version) and hotfix (quick, easy bug fixes only); `release.sh major|minor|update|hotfix`
-raises one and resets the ones after it. The releases before were tagged `vA.B.C` and count as
-`0.A.B.C`, so the first new one after `v2.2.1` is the hotfix `v0.2.2.2`.
+Versions are dates, **YY.M.P**, tagged `vYY.M.P`: the year's last two digits, the month (January is
+1) and a patch number counting that month's releases from 0. The first release in November 2026 is
+`v26.11.0`, the next `v26.11.1`, the first in January 2027 `v27.1.0`. `release.sh` works the version
+out from the date and gives every repository the same one. The releases and tags from before this
+scheme (`v1.0.0` to `v2.2.1`, and `v0.2.2.2`) were deleted.
 
 ## What CI does not do
 

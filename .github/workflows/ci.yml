@@ -43,6 +43,8 @@ jobs:
           - { name: linux, os: ubuntu-latest }
           - { name: macos, os: macos-latest }
           - { name: windows, os: windows-latest }
+          # Native ARM64 Windows: Flutter builds for the machine it runs on, so it needs an ARM64 runner.
+          - { name: windows-arm64, os: windows-11-arm, target: windows }
           # The mobile targets. Android builds on Linux (the runner image ships the SDK);
           # iOS needs a Mac. Neither is set up on the reference dev machine, so CI is where
           # these two are actually proven — see RaindropClient/docs/mobile.md.
@@ -66,10 +68,19 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: subosito/flutter-action@v2
+        if: matrix.name != 'windows-arm64'
         with:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+      # subosito/flutter-action only installs x64 Flutter on Windows (subosito/flutter-action#345), so
+      # the ARM64 job clones the release tag; its first run downloads the arm64 engine and Dart SDK.
+      - name: Flutter (Windows ARM64)
+        if: matrix.name == 'windows-arm64'
+        run: |
+          git clone --depth 1 --branch "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          cygpath -w "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/flutter/bin/flutter" --version
 
       # The camera-effects plugin's Package.swift uses swift-tools-version 6.2 (for
       # treatAllWarnings), so the Apple jobs need an Xcode at least that new, not the image's default.
@@ -136,10 +147,11 @@ jobs:
           ' macos/Runner.xcodeproj/project.pbxproj
           grep -c 'Apple Development' macos/Runner.xcodeproj/project.pbxproj && exit 1 || true
 
-      # rusqlite's bundled SQLCipher compiles OpenSSL from source, which needs a full Perl and NASM.
+      # rusqlite's bundled SQLCipher compiles OpenSSL from source, which needs a full Perl and (on x64)
+      # NASM. Strawberry Perl is x64 only; the ARM64 runner runs it under Windows' x64 emulation.
       # The Perl on the Windows runner's PATH is Git's cut-down one and fails ("perl reported failure").
       - name: Windows OpenSSL build tools
-        if: matrix.name == 'windows'
+        if: startsWith(matrix.name, 'windows')
         uses: shogo82148/actions-setup-perl@v1
         with:
           distribution: strawberry
@@ -151,7 +163,7 @@ jobs:
       # Strawberry Perl on PATH, and OpenSSL's Configure fails with it (missing Locale::Maketext::Simple).
       # Point the OpenSSL build at Strawberry Perl explicitly, and put it first on PATH for the build.
       - name: Use Strawberry Perl for OpenSSL
-        if: matrix.name == 'windows'
+        if: startsWith(matrix.name, 'windows')
         run: |
           perl_exe="$(ls -d /c/hostedtoolcache/windows/strawberry-perl/*/x64/perl/bin/perl.exe | sort | tail -n 1)"
           [ -n "$perl_exe" ] || { echo "Strawberry Perl not found" >&2; exit 1; }
@@ -162,8 +174,26 @@ jobs:
       # (%LOCALAPPDATA%\rdcargo by default). The runner keeps the even shorter C:/ck it was first
       # proven with.
       - name: Shorten cargokit build path
-        if: matrix.name == 'windows'
+        if: startsWith(matrix.name, 'windows')
         run: echo "RAINDROP_CARGO_BUILD_DIR=C:/ck" >> "$GITHUB_ENV"
+
+      # tract-linalg (under raindrop_video) assembles its ARM64 kernels with clang, which MSVC alone
+      # lacks; the image has Visual Studio's. OpenSSL builds without assembly here: NASM is an x86
+      # assembler, so it is not installed, and OPENSSL_RUST_USE_NASM=0 makes that explicit.
+      - name: Clang and OpenSSL settings (Windows ARM64)
+        if: matrix.name == 'windows-arm64'
+        run: |
+          echo "OPENSSL_RUST_USE_NASM=0" >> "$GITHUB_ENV"
+          if command -v clang > /dev/null; then clang --version; exit 0; fi
+          vs="$("/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products '*' \
+            -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath | tr -d '\r')"
+          dir=""
+          for candidate in "$vs/VC/Tools/Llvm/ARM64/bin" "$vs/VC/Tools/Llvm/x64/bin" "$vs/VC/Tools/Llvm/bin" "C:/Program Files/LLVM/bin"; do
+            if [ -x "$(cygpath -u "$candidate")/clang.exe" ]; then dir="$candidate"; break; fi
+          done
+          if [ -z "$dir" ]; then echo "clang not found" >&2; exit 1; fi
+          echo "Using clang from $dir"
+          cygpath -w "$dir" >> "$GITHUB_PATH"
 
       - name: Restore packages
         run: flutter pub get
@@ -182,7 +212,7 @@ jobs:
         if: matrix.name != 'android' && matrix.name != 'ios'
         run: |
           if [ -n "${STRAWBERRY_PERL_BIN:-}" ]; then export PATH="$STRAWBERRY_PERL_BIN:$PATH"; fi
-          flutter build ${{ matrix.name }} --release
+          flutter build ${{ matrix.target || matrix.name }} --release
 
       # An APK rather than an app bundle: it is the artefact a person can actually install,
       # and it fails on the same things a bundle would. Release signing falls back to the

@@ -1,12 +1,12 @@
 name: Release
 
-# Starts when release.sh pushes a version tag (vX.Y.Z.T: major, minor, update, hotfix). Builds and tests the tagged commit (ci.yml),
+# Starts when release.sh pushes a version tag (vYY.M.P: year, month, patch). Builds and tests the tagged commit (ci.yml),
 # packages the artefact, and only if all of that succeeded publishes a GitHub release for the tag
 # with the artefact attached. GitHub adds the source-code zip itself.
 
 on:
   push:
-    tags: ["v[0-9]+.[0-9]+.[0-9]+.[0-9]+"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
 
 permissions:
   contents: read
@@ -37,7 +37,9 @@ jobs:
           # `target` is what `flutter build` is asked for; `bundle` is where that build lands.
           - { name: linux, os: ubuntu-22.04, target: linux, bundle: build/linux/x64/release/bundle }
           - { name: macos, os: macos-latest, target: macos, bundle: build/macos/Build/Products/Release/raindrop_client.app }
-          - { name: windows, os: windows-latest, target: windows, bundle: build/windows/x64/runner/Release }
+          - { name: windows, os: windows-latest, target: windows, arch: x64, bundle: build/windows/x64/runner/Release }
+          # Native ARM64 Windows: Flutter builds for the machine it runs on, so it needs an ARM64 runner.
+          - { name: windows-arm64, os: windows-11-arm, target: windows, arch: arm64, bundle: build/windows/arm64/runner/Release }
           # One universal APK (arm64-v8a, armeabi-v7a, x86_64), the file a person can sideload.
           - { name: android, os: ubuntu-latest, target: apk, bundle: build/app/outputs/flutter-apk/app-release.apk }
     runs-on: ${{ matrix.os }}
@@ -59,10 +61,19 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: subosito/flutter-action@v2
+        if: matrix.name != 'windows-arm64'
         with:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+      # subosito/flutter-action only installs x64 Flutter on Windows (subosito/flutter-action#345), so
+      # the ARM64 job clones the release tag; its first run downloads the arm64 engine and Dart SDK.
+      - name: Flutter (Windows ARM64)
+        if: matrix.name == 'windows-arm64'
+        run: |
+          git clone --depth 1 --branch "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          cygpath -w "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/flutter/bin/flutter" --version
 
       # The camera-effects plugin's Package.swift needs swift-tools-version 6.2; see ci.yml.
       - uses: maxim-lobanov/setup-xcode@v1
@@ -139,10 +150,11 @@ jobs:
           ' macos/Runner.xcodeproj/project.pbxproj
           grep -c 'Apple Development' macos/Runner.xcodeproj/project.pbxproj && exit 1 || true
 
-      # rusqlite's bundled SQLCipher compiles OpenSSL from source, which needs a full Perl and NASM.
+      # rusqlite's bundled SQLCipher compiles OpenSSL from source, which needs a full Perl and (on x64)
+      # NASM. Strawberry Perl is x64 only; the ARM64 runner runs it under Windows' x64 emulation.
       # The Perl on the Windows runner's PATH is Git's cut-down one and fails ("perl reported failure").
       - name: Windows OpenSSL build tools
-        if: matrix.name == 'windows'
+        if: startsWith(matrix.name, 'windows')
         uses: shogo82148/actions-setup-perl@v1
         with:
           distribution: strawberry
@@ -154,7 +166,7 @@ jobs:
       # Strawberry Perl on PATH, and OpenSSL's Configure fails with it (missing Locale::Maketext::Simple).
       # Point the OpenSSL build at Strawberry Perl explicitly, and put it first on PATH for the build.
       - name: Use Strawberry Perl for OpenSSL
-        if: matrix.name == 'windows'
+        if: startsWith(matrix.name, 'windows')
         run: |
           perl_exe="$(ls -d /c/hostedtoolcache/windows/strawberry-perl/*/x64/perl/bin/perl.exe | sort | tail -n 1)"
           [ -n "$perl_exe" ] || { echo "Strawberry Perl not found" >&2; exit 1; }
@@ -165,8 +177,26 @@ jobs:
       # (%LOCALAPPDATA%\rdcargo by default). The runner keeps the even shorter C:/ck it was first
       # proven with.
       - name: Shorten cargokit build path
-        if: matrix.name == 'windows'
+        if: startsWith(matrix.name, 'windows')
         run: echo "RAINDROP_CARGO_BUILD_DIR=C:/ck" >> "$GITHUB_ENV"
+
+      # tract-linalg (under raindrop_video) assembles its ARM64 kernels with clang, which MSVC alone
+      # lacks; the image has Visual Studio's. OpenSSL builds without assembly here: NASM is an x86
+      # assembler, so it is not installed, and OPENSSL_RUST_USE_NASM=0 makes that explicit.
+      - name: Clang and OpenSSL settings (Windows ARM64)
+        if: matrix.name == 'windows-arm64'
+        run: |
+          echo "OPENSSL_RUST_USE_NASM=0" >> "$GITHUB_ENV"
+          if command -v clang > /dev/null; then clang --version; exit 0; fi
+          vs="$("/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products '*' \
+            -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath | tr -d '\r')"
+          dir=""
+          for candidate in "$vs/VC/Tools/Llvm/ARM64/bin" "$vs/VC/Tools/Llvm/x64/bin" "$vs/VC/Tools/Llvm/bin" "C:/Program Files/LLVM/bin"; do
+            if [ -x "$(cygpath -u "$candidate")/clang.exe" ]; then dir="$candidate"; break; fi
+          done
+          if [ -z "$dir" ]; then echo "clang not found" >&2; exit 1; fi
+          echo "Using clang from $dir"
+          cygpath -w "$dir" >> "$GITHUB_PATH"
 
       - run: flutter pub get
 
@@ -174,14 +204,12 @@ jobs:
         run: |
           if [ -n "${STRAWBERRY_PERL_BIN:-}" ]; then export PATH="$STRAWBERRY_PERL_BIN:$PATH"; fi
           VERSION="${GITHUB_REF_NAME#v}"
-          IFS=. read -r major minor update hotfix <<< "$VERSION"
-          # Apple takes at most three numbers for the version people see (CFBundleShortVersionString),
-          # so the build name is X.Y.Z and the hotfix rides in the build number. Android only installs
-          # an update whose versionCode is higher than the installed one's, so the build number is
-          # derived from all four (0.2.2.2 -> 20202), which also stays above the old vA.B.C tags'
-          # A*10000 + B*100 + C (v2.2.1 -> 20201). Each of Y, Z and T must stay below 100.
-          flutter build ${{ matrix.target }} --release --build-name "$major.$minor.$update" \
-            --build-number "$((major * 1000000 + minor * 10000 + update * 100 + hotfix))"
+          IFS=. read -r year month patch <<< "$VERSION"
+          # Android only installs an update whose versionCode is higher than the installed one's, so
+          # derive it from the tag (26.11.3 -> 261103) rather than pubspec's fixed build number. The
+          # date-based versions start far above every code the old vA.B.C releases used.
+          flutter build ${{ matrix.target }} --release --build-name "$VERSION" \
+            --build-number "$((year * 10000 + month * 100 + patch))"
 
       # macOS builds already carry libmpv (media_kit_libs_macos_video), and Windows plays through
       # Media Foundation instead (lib/core/media/). Linux uses the system's libmpv, so it is copied
@@ -207,15 +235,15 @@ jobs:
       # Flutter's Windows exe needs the Visual C++ runtime; a clean PC may not have it, so ship the
       # DLLs next to the exe (Microsoft allows this "app-local" deployment of the redistributable).
       - name: Package (windows)
-        if: matrix.name == 'windows'
+        if: startsWith(matrix.name, 'windows')
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          crt="$(ls -d "/c/Program Files/Microsoft Visual Studio/"*/*/VC/Redist/MSVC/*/x64/Microsoft.VC*.CRT 2>/dev/null | sort | tail -n 1)"
+          crt="$(ls -d "/c/Program Files/Microsoft Visual Studio/"*/*/VC/Redist/MSVC/*/${{ matrix.arch }}/Microsoft.VC*.CRT 2>/dev/null | sort | tail -n 1)"
           [ -n "$crt" ] || { echo "Visual C++ runtime folder not found" >&2; exit 1; }
           echo "Bundling runtime from: $crt"
           cp "$crt"/*.dll "${{ matrix.bundle }}/"
           mkdir -p dist
-          (cd "${{ matrix.bundle }}" && 7z a -tzip "$GITHUB_WORKSPACE/RaindropClient/dist/RaindropClient-$VERSION-windows.zip" .)
+          (cd "${{ matrix.bundle }}" && 7z a -tzip "$GITHUB_WORKSPACE/RaindropClient/dist/RaindropClient-$VERSION-windows-${{ matrix.arch }}.zip" .)
 
       - name: Package (android)
         if: matrix.name == 'android'
