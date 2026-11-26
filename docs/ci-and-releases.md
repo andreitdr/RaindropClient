@@ -19,7 +19,12 @@ repository; `release.yml` passes it on with `secrets: inherit`.
 ## `ci.yml` — build and test
 
 Runs on every push to `main`, and as the first stage of `release.yml`. A newer push cancels a run
-still in progress.
+still in progress. It can also be started by hand on any branch, to prove a branch builds on every
+platform before it reaches `main`:
+
+```bash
+gh workflow run ci.yml --ref <branch>
+```
 
 | Job | Runners | Does |
 |---|---|---|
@@ -140,7 +145,7 @@ tagging) or taken from `--notes-dir DIR/<Repo>.md`. Tagging by hand
   effects' inference), whose `.align 16` is 64 KiB on Mach-O, so `ld` warns while linking
   `raindrop_crypto_ffi` — and a warning fails the release.
 - **No integration tests**, for want of a server.
-- No PR trigger: `push` to `main` only.
+- No PR trigger: `push` to `main`, and by hand (`workflow_dispatch`) anywhere else.
 
 ## Related
 

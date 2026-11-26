@@ -1,7 +1,7 @@
 name: CI/CD
 
-# On every push to main: build, then test. Releases are not made here; tag them
-# with release.sh in the Raindrop root folder, which triggers release.yml.
+# On every push to main, and by hand on any branch: build, then test. Releases are not made
+# here; tag them with release.sh in the Raindrop root folder, which triggers release.yml.
 
 # REQUIRED SETUP: the app compiles the Rust crypto core from the sibling RaindropCrypto repo
 # (fixed ../../../../RaindropCrypto paths in native/raindrop_crypto_builder). If that repo is
@@ -13,6 +13,9 @@ on:
   push:
     branches: [main]
   workflow_call: # also run as the first stage of release.yml
+  # By hand, on any branch (`gh workflow run ci.yml --ref <branch>`): proving a branch builds on
+  # every platform before it reaches main, without a full run for every push to every branch.
+  workflow_dispatch:
 
 # A newer push supersedes a run that is still going.
 concurrency:
