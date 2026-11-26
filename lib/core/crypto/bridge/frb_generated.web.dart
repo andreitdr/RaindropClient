@@ -115,6 +115,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw);
 
   @protected
+  List<PendingIdentityChange> dco_decode_list_pending_identity_change(
+    dynamic raw,
+  );
+
+  @protected
   List<PinnedIdentity> dco_decode_list_pinned_identity(dynamic raw);
 
   @protected
@@ -161,6 +166,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PendingCommit dco_decode_pending_commit(dynamic raw);
+
+  @protected
+  PendingIdentityChange dco_decode_pending_identity_change(dynamic raw);
 
   @protected
   PinnedIdentity dco_decode_pinned_identity(dynamic raw);
@@ -309,6 +317,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<PendingIdentityChange> sse_decode_list_pending_identity_change(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<PinnedIdentity> sse_decode_list_pinned_identity(
     SseDeserializer deserializer,
   );
@@ -365,6 +378,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PendingCommit sse_decode_pending_commit(SseDeserializer deserializer);
+
+  @protected
+  PendingIdentityChange sse_decode_pending_identity_change(
+    SseDeserializer deserializer,
+  );
 
   @protected
   PinnedIdentity sse_decode_pinned_identity(SseDeserializer deserializer);
@@ -546,6 +564,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_pending_identity_change(
+    List<PendingIdentityChange> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_pinned_identity(
     List<PinnedIdentity> self,
     SseSerializer serializer,
@@ -625,6 +649,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_pending_commit(PendingCommit self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_pending_identity_change(
+    PendingIdentityChange self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_pinned_identity(

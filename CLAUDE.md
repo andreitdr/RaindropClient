@@ -85,8 +85,14 @@ codes, and the event stream:
 RAINDROP_TEST_SERVER=localhost:5001 flutter test test/integration/transport_test.dart
 ```
 
+`test/integration/roles_test.dart` is the same kind (no Rust core) for roles and the permission
+catalogue, and needs a server with a fresh database, since the first account to register owns it.
+
 The web toolchain is not set up on the reference dev machine (`flutter doctor` will show Chrome
-missing, and the web is not a target); macOS, iOS, Android, Windows and Linux build as-is.
+missing, and the web is not a target); macOS, iOS, Android, Windows and Linux build as-is. The macOS
+app is **Apple silicon only** (`macos/Runner/Configs/Architectures.xcconfig` and the Podfile's
+`post_install`): an x86_64 slice makes `ld` warn on tract-linalg's x86 kernels, see
+`docs/ci-and-releases.md`.
 **Windows** needs more than the other desktops — Visual Studio's C++ workload, rustup's MSVC toolchain,
 Strawberry Perl and NASM (the vendored OpenSSL under SQLCipher), Developer Mode, and a short Rust build
 folder (`cargokit.cmake` uses `%LOCALAPPDATA%\rdcargo`, `RAINDROP_CARGO_BUILD_DIR` overrides it) to stay
@@ -168,16 +174,21 @@ features/
   servers/    — ServersController (the local server list), ServerSession, serverEventsProvider +
                 LiveSync (following the event stream), the per-server UUID→name lookup cache, the
                 left-hand server rail and each server's menu (server_actions: settings, leave, remove)
+  roles/      — editing roles: the server's permission catalogue, the roles list and editor, roles
+                from the member list (`docs/roles.md`)
   channels/   — the server's channel list + the sidebar that renders it
   chat/       — ChatController (send, follow the event stream, page back), AttachmentTransfers
                 (upload/open encrypted files) + the chat pane, its composer and attachment previews
-  members/    — the roster with each member's presence + the right-hand member pane
+  members/    — the roster with each member's presence + the right-hand member pane (tap a member
+                for their roles)
   voice/      — the call, who is in each call, voice settings + per-member media, the voice view and
                 its video tiles, the camera-and-effects sheet, the share picker and share tiles,
                 member menu and call controls
   security/   — end-to-end encryption: DeviceSetupController (confirm this device's registration,
                 sync the vault, enrol the authenticator), ChannelGroups (each channel's MLS group: join, catch up, Welcomes, key
-                packages, roster reconcile, encrypt/decrypt), the setup pane that takes the chat pane
+                packages, roster reconcile, recovery of a group nobody can follow by new generations, encrypt/decrypt),
+                identity_changes.dart with the identity-change dialog and banner (a member's changed key is
+                the person's decision), the setup pane that takes the chat pane
                 when this device has no keys, the recovery-words dialog, the Encryption section
   settings/   — Device settings (/settings: theme, layout editor, voice & video, the servers on
                 this device), Identity & devices (/settings/identity), and Server settings
@@ -348,7 +359,8 @@ again with the device key.
 is set up: `ChatController` encrypts through `ChannelGroups` (`features/security/`) and sends it with
 `SendEncryptedMessage`; received and paged messages are decrypted (or read from the local encrypted cache) in
 `_decode`, and each `ChatMessage` carries a `MessageSecurity` — `encrypted`, `undecryptable` (sent
-before this device joined; shown with a lock), or `plaintext` (pre-encryption; open-lock marker). See
+before this device joined; shown with a lock), `awaitingIdentity` (held until the sender's changed key is
+accepted), or `plaintext` (pre-encryption; open-lock marker). See
 `docs/messages-chat.md#end-to-end-encryption`.
 
 **Sending is optimistic.** A message appears immediately with a local id, and is replaced by the
@@ -524,7 +536,7 @@ camera and moderate; the media goes over the transport it names on join (`liveki
 - Push-to-talk, **camera effects on Windows and Linux** (they run on macOS, iOS and Android), a
   window's sound on macOS and Linux, sixty frames a second from an iOS screen share, a hardware codec
   for shares, microphone gain; changing your username from the app; replacing the root identity
-  after a device is stolen; any role-editing or report-moderation UI.
+  after a device is stolen; any report-moderation UI.
 - **Notifications**, including for messages that arrive while the app is closed. Raindrop is self-hosted
   with no push infrastructure; `docs/roadmap.md` lays out what closing that would cost.
 

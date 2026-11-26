@@ -197,7 +197,10 @@ void main() {
     // Carol joins by herself from the published group info.
     final state = await api.groupState(carol.token, channelId);
     expect(state.groupInfoEpoch, 1);
-    final join = await carol.engine.joinByExternalCommit(state.groupInfo!);
+    final join = await carol.engine.joinByExternalCommit(
+      group,
+      state.groupInfo!,
+    );
     expect(
       await api.submitCommit(carol.token, channelId, join.commit.commit),
       2,

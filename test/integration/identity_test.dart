@@ -312,6 +312,7 @@ void main() {
       await IdentityCrypto.approvePairing(
         offer: offer,
         commitment: begun.commitment,
+        codeSecret: begun.codeSecret,
         payload: carol.root,
       ),
     );
@@ -326,6 +327,7 @@ void main() {
       approval: approval,
       offer: begun.offer,
       exchangeSecret: begun.exchangeSecret,
+      codeSecret: begun.codeSecret,
     );
     expect(root, carol.root);
 

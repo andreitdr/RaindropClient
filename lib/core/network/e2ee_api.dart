@@ -29,6 +29,10 @@ abstract final class E2eeEventTypes {
 
   /// A device is running low on key packages: `{deviceId, remaining}`.
   static const keyPackagesLow = 'e2ee.keypackages.low';
+
+  /// A channel's group started a new generation: `{channelId, generation}`.
+  /// Leave the old one and join this one.
+  static const groupReset = 'e2ee.group.reset';
 }
 
 /// The server's `capabilities` entry for identities and devices.
@@ -36,6 +40,12 @@ const e2eeDevicesCapability = 'e2ee.devices.v1';
 
 /// The server's `capabilities` entry for the MLS delivery service.
 const e2eeDeliveryCapability = 'e2ee.delivery.v1';
+
+/// The server's `capabilities` entry for group generations: a channel's group
+/// that can no longer be followed is reset to a new one
+/// ([E2eeApi.resetGroup]), and every commit is attributed to the device that
+/// submitted it. Without it every group stays in generation 0.
+const e2eeGroupResetCapability = 'e2ee.group-reset.v1';
 
 /// The server's `capabilities` entry for end-to-end encrypted calls: every
 /// client in a call on this server is expected to encrypt its media with a
@@ -88,6 +98,7 @@ class GroupState {
     required this.epoch,
     required this.groupInfo,
     required this.groupInfoEpoch,
+    this.generation = 0,
   });
 
   /// The epoch the next commit must be made in.
@@ -97,10 +108,15 @@ class GroupState {
   final Uint8List? groupInfo;
   final int groupInfoEpoch;
 
+  /// The group's generation, which its MLS group id names
+  /// (`groupIdForChannel`).
+  final int generation;
+
   factory GroupState.fromProto(pb.GroupState m) => GroupState(
     epoch: m.epoch.toInt(),
     groupInfo: Wire.optionalBytes(m.hasGroupInfo(), m.groupInfo),
     groupInfoEpoch: m.groupInfoEpoch.toInt(),
+    generation: m.generation.toInt(),
   );
 }
 
@@ -110,6 +126,7 @@ class GroupSync {
     required this.epoch,
     required this.commits,
     required this.resyncRequired,
+    this.generation = 0,
   });
 
   final int epoch;
@@ -117,8 +134,57 @@ class GroupSync {
   /// Oldest first; each made in its `epoch`.
   final List<({int epoch, Uint8List message})> commits;
 
-  /// Commits this device needs were pruned: rejoin by external commit.
+  /// Commits this device needs were pruned, or its group is of another
+  /// generation than [generation]: rejoin.
   final bool resyncRequired;
+
+  /// The group's current generation.
+  final int generation;
+}
+
+/// One reset of a channel's group to a new generation, with who asked and
+/// whose commit they reported. Channel managers read these.
+class GroupReset {
+  const GroupReset({
+    required this.generation,
+    required this.resetAt,
+    required this.requestedByUserId,
+    required this.requestedByDeviceId,
+    required this.reportedKind,
+    required this.reportedEpoch,
+    required this.reportedSenderUserId,
+    required this.reportedSenderDeviceId,
+  });
+
+  final int generation;
+  final DateTime resetAt;
+  final String requestedByUserId;
+  final String requestedByDeviceId;
+
+  /// `commit`, `group_info`, or null for a manager's reset without a report.
+  /// An open set.
+  final String? reportedKind;
+  final int reportedEpoch;
+
+  /// For a reported commit: who submitted it, as the server recorded it.
+  final String? reportedSenderUserId;
+  final String? reportedSenderDeviceId;
+}
+
+/// A device ([deviceId]), or every device of an account (null), kept out of
+/// a channel's group by its managers.
+class GroupBan {
+  const GroupBan({
+    required this.userId,
+    required this.deviceId,
+    required this.bannedByUserId,
+    required this.bannedAt,
+  });
+
+  final String userId;
+  final String? deviceId;
+  final String bannedByUserId;
+  final DateTime bannedAt;
 }
 
 class PendingWelcome {
@@ -364,16 +430,21 @@ class E2eeApi {
     )).state,
   );
 
+  /// The commits from [fromEpoch] on, for a device whose group is in
+  /// [generation]; one in another generation is told to rejoin
+  /// ([GroupSync.resyncRequired]) in the current one.
   Future<GroupSync> syncGroup(
     String token,
     String channelId,
-    int fromEpoch,
-  ) async {
+    int fromEpoch, {
+    int generation = 0,
+  }) async {
     final response = await _channel.call(
       (o) => _delivery.syncGroup(
         pb.SyncGroupRequest(
           channelId: channelId,
           fromEpoch: Wire.int64(fromEpoch),
+          generation: Wire.int64(generation),
         ),
         options: o,
       ),
@@ -386,7 +457,137 @@ class E2eeApi {
           (epoch: c.epoch.toInt(), message: Wire.bytes(c.message)),
       ],
       resyncRequired: response.resyncRequired,
+      generation: response.generation.toInt(),
     );
+  }
+
+  /// The channel group's current generation, whether or not its group has
+  /// been created yet.
+  Future<int> groupGeneration(String token, String channelId) async =>
+      (await _channel.call(
+        (o) => _delivery.getGroupGeneration(
+          pb.GetGroupGenerationRequest(channelId: channelId),
+          options: o,
+        ),
+        token: token,
+      )).generation.toInt();
+
+  /// Starts a new generation of the channel's group because [generation]'s
+  /// can no longer be followed, reporting what this device cannot get past:
+  /// SHA-256 of the commit made in [reportedEpoch], or of the group info
+  /// describing it, exactly as the server holds it. A channel manager may
+  /// leave [reportedSha256] out. Answers the current generation, and whether
+  /// this call started it — a [generation] already behind is not reset again.
+  ///
+  /// Refused with `report_mismatch` (the server holds no such commit or group
+  /// info), `group_info_pending` (a group info that has not had time to catch
+  /// up), `rate_limited` (this member reset the channel a moment ago) or
+  /// `missing_permission` (no report, and not a manager).
+  Future<({int generation, bool reset})> resetGroup(
+    String token,
+    String channelId, {
+    required int generation,
+    int reportedEpoch = 0,
+    Uint8List? reportedSha256,
+  }) async {
+    final response = await _channel.call(
+      (o) => _delivery.resetGroup(
+        pb.ResetGroupRequest(
+          channelId: channelId,
+          generation: Wire.int64(generation),
+          reportedEpoch: Wire.int64(reportedEpoch),
+          reportedSha256: reportedSha256,
+        ),
+        options: o,
+      ),
+      token: token,
+    );
+    return (generation: response.generation.toInt(), reset: response.reset);
+  }
+
+  /// Channel managers: the channel group's resets, newest first.
+  Future<List<GroupReset>> groupResets(String token, String channelId) async {
+    final response = await _channel.call(
+      (o) => _delivery.listGroupResets(
+        pb.ListGroupResetsRequest(channelId: channelId),
+        options: o,
+      ),
+      token: token,
+    );
+    return [
+      for (final r in response.resets)
+        GroupReset(
+          generation: r.generation.toInt(),
+          resetAt: Wire.time(r.resetAt),
+          requestedByUserId: r.requestedByUserId,
+          requestedByDeviceId: r.requestedByDeviceId,
+          reportedKind: r.reportedKind.isEmpty ? null : r.reportedKind,
+          reportedEpoch: r.reportedEpoch.toInt(),
+          reportedSenderUserId: r.reportedSenderUserId.isEmpty
+              ? null
+              : r.reportedSenderUserId,
+          reportedSenderDeviceId: r.reportedSenderDeviceId.isEmpty
+              ? null
+              : r.reportedSenderDeviceId,
+        ),
+    ];
+  }
+
+  /// Channel managers: keeps [deviceId], or every device of [userId] when
+  /// null, out of the channel's group. Returns whether anything changed.
+  Future<bool> banFromGroup(
+    String token,
+    String channelId,
+    String userId, {
+    String? deviceId,
+  }) async => (await _channel.call(
+    (o) => _delivery.banFromGroup(
+      pb.BanFromGroupRequest(
+        channelId: channelId,
+        userId: userId,
+        deviceId: deviceId ?? '',
+      ),
+      options: o,
+    ),
+    token: token,
+  )).changed;
+
+  /// Channel managers: lifts a ban set by [banFromGroup].
+  Future<bool> unbanFromGroup(
+    String token,
+    String channelId,
+    String userId, {
+    String? deviceId,
+  }) async => (await _channel.call(
+    (o) => _delivery.unbanFromGroup(
+      pb.UnbanFromGroupRequest(
+        channelId: channelId,
+        userId: userId,
+        deviceId: deviceId ?? '',
+      ),
+      options: o,
+    ),
+    token: token,
+  )).changed;
+
+  /// Channel managers: the bans on the channel's group.
+  Future<List<GroupBan>> groupBans(String token, String channelId) async {
+    final response = await _channel.call(
+      (o) => _delivery.listGroupBans(
+        pb.ListGroupBansRequest(channelId: channelId),
+        options: o,
+      ),
+      token: token,
+    );
+    return [
+      for (final b in response.bans)
+        GroupBan(
+          userId: b.userId,
+          deviceId: b.deviceId.isEmpty ? null : b.deviceId,
+          bannedByUserId: b.bannedByUserId,
+          bannedAt: Wire.time(b.bannedAt),
+        ),
+    ];
   }
 
   /// Every device that should be in the channel's group right now.

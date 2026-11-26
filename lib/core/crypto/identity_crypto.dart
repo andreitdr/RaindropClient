@@ -26,6 +26,7 @@ class PairingStart {
   const PairingStart({
     required this.offer,
     required this.commitment,
+    required this.codeSecret,
     required this.exchangeSecret,
   });
 
@@ -34,6 +35,11 @@ class PairingStart {
 
   /// Goes in the pairing code.
   final Uint8List commitment;
+
+  /// Goes in the pairing code too, and never to the relay. The approval is
+  /// sealed to it, so only a device that saw the code can seal one that
+  /// opens. Held in memory until the approval arrives, and nowhere longer.
+  final Uint8List codeSecret;
 
   /// Held in memory until the approval arrives, and nowhere longer.
   final Uint8List exchangeSecret;
@@ -118,6 +124,7 @@ abstract final class IdentityCrypto {
     return PairingStart(
       offer: begun.offer,
       commitment: begun.commitment,
+      codeSecret: begun.codeSecret,
       exchangeSecret: begun.exchangeSecret,
     );
   });
@@ -136,27 +143,36 @@ abstract final class IdentityCrypto {
     return (deviceName: info.deviceName, platform: info.platform);
   });
 
+  /// Seals [payload] to [offer] and the pairing code's [codeSecret], after
+  /// checking [offer] against the code's [commitment].
   static Future<Uint8List> approvePairing({
     required Uint8List offer,
     required Uint8List commitment,
+    required Uint8List codeSecret,
     required Uint8List payload,
   }) => guardCrypto(
     () => rust.approvePairing(
       offer: offer,
       commitment: commitment,
+      codeSecret: codeSecret,
       payload: payload,
     ),
   );
 
+  /// Throws [CryptoErrorKind.verification] for an approval not sealed to
+  /// [codeSecret] — one the relay made itself rather than a device that saw
+  /// the code.
   static Future<Uint8List> completePairing({
     required Uint8List approval,
     required Uint8List offer,
     required Uint8List exchangeSecret,
+    required Uint8List codeSecret,
   }) => guardCrypto(
     () => rust.completePairing(
       approval: approval,
       offer: offer,
       exchangeSecret: exchangeSecret,
+      codeSecret: codeSecret,
     ),
   );
 }

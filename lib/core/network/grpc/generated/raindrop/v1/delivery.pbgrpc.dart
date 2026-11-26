@@ -20,9 +20,13 @@ import 'delivery.pb.dart' as $0;
 
 export 'delivery.pb.dart';
 
-/// The MLS delivery service: one group per channel (group id = the channel UUID as 16 big-endian
-/// bytes), one commit per epoch, key packages and Welcomes. Every MLS structure is opaque bytes the
-/// server reads only the cleartext framing of. Every call needs a bound session.
+/// The MLS delivery service: one group per channel, one commit per epoch, key packages and Welcomes.
+/// Every MLS structure is opaque bytes the server reads only the cleartext framing of. Every call needs
+/// a bound session.
+///
+/// A channel's group has a generation, 0 until a member resets it (ResetGroup) because its current
+/// group can no longer be followed. The MLS group id names both: the channel UUID as 16 big-endian
+/// bytes for generation 0, followed by the generation as 8 big-endian bytes for any later one.
 @$pb.GrpcServiceName('raindrop.v1.DeliveryService')
 class DeliveryServiceClient extends $grpc.Client {
   /// The hostname for this service.
@@ -123,6 +127,59 @@ class DeliveryServiceClient extends $grpc.Client {
     return $createUnaryCall(_$ackWelcomes, request, options: options);
   }
 
+  /// Which generation of the channel's group is current; answered whether or not that generation's
+  /// group has been created yet.
+  $grpc.ResponseFuture<$0.GetGroupGenerationResponse> getGroupGeneration(
+    $0.GetGroupGenerationRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$getGroupGeneration, request, options: options);
+  }
+
+  /// Start a new generation of the channel's group because the current one can no longer be followed.
+  /// A member reports the commit (or group info) it cannot get past; a channel manager
+  /// (delete_channels) may reset without one. Answers the current generation without resetting when
+  /// the caller's generation is already behind it.
+  $grpc.ResponseFuture<$0.ResetGroupResponse> resetGroup(
+    $0.ResetGroupRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$resetGroup, request, options: options);
+  }
+
+  /// Channel managers: every reset of the channel's group, with who asked and whose commit they
+  /// reported.
+  $grpc.ResponseFuture<$0.ListGroupResetsResponse> listGroupResets(
+    $0.ListGroupResetsRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$listGroupResets, request, options: options);
+  }
+
+  /// Channel managers: keep a device, or every device of an account, out of the channel's group.
+  $grpc.ResponseFuture<$0.BanFromGroupResponse> banFromGroup(
+    $0.BanFromGroupRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$banFromGroup, request, options: options);
+  }
+
+  /// Channel managers: lift a ban.
+  $grpc.ResponseFuture<$0.UnbanFromGroupResponse> unbanFromGroup(
+    $0.UnbanFromGroupRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$unbanFromGroup, request, options: options);
+  }
+
+  /// Channel managers: the bans on the channel's group.
+  $grpc.ResponseFuture<$0.ListGroupBansResponse> listGroupBans(
+    $0.ListGroupBansRequest request, {
+    $grpc.CallOptions? options,
+  }) {
+    return $createUnaryCall(_$listGroupBans, request, options: options);
+  }
+
   // method descriptors
 
   static final _$createGroup =
@@ -180,6 +237,36 @@ class DeliveryServiceClient extends $grpc.Client {
           '/raindrop.v1.DeliveryService/AckWelcomes',
           ($0.AckWelcomesRequest value) => value.writeToBuffer(),
           $0.AckWelcomesResponse.fromBuffer);
+  static final _$getGroupGeneration = $grpc.ClientMethod<
+          $0.GetGroupGenerationRequest, $0.GetGroupGenerationResponse>(
+      '/raindrop.v1.DeliveryService/GetGroupGeneration',
+      ($0.GetGroupGenerationRequest value) => value.writeToBuffer(),
+      $0.GetGroupGenerationResponse.fromBuffer);
+  static final _$resetGroup =
+      $grpc.ClientMethod<$0.ResetGroupRequest, $0.ResetGroupResponse>(
+          '/raindrop.v1.DeliveryService/ResetGroup',
+          ($0.ResetGroupRequest value) => value.writeToBuffer(),
+          $0.ResetGroupResponse.fromBuffer);
+  static final _$listGroupResets =
+      $grpc.ClientMethod<$0.ListGroupResetsRequest, $0.ListGroupResetsResponse>(
+          '/raindrop.v1.DeliveryService/ListGroupResets',
+          ($0.ListGroupResetsRequest value) => value.writeToBuffer(),
+          $0.ListGroupResetsResponse.fromBuffer);
+  static final _$banFromGroup =
+      $grpc.ClientMethod<$0.BanFromGroupRequest, $0.BanFromGroupResponse>(
+          '/raindrop.v1.DeliveryService/BanFromGroup',
+          ($0.BanFromGroupRequest value) => value.writeToBuffer(),
+          $0.BanFromGroupResponse.fromBuffer);
+  static final _$unbanFromGroup =
+      $grpc.ClientMethod<$0.UnbanFromGroupRequest, $0.UnbanFromGroupResponse>(
+          '/raindrop.v1.DeliveryService/UnbanFromGroup',
+          ($0.UnbanFromGroupRequest value) => value.writeToBuffer(),
+          $0.UnbanFromGroupResponse.fromBuffer);
+  static final _$listGroupBans =
+      $grpc.ClientMethod<$0.ListGroupBansRequest, $0.ListGroupBansResponse>(
+          '/raindrop.v1.DeliveryService/ListGroupBans',
+          ($0.ListGroupBansRequest value) => value.writeToBuffer(),
+          $0.ListGroupBansResponse.fromBuffer);
 }
 
 @$pb.GrpcServiceName('raindrop.v1.DeliveryService')
@@ -284,6 +371,58 @@ abstract class DeliveryServiceBase extends $grpc.Service {
             ($core.List<$core.int> value) =>
                 $0.AckWelcomesRequest.fromBuffer(value),
             ($0.AckWelcomesResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.GetGroupGenerationRequest,
+            $0.GetGroupGenerationResponse>(
+        'GetGroupGeneration',
+        getGroupGeneration_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.GetGroupGenerationRequest.fromBuffer(value),
+        ($0.GetGroupGenerationResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.ResetGroupRequest, $0.ResetGroupResponse>(
+        'ResetGroup',
+        resetGroup_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) => $0.ResetGroupRequest.fromBuffer(value),
+        ($0.ResetGroupResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.ListGroupResetsRequest,
+            $0.ListGroupResetsResponse>(
+        'ListGroupResets',
+        listGroupResets_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.ListGroupResetsRequest.fromBuffer(value),
+        ($0.ListGroupResetsResponse value) => value.writeToBuffer()));
+    $addMethod(
+        $grpc.ServiceMethod<$0.BanFromGroupRequest, $0.BanFromGroupResponse>(
+            'BanFromGroup',
+            banFromGroup_Pre,
+            false,
+            false,
+            ($core.List<$core.int> value) =>
+                $0.BanFromGroupRequest.fromBuffer(value),
+            ($0.BanFromGroupResponse value) => value.writeToBuffer()));
+    $addMethod($grpc.ServiceMethod<$0.UnbanFromGroupRequest,
+            $0.UnbanFromGroupResponse>(
+        'UnbanFromGroup',
+        unbanFromGroup_Pre,
+        false,
+        false,
+        ($core.List<$core.int> value) =>
+            $0.UnbanFromGroupRequest.fromBuffer(value),
+        ($0.UnbanFromGroupResponse value) => value.writeToBuffer()));
+    $addMethod(
+        $grpc.ServiceMethod<$0.ListGroupBansRequest, $0.ListGroupBansResponse>(
+            'ListGroupBans',
+            listGroupBans_Pre,
+            false,
+            false,
+            ($core.List<$core.int> value) =>
+                $0.ListGroupBansRequest.fromBuffer(value),
+            ($0.ListGroupBansResponse value) => value.writeToBuffer()));
   }
 
   $async.Future<$0.CreateGroupResponse> createGroup_Pre($grpc.ServiceCall $call,
@@ -381,4 +520,57 @@ abstract class DeliveryServiceBase extends $grpc.Service {
 
   $async.Future<$0.AckWelcomesResponse> ackWelcomes(
       $grpc.ServiceCall call, $0.AckWelcomesRequest request);
+
+  $async.Future<$0.GetGroupGenerationResponse> getGroupGeneration_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.GetGroupGenerationRequest> $request) async {
+    return getGroupGeneration($call, await $request);
+  }
+
+  $async.Future<$0.GetGroupGenerationResponse> getGroupGeneration(
+      $grpc.ServiceCall call, $0.GetGroupGenerationRequest request);
+
+  $async.Future<$0.ResetGroupResponse> resetGroup_Pre($grpc.ServiceCall $call,
+      $async.Future<$0.ResetGroupRequest> $request) async {
+    return resetGroup($call, await $request);
+  }
+
+  $async.Future<$0.ResetGroupResponse> resetGroup(
+      $grpc.ServiceCall call, $0.ResetGroupRequest request);
+
+  $async.Future<$0.ListGroupResetsResponse> listGroupResets_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.ListGroupResetsRequest> $request) async {
+    return listGroupResets($call, await $request);
+  }
+
+  $async.Future<$0.ListGroupResetsResponse> listGroupResets(
+      $grpc.ServiceCall call, $0.ListGroupResetsRequest request);
+
+  $async.Future<$0.BanFromGroupResponse> banFromGroup_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.BanFromGroupRequest> $request) async {
+    return banFromGroup($call, await $request);
+  }
+
+  $async.Future<$0.BanFromGroupResponse> banFromGroup(
+      $grpc.ServiceCall call, $0.BanFromGroupRequest request);
+
+  $async.Future<$0.UnbanFromGroupResponse> unbanFromGroup_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.UnbanFromGroupRequest> $request) async {
+    return unbanFromGroup($call, await $request);
+  }
+
+  $async.Future<$0.UnbanFromGroupResponse> unbanFromGroup(
+      $grpc.ServiceCall call, $0.UnbanFromGroupRequest request);
+
+  $async.Future<$0.ListGroupBansResponse> listGroupBans_Pre(
+      $grpc.ServiceCall $call,
+      $async.Future<$0.ListGroupBansRequest> $request) async {
+    return listGroupBans($call, await $request);
+  }
+
+  $async.Future<$0.ListGroupBansResponse> listGroupBans(
+      $grpc.ServiceCall call, $0.ListGroupBansRequest request);
 }

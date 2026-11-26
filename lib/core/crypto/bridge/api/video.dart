@@ -7,7 +7,7 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `bad_handle`, `config_of`, `next_handle`, `other`, `poisoned`, `process`, `registry`
+// These functions are ignored because they are not marked as `pub`: `bad_handle`, `config_of`, `lock_registry`, `next_handle`, `other`, `process_in`, `process`, `registry`
 
 VideoEffectsCapabilities videoEffectsCapabilities() =>
     RustLib.instance.api.crateApiVideoVideoEffectsCapabilities();

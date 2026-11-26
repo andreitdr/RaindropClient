@@ -624,8 +624,9 @@ class ChatController
     final ciphertext = m.ciphertext;
     final groups = _groups;
     MessagePayload? payload;
+    var held = false;
     if (!m.deleted && ciphertext != null && groups != null) {
-      final bytes = await groups.decrypt(
+      final decrypted = await groups.decryptOrHeld(
         channelId: m.channelId,
         messageId: m.messageId,
         sentAt: m.sentAtUtc,
@@ -633,6 +634,8 @@ class ChatController
         epoch: m.epoch!,
         senderDeviceId: m.senderDeviceId,
       );
+      held = decrypted.held;
+      final bytes = decrypted.payload;
       payload = bytes == null ? null : MessagePayload.tryDecode(bytes);
     }
 
@@ -651,6 +654,8 @@ class ChatController
       deleted: m.deleted,
       security: m.deleted || payload != null
           ? MessageSecurity.encrypted
+          : held
+          ? MessageSecurity.awaitingIdentity
           : MessageSecurity.undecryptable,
       unsupported: payload != null && !understood && !m.deleted,
       senderDeviceId: m.senderDeviceId,

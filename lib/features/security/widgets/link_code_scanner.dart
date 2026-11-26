@@ -6,7 +6,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 /// rather than tried.
 ///
 /// Scanning is a convenience: the code is exactly what the new device shows
-/// as text, and its commitment is what protects the pairing either way.
+/// as text, and its commitment and code secret are what protect the pairing
+/// either way.
 Future<String?> scanCode(
   BuildContext context, {
   required bool Function(String text) accepts,

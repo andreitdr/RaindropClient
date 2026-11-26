@@ -15,6 +15,9 @@ import '../../../core/storage/attachment_cache.dart';
 import '../../../core/widgets/adaptive.dart';
 import '../../channels/models/channel.dart';
 import '../../security/controllers/channel_groups.dart';
+import '../../security/controllers/identity_changes.dart';
+import '../../security/widgets/identity_change_banner.dart';
+import '../../security/widgets/identity_change_dialog.dart';
 import '../../servers/controllers/session_controller.dart';
 import '../../servers/controllers/user_lookup.dart';
 import '../controllers/attachment_transfers.dart';
@@ -212,6 +215,11 @@ class _ChatViewState extends ConsumerState<ChatView> {
           actions: widget.trailingActions,
         ),
         const Divider(height: 1),
+        // A member's key changed and the person has not decided on it yet.
+        IdentityChangeBanner(
+          serverId: widget.serverId,
+          channelId: widget.channel.id,
+        ),
         Expanded(
           child: timelineAsync.when(
             loading: () => const Center(child: AdaptiveActivityIndicator()),
@@ -698,7 +706,7 @@ class _MessageRowState extends ConsumerState<_MessageRow> {
                     ],
                   ),
                   const SizedBox(height: 2),
-                  _MessageBody(message: message),
+                  _MessageBody(scope: widget.scope, message: message),
                   if (message.attachments.isNotEmpty && !message.deleted)
                     MessageAttachments(
                       serverId: widget.scope.serverId,
@@ -763,8 +771,9 @@ enum _MessageAction { copy, delete, report }
 /// A deleted message keeps its place with no text — the server sends the
 /// tombstone deliberately, so dropping it here would misrepresent history.
 class _MessageBody extends StatelessWidget {
-  const _MessageBody({required this.message});
+  const _MessageBody({required this.scope, required this.message});
 
+  final ChatScope scope;
   final ChatMessage message;
 
   @override
@@ -790,6 +799,13 @@ class _MessageBody extends StatelessWidget {
           ),
         ],
       );
+    }
+
+    // Decrypted, but its sender's identity key changed: it is kept aside until
+    // the person decides about the new key, and shows the moment they accept.
+    if (!message.deleted &&
+        message.security == MessageSecurity.awaitingIdentity) {
+      return _AwaitingIdentityBody(scope: scope, message: message);
     }
 
     // Decrypted, but a kind of message this build does not show.
@@ -842,6 +858,66 @@ class _MessageBody extends StatelessWidget {
       );
     }
     return text;
+  }
+}
+
+/// A held message: not an error, a question for the person.
+class _AwaitingIdentityBody extends ConsumerWidget {
+  const _AwaitingIdentityBody({required this.scope, required this.message});
+
+  final ChatScope scope;
+  final ChatMessage message;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final name = displayNameFor(ref, (
+      serverId: scope.serverId,
+      userId: message.authorId,
+    ));
+    // The change this message waits on: the author's, the one that touches
+    // this channel if they have more than one.
+    final changes =
+        ref.watch(pendingIdentityChangesProvider(scope.serverId)).valueOrNull ??
+        const [];
+    final mine = [
+      for (final change in changes)
+        if (change.userId == message.authorId) change,
+    ];
+    final change =
+        mine
+            .where((c) => c.heldChannelIds.contains(scope.channelId))
+            .firstOrNull ??
+        mine.firstOrNull;
+
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Icon(Icons.lock_outline, size: 14, color: scheme.onSurfaceVariant),
+        const SizedBox(width: 4),
+        Text(
+          'Waiting for you to confirm $name\'s new key',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: scheme.onSurfaceVariant,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+        if (change != null)
+          TextButton(
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+            onPressed: () => reviewIdentityChange(
+              context,
+              serverId: scope.serverId,
+              change: change,
+              userName: name,
+            ),
+            child: const Text('Review'),
+          ),
+      ],
+    );
   }
 }
 

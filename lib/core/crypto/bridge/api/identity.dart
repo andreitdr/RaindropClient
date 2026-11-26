@@ -110,14 +110,17 @@ Future<PairingOfferInfo> readPairingOffer({
   commitment: commitment,
 );
 
-/// Existing device: seals `payload` to the offer, after checking it against the pairing code.
+/// Existing device: seals `payload` to the offer and the pairing code's secret, after checking the
+/// offer against the pairing code.
 Future<Uint8List> approvePairing({
   required List<int> offer,
   required List<int> commitment,
+  required List<int> codeSecret,
   required List<int> payload,
 }) => RustLib.instance.api.crateApiIdentityApprovePairing(
   offer: offer,
   commitment: commitment,
+  codeSecret: codeSecret,
   payload: payload,
 );
 
@@ -126,10 +129,12 @@ Future<Uint8List> completePairing({
   required List<int> approval,
   required List<int> offer,
   required List<int> exchangeSecret,
+  required List<int> codeSecret,
 }) => RustLib.instance.api.crateApiIdentityCompletePairing(
   approval: approval,
   offer: offer,
   exchangeSecret: exchangeSecret,
+  codeSecret: codeSecret,
 );
 
 /// The account a root secret has on one server.
@@ -172,22 +177,28 @@ class NewRecovery {
           seed == other.seed;
 }
 
-/// A new device's pairing offer (hand it to the relay), the commitment for the pairing code, and the
-/// secret to hold until the approval arrives.
+/// A new device's pairing offer (hand it to the relay), the commitment and code secret for the
+/// pairing code (the code secret never goes to the relay), and the secret to hold until the approval
+/// arrives.
 class PairingOffer {
   final Uint8List offer;
   final Uint8List commitment;
+  final Uint8List codeSecret;
   final Uint8List exchangeSecret;
 
   const PairingOffer({
     required this.offer,
     required this.commitment,
+    required this.codeSecret,
     required this.exchangeSecret,
   });
 
   @override
   int get hashCode =>
-      offer.hashCode ^ commitment.hashCode ^ exchangeSecret.hashCode;
+      offer.hashCode ^
+      commitment.hashCode ^
+      codeSecret.hashCode ^
+      exchangeSecret.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -196,6 +207,7 @@ class PairingOffer {
           runtimeType == other.runtimeType &&
           offer == other.offer &&
           commitment == other.commitment &&
+          codeSecret == other.codeSecret &&
           exchangeSecret == other.exchangeSecret;
 }
 

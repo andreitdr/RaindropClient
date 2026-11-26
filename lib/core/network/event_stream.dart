@@ -84,6 +84,7 @@ class ServerEvent {
     pb.ServerEvent_Event.welcome => 'e2ee.welcome',
     pb.ServerEvent_Event.groupReconcile => 'e2ee.group.reconcile',
     pb.ServerEvent_Event.keyPackagesLow => 'e2ee.keypackages.low',
+    pb.ServerEvent_Event.groupReset => 'e2ee.group.reset',
     pb.ServerEvent_Event.recoveryChanged => ServerEventTypes.recoveryChanged,
     pb.ServerEvent_Event.plugin => proto.plugin.type,
     pb.ServerEvent_Event.notSet => ServerEventTypes.unknown,
@@ -120,6 +121,7 @@ class ServerEvent {
     pb.ServerEvent_Event.handshake => proto.handshake.channelId,
     pb.ServerEvent_Event.welcome => proto.welcome.channelId,
     pb.ServerEvent_Event.groupReconcile => proto.groupReconcile.channelId,
+    pb.ServerEvent_Event.groupReset => proto.groupReset.channelId,
     _ => null,
   };
 }

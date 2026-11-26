@@ -72,7 +72,8 @@ class _PairNewDeviceScreenState extends ConsumerState<PairNewDeviceScreen> {
     try {
       // Nothing is pinned yet, so at least check the server's story holds
       // together. What protects the pairing itself is the code's commitment
-      // and the seal: this server only carries bytes it cannot read.
+      // and code secret, and the seal: this server only carries bytes it
+      // cannot read or forge.
       final info = await UsersApi(client).serverInfo();
       final presented = client.pinner.observedFingerprint;
       if (presented != null && !ServerTrust.isConsistent(info, presented)) {
@@ -90,6 +91,7 @@ class _PairNewDeviceScreenState extends ConsumerState<PairNewDeviceScreen> {
         _code = PairingCode(
           pairingId: started.pairingId,
           commitment: begun.commitment,
+          codeSecret: begun.codeSecret,
         );
       });
 
@@ -118,6 +120,7 @@ class _PairNewDeviceScreenState extends ConsumerState<PairNewDeviceScreen> {
               approval: approval,
               offer: begun.offer,
               exchangeSecret: begun.exchangeSecret,
+              codeSecret: begun.codeSecret,
             ),
           );
         } on ApiException {

@@ -14,6 +14,8 @@ import 'dart:core' as $core;
 
 import 'package:fixnum/fixnum.dart' as $fixnum;
 import 'package:protobuf/protobuf.dart' as $pb;
+import 'package:protobuf/well_known_types/google/protobuf/timestamp.pb.dart'
+    as $1;
 
 export 'package:protobuf/protobuf.dart' show GeneratedMessageGenericExtensions;
 
@@ -92,12 +94,14 @@ class GroupState extends $pb.GeneratedMessage {
     $fixnum.Int64? epoch,
     $core.List<$core.int>? groupInfo,
     $fixnum.Int64? groupInfoEpoch,
+    $fixnum.Int64? generation,
   }) {
     final result = GroupState._();
     if (channelId != null) result.channelId = channelId;
     if (epoch != null) result.epoch = epoch;
     if (groupInfo != null) result.groupInfo = groupInfo;
     if (groupInfoEpoch != null) result.groupInfoEpoch = groupInfoEpoch;
+    if (generation != null) result.generation = generation;
     return result;
   }
 
@@ -119,6 +123,7 @@ class GroupState extends $pb.GeneratedMessage {
     ..a<$core.List<$core.int>>(
         3, _omitFieldNames ? '' : 'groupInfo', $pb.PbFieldType.OY)
     ..aInt64(4, _omitFieldNames ? '' : 'groupInfoEpoch')
+    ..aInt64(5, _omitFieldNames ? '' : 'generation')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -179,6 +184,16 @@ class GroupState extends $pb.GeneratedMessage {
   $core.bool hasGroupInfoEpoch() => $_has(3);
   @$pb.TagNumber(4)
   void clearGroupInfoEpoch() => $_clearField(4);
+
+  /// The group's generation, which its MLS group id names.
+  @$pb.TagNumber(5)
+  $fixnum.Int64 get generation => $_getI64(4);
+  @$pb.TagNumber(5)
+  set generation($fixnum.Int64 value) => $_setInt64(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasGeneration() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearGeneration() => $_clearField(5);
 }
 
 /// One accepted commit.
@@ -979,10 +994,12 @@ class SyncGroupRequest extends $pb.GeneratedMessage {
   factory SyncGroupRequest({
     $core.String? channelId,
     $fixnum.Int64? fromEpoch,
+    $fixnum.Int64? generation,
   }) {
     final result = SyncGroupRequest._();
     if (channelId != null) result.channelId = channelId;
     if (fromEpoch != null) result.fromEpoch = fromEpoch;
+    if (generation != null) result.generation = generation;
     return result;
   }
 
@@ -1001,6 +1018,7 @@ class SyncGroupRequest extends $pb.GeneratedMessage {
       createEmptyInstance: SyncGroupRequest.$_createMessage)
     ..aOS(1, _omitFieldNames ? '' : 'channelId')
     ..aInt64(2, _omitFieldNames ? '' : 'fromEpoch')
+    ..aInt64(3, _omitFieldNames ? '' : 'generation')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1042,6 +1060,16 @@ class SyncGroupRequest extends $pb.GeneratedMessage {
   $core.bool hasFromEpoch() => $_has(1);
   @$pb.TagNumber(2)
   void clearFromEpoch() => $_clearField(2);
+
+  /// The generation this device's group is in.
+  @$pb.TagNumber(3)
+  $fixnum.Int64 get generation => $_getI64(2);
+  @$pb.TagNumber(3)
+  set generation($fixnum.Int64 value) => $_setInt64(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasGeneration() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearGeneration() => $_clearField(3);
 }
 
 /// Commits from the requested epoch on, oldest first — possibly one page of many.
@@ -1050,11 +1078,13 @@ class SyncGroupResponse extends $pb.GeneratedMessage {
     $fixnum.Int64? epoch,
     $core.Iterable<GroupCommit>? commits,
     $core.bool? resyncRequired,
+    $fixnum.Int64? generation,
   }) {
     final result = SyncGroupResponse._();
     if (epoch != null) result.epoch = epoch;
     if (commits != null) result.commits.addAll(commits);
     if (resyncRequired != null) result.resyncRequired = resyncRequired;
+    if (generation != null) result.generation = generation;
     return result;
   }
 
@@ -1075,6 +1105,7 @@ class SyncGroupResponse extends $pb.GeneratedMessage {
     ..pPM<GroupCommit>(2, _omitFieldNames ? '' : 'commits',
         subBuilder: GroupCommit.$_createMessage)
     ..aOB(3, _omitFieldNames ? '' : 'resyncRequired')
+    ..aInt64(4, _omitFieldNames ? '' : 'generation')
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1111,7 +1142,8 @@ class SyncGroupResponse extends $pb.GeneratedMessage {
   @$pb.TagNumber(2)
   $pb.PbList<GroupCommit> get commits => $_getList(1);
 
-  /// Commits this device needs have been pruned: rejoin by external commit.
+  /// Commits this device needs have been pruned, or its group is of an older generation: rejoin, in
+  /// the generation below.
   @$pb.TagNumber(3)
   $core.bool get resyncRequired => $_getBF(2);
   @$pb.TagNumber(3)
@@ -1120,6 +1152,16 @@ class SyncGroupResponse extends $pb.GeneratedMessage {
   $core.bool hasResyncRequired() => $_has(2);
   @$pb.TagNumber(3)
   void clearResyncRequired() => $_clearField(3);
+
+  /// The group's current generation.
+  @$pb.TagNumber(4)
+  $fixnum.Int64 get generation => $_getI64(3);
+  @$pb.TagNumber(4)
+  set generation($fixnum.Int64 value) => $_setInt64(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasGeneration() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearGeneration() => $_clearField(4);
 }
 
 /// Asks who belongs in a group.
@@ -1820,6 +1862,1079 @@ class AckWelcomesResponse extends $pb.GeneratedMessage {
   $core.bool hasMessage() => $_has(0);
   @$pb.TagNumber(1)
   void clearMessage() => $_clearField(1);
+}
+
+/// Asks which generation a channel's group is in.
+class GetGroupGenerationRequest extends $pb.GeneratedMessage {
+  factory GetGroupGenerationRequest({
+    $core.String? channelId,
+  }) {
+    final result = GetGroupGenerationRequest._();
+    if (channelId != null) result.channelId = channelId;
+    return result;
+  }
+
+  GetGroupGenerationRequest._();
+
+  factory GetGroupGenerationRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetGroupGenerationRequest()..mergeFromBuffer(data, registry);
+  factory GetGroupGenerationRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetGroupGenerationRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GetGroupGenerationRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: GetGroupGenerationRequest.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'channelId')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetGroupGenerationRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetGroupGenerationRequest copyWith(
+          void Function(GetGroupGenerationRequest) updates) =>
+      super.copyWith((message) => updates(message as GetGroupGenerationRequest))
+          as GetGroupGenerationRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use GetGroupGenerationRequest() / GetGroupGenerationRequest.new instead')
+  static GetGroupGenerationRequest create() => GetGroupGenerationRequest._();
+  static $pb.GeneratedMessage $_createMessage() =>
+      GetGroupGenerationRequest._();
+  @$core.override
+  GetGroupGenerationRequest createEmptyInstance() =>
+      GetGroupGenerationRequest._();
+  @$core.pragma('dart2js:noInline')
+  static GetGroupGenerationRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<GetGroupGenerationRequest>(
+          GetGroupGenerationRequest.$_createMessage);
+  static GetGroupGenerationRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get channelId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set channelId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasChannelId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearChannelId() => $_clearField(1);
+}
+
+/// The channel group's current generation.
+class GetGroupGenerationResponse extends $pb.GeneratedMessage {
+  factory GetGroupGenerationResponse({
+    $fixnum.Int64? generation,
+  }) {
+    final result = GetGroupGenerationResponse._();
+    if (generation != null) result.generation = generation;
+    return result;
+  }
+
+  GetGroupGenerationResponse._();
+
+  factory GetGroupGenerationResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetGroupGenerationResponse()..mergeFromBuffer(data, registry);
+  factory GetGroupGenerationResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetGroupGenerationResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GetGroupGenerationResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: GetGroupGenerationResponse.$_createMessage)
+    ..aInt64(1, _omitFieldNames ? '' : 'generation')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetGroupGenerationResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetGroupGenerationResponse copyWith(
+          void Function(GetGroupGenerationResponse) updates) =>
+      super.copyWith(
+              (message) => updates(message as GetGroupGenerationResponse))
+          as GetGroupGenerationResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use GetGroupGenerationResponse() / GetGroupGenerationResponse.new instead')
+  static GetGroupGenerationResponse create() => GetGroupGenerationResponse._();
+  static $pb.GeneratedMessage $_createMessage() =>
+      GetGroupGenerationResponse._();
+  @$core.override
+  GetGroupGenerationResponse createEmptyInstance() =>
+      GetGroupGenerationResponse._();
+  @$core.pragma('dart2js:noInline')
+  static GetGroupGenerationResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<GetGroupGenerationResponse>(
+          GetGroupGenerationResponse.$_createMessage);
+  static GetGroupGenerationResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $fixnum.Int64 get generation => $_getI64(0);
+  @$pb.TagNumber(1)
+  set generation($fixnum.Int64 value) => $_setInt64(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasGeneration() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearGeneration() => $_clearField(1);
+}
+
+/// Asks for a new generation of a channel's group.
+class ResetGroupRequest extends $pb.GeneratedMessage {
+  factory ResetGroupRequest({
+    $core.String? channelId,
+    $fixnum.Int64? generation,
+    $fixnum.Int64? reportedEpoch,
+    $core.List<$core.int>? reportedSha256,
+  }) {
+    final result = ResetGroupRequest._();
+    if (channelId != null) result.channelId = channelId;
+    if (generation != null) result.generation = generation;
+    if (reportedEpoch != null) result.reportedEpoch = reportedEpoch;
+    if (reportedSha256 != null) result.reportedSha256 = reportedSha256;
+    return result;
+  }
+
+  ResetGroupRequest._();
+
+  factory ResetGroupRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ResetGroupRequest()..mergeFromBuffer(data, registry);
+  factory ResetGroupRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ResetGroupRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ResetGroupRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: ResetGroupRequest.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'channelId')
+    ..aInt64(2, _omitFieldNames ? '' : 'generation')
+    ..aInt64(3, _omitFieldNames ? '' : 'reportedEpoch')
+    ..a<$core.List<$core.int>>(
+        4, _omitFieldNames ? '' : 'reportedSha256', $pb.PbFieldType.OY)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ResetGroupRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ResetGroupRequest copyWith(void Function(ResetGroupRequest) updates) =>
+      super.copyWith((message) => updates(message as ResetGroupRequest))
+          as ResetGroupRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use ResetGroupRequest() / ResetGroupRequest.new instead')
+  static ResetGroupRequest create() => ResetGroupRequest._();
+  static $pb.GeneratedMessage $_createMessage() => ResetGroupRequest._();
+  @$core.override
+  ResetGroupRequest createEmptyInstance() => ResetGroupRequest._();
+  @$core.pragma('dart2js:noInline')
+  static ResetGroupRequest getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<ResetGroupRequest>(
+          ResetGroupRequest.$_createMessage);
+  static ResetGroupRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get channelId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set channelId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasChannelId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearChannelId() => $_clearField(1);
+
+  /// The generation the caller found broken; behind the current one, nothing is reset.
+  @$pb.TagNumber(2)
+  $fixnum.Int64 get generation => $_getI64(1);
+  @$pb.TagNumber(2)
+  set generation($fixnum.Int64 value) => $_setInt64(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasGeneration() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearGeneration() => $_clearField(2);
+
+  /// The epoch of what the caller cannot get past: a commit made in it, or the group info describing it.
+  @$pb.TagNumber(3)
+  $fixnum.Int64 get reportedEpoch => $_getI64(2);
+  @$pb.TagNumber(3)
+  set reportedEpoch($fixnum.Int64 value) => $_setInt64(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasReportedEpoch() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearReportedEpoch() => $_clearField(3);
+
+  /// SHA-256 of that commit or group info, exactly as the server holds it. Empty only for a channel
+  /// manager resetting without a report.
+  @$pb.TagNumber(4)
+  $core.List<$core.int> get reportedSha256 => $_getN(3);
+  @$pb.TagNumber(4)
+  set reportedSha256($core.List<$core.int> value) => $_setBytes(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasReportedSha256() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearReportedSha256() => $_clearField(4);
+}
+
+/// The generation the channel's group is in now.
+class ResetGroupResponse extends $pb.GeneratedMessage {
+  factory ResetGroupResponse({
+    $fixnum.Int64? generation,
+    $core.bool? reset,
+  }) {
+    final result = ResetGroupResponse._();
+    if (generation != null) result.generation = generation;
+    if (reset != null) result.reset = reset;
+    return result;
+  }
+
+  ResetGroupResponse._();
+
+  factory ResetGroupResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ResetGroupResponse()..mergeFromBuffer(data, registry);
+  factory ResetGroupResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ResetGroupResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ResetGroupResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: ResetGroupResponse.$_createMessage)
+    ..aInt64(1, _omitFieldNames ? '' : 'generation')
+    ..aOB(2, _omitFieldNames ? '' : 'reset')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ResetGroupResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ResetGroupResponse copyWith(void Function(ResetGroupResponse) updates) =>
+      super.copyWith((message) => updates(message as ResetGroupResponse))
+          as ResetGroupResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use ResetGroupResponse() / ResetGroupResponse.new instead')
+  static ResetGroupResponse create() => ResetGroupResponse._();
+  static $pb.GeneratedMessage $_createMessage() => ResetGroupResponse._();
+  @$core.override
+  ResetGroupResponse createEmptyInstance() => ResetGroupResponse._();
+  @$core.pragma('dart2js:noInline')
+  static ResetGroupResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ResetGroupResponse>(
+          ResetGroupResponse.$_createMessage);
+  static ResetGroupResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $fixnum.Int64 get generation => $_getI64(0);
+  @$pb.TagNumber(1)
+  set generation($fixnum.Int64 value) => $_setInt64(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasGeneration() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearGeneration() => $_clearField(1);
+
+  /// True when this call started it; false when another reset had already moved past the caller's.
+  @$pb.TagNumber(2)
+  $core.bool get reset => $_getBF(1);
+  @$pb.TagNumber(2)
+  set reset($core.bool value) => $_setBool(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasReset() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearReset() => $_clearField(2);
+}
+
+/// One reset of a channel's group.
+class GroupReset extends $pb.GeneratedMessage {
+  factory GroupReset({
+    $fixnum.Int64? generation,
+    $1.Timestamp? resetAt,
+    $core.String? requestedByUserId,
+    $core.String? requestedByDeviceId,
+    $core.String? reportedKind,
+    $fixnum.Int64? reportedEpoch,
+    $core.List<$core.int>? reportedSha256,
+    $core.String? reportedSenderUserId,
+    $core.String? reportedSenderDeviceId,
+  }) {
+    final result = GroupReset._();
+    if (generation != null) result.generation = generation;
+    if (resetAt != null) result.resetAt = resetAt;
+    if (requestedByUserId != null) result.requestedByUserId = requestedByUserId;
+    if (requestedByDeviceId != null)
+      result.requestedByDeviceId = requestedByDeviceId;
+    if (reportedKind != null) result.reportedKind = reportedKind;
+    if (reportedEpoch != null) result.reportedEpoch = reportedEpoch;
+    if (reportedSha256 != null) result.reportedSha256 = reportedSha256;
+    if (reportedSenderUserId != null)
+      result.reportedSenderUserId = reportedSenderUserId;
+    if (reportedSenderDeviceId != null)
+      result.reportedSenderDeviceId = reportedSenderDeviceId;
+    return result;
+  }
+
+  GroupReset._();
+
+  factory GroupReset.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GroupReset()..mergeFromBuffer(data, registry);
+  factory GroupReset.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GroupReset()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GroupReset',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: GroupReset.$_createMessage)
+    ..aInt64(1, _omitFieldNames ? '' : 'generation')
+    ..aOM<$1.Timestamp>(2, _omitFieldNames ? '' : 'resetAt',
+        subBuilder: $1.Timestamp.$_createMessage)
+    ..aOS(3, _omitFieldNames ? '' : 'requestedByUserId')
+    ..aOS(4, _omitFieldNames ? '' : 'requestedByDeviceId')
+    ..aOS(5, _omitFieldNames ? '' : 'reportedKind')
+    ..aInt64(6, _omitFieldNames ? '' : 'reportedEpoch')
+    ..a<$core.List<$core.int>>(
+        7, _omitFieldNames ? '' : 'reportedSha256', $pb.PbFieldType.OY)
+    ..aOS(8, _omitFieldNames ? '' : 'reportedSenderUserId')
+    ..aOS(9, _omitFieldNames ? '' : 'reportedSenderDeviceId')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GroupReset clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GroupReset copyWith(void Function(GroupReset) updates) =>
+      super.copyWith((message) => updates(message as GroupReset)) as GroupReset;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use GroupReset() / GroupReset.new instead')
+  static GroupReset create() => GroupReset._();
+  static $pb.GeneratedMessage $_createMessage() => GroupReset._();
+  @$core.override
+  GroupReset createEmptyInstance() => GroupReset._();
+  @$core.pragma('dart2js:noInline')
+  static GroupReset getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<GroupReset>(GroupReset.$_createMessage);
+  static GroupReset? _defaultInstance;
+
+  /// The generation it started.
+  @$pb.TagNumber(1)
+  $fixnum.Int64 get generation => $_getI64(0);
+  @$pb.TagNumber(1)
+  set generation($fixnum.Int64 value) => $_setInt64(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasGeneration() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearGeneration() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $1.Timestamp get resetAt => $_getN(1);
+  @$pb.TagNumber(2)
+  set resetAt($1.Timestamp value) => $_setField(2, value);
+  @$pb.TagNumber(2)
+  $core.bool hasResetAt() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearResetAt() => $_clearField(2);
+  @$pb.TagNumber(2)
+  $1.Timestamp ensureResetAt() => $_ensure(1);
+
+  /// Who asked, from which device.
+  @$pb.TagNumber(3)
+  $core.String get requestedByUserId => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set requestedByUserId($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasRequestedByUserId() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearRequestedByUserId() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.String get requestedByDeviceId => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set requestedByDeviceId($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasRequestedByDeviceId() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearRequestedByDeviceId() => $_clearField(4);
+
+  /// What they reported: "commit", "group_info", or empty for a manager's reset without a report.
+  /// An open set.
+  @$pb.TagNumber(5)
+  $core.String get reportedKind => $_getSZ(4);
+  @$pb.TagNumber(5)
+  set reportedKind($core.String value) => $_setString(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasReportedKind() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearReportedKind() => $_clearField(5);
+
+  @$pb.TagNumber(6)
+  $fixnum.Int64 get reportedEpoch => $_getI64(5);
+  @$pb.TagNumber(6)
+  set reportedEpoch($fixnum.Int64 value) => $_setInt64(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasReportedEpoch() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearReportedEpoch() => $_clearField(6);
+
+  @$pb.TagNumber(7)
+  $core.List<$core.int> get reportedSha256 => $_getN(6);
+  @$pb.TagNumber(7)
+  set reportedSha256($core.List<$core.int> value) => $_setBytes(6, value);
+  @$pb.TagNumber(7)
+  $core.bool hasReportedSha256() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearReportedSha256() => $_clearField(7);
+
+  /// For a reported commit: the account and device that submitted it, as the server recorded them.
+  /// Empty when unknown.
+  @$pb.TagNumber(8)
+  $core.String get reportedSenderUserId => $_getSZ(7);
+  @$pb.TagNumber(8)
+  set reportedSenderUserId($core.String value) => $_setString(7, value);
+  @$pb.TagNumber(8)
+  $core.bool hasReportedSenderUserId() => $_has(7);
+  @$pb.TagNumber(8)
+  void clearReportedSenderUserId() => $_clearField(8);
+
+  @$pb.TagNumber(9)
+  $core.String get reportedSenderDeviceId => $_getSZ(8);
+  @$pb.TagNumber(9)
+  set reportedSenderDeviceId($core.String value) => $_setString(8, value);
+  @$pb.TagNumber(9)
+  $core.bool hasReportedSenderDeviceId() => $_has(8);
+  @$pb.TagNumber(9)
+  void clearReportedSenderDeviceId() => $_clearField(9);
+}
+
+/// Asks for a channel group's resets.
+class ListGroupResetsRequest extends $pb.GeneratedMessage {
+  factory ListGroupResetsRequest({
+    $core.String? channelId,
+  }) {
+    final result = ListGroupResetsRequest._();
+    if (channelId != null) result.channelId = channelId;
+    return result;
+  }
+
+  ListGroupResetsRequest._();
+
+  factory ListGroupResetsRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ListGroupResetsRequest()..mergeFromBuffer(data, registry);
+  factory ListGroupResetsRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ListGroupResetsRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ListGroupResetsRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: ListGroupResetsRequest.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'channelId')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ListGroupResetsRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ListGroupResetsRequest copyWith(
+          void Function(ListGroupResetsRequest) updates) =>
+      super.copyWith((message) => updates(message as ListGroupResetsRequest))
+          as ListGroupResetsRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use ListGroupResetsRequest() / ListGroupResetsRequest.new instead')
+  static ListGroupResetsRequest create() => ListGroupResetsRequest._();
+  static $pb.GeneratedMessage $_createMessage() => ListGroupResetsRequest._();
+  @$core.override
+  ListGroupResetsRequest createEmptyInstance() => ListGroupResetsRequest._();
+  @$core.pragma('dart2js:noInline')
+  static ListGroupResetsRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ListGroupResetsRequest>(
+          ListGroupResetsRequest.$_createMessage);
+  static ListGroupResetsRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get channelId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set channelId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasChannelId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearChannelId() => $_clearField(1);
+}
+
+/// The resets, newest first.
+class ListGroupResetsResponse extends $pb.GeneratedMessage {
+  factory ListGroupResetsResponse({
+    $core.Iterable<GroupReset>? resets,
+  }) {
+    final result = ListGroupResetsResponse._();
+    if (resets != null) result.resets.addAll(resets);
+    return result;
+  }
+
+  ListGroupResetsResponse._();
+
+  factory ListGroupResetsResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ListGroupResetsResponse()..mergeFromBuffer(data, registry);
+  factory ListGroupResetsResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ListGroupResetsResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ListGroupResetsResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: ListGroupResetsResponse.$_createMessage)
+    ..pPM<GroupReset>(1, _omitFieldNames ? '' : 'resets',
+        subBuilder: GroupReset.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ListGroupResetsResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ListGroupResetsResponse copyWith(
+          void Function(ListGroupResetsResponse) updates) =>
+      super.copyWith((message) => updates(message as ListGroupResetsResponse))
+          as ListGroupResetsResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use ListGroupResetsResponse() / ListGroupResetsResponse.new instead')
+  static ListGroupResetsResponse create() => ListGroupResetsResponse._();
+  static $pb.GeneratedMessage $_createMessage() => ListGroupResetsResponse._();
+  @$core.override
+  ListGroupResetsResponse createEmptyInstance() => ListGroupResetsResponse._();
+  @$core.pragma('dart2js:noInline')
+  static ListGroupResetsResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ListGroupResetsResponse>(
+          ListGroupResetsResponse.$_createMessage);
+  static ListGroupResetsResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $pb.PbList<GroupReset> get resets => $_getList(0);
+}
+
+/// A device, or every device of an account, kept out of a channel's group.
+class GroupBan extends $pb.GeneratedMessage {
+  factory GroupBan({
+    $core.String? userId,
+    $core.String? deviceId,
+    $core.String? bannedByUserId,
+    $1.Timestamp? bannedAt,
+  }) {
+    final result = GroupBan._();
+    if (userId != null) result.userId = userId;
+    if (deviceId != null) result.deviceId = deviceId;
+    if (bannedByUserId != null) result.bannedByUserId = bannedByUserId;
+    if (bannedAt != null) result.bannedAt = bannedAt;
+    return result;
+  }
+
+  GroupBan._();
+
+  factory GroupBan.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GroupBan()..mergeFromBuffer(data, registry);
+  factory GroupBan.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GroupBan()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GroupBan',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: GroupBan.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'userId')
+    ..aOS(2, _omitFieldNames ? '' : 'deviceId')
+    ..aOS(3, _omitFieldNames ? '' : 'bannedByUserId')
+    ..aOM<$1.Timestamp>(4, _omitFieldNames ? '' : 'bannedAt',
+        subBuilder: $1.Timestamp.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GroupBan clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GroupBan copyWith(void Function(GroupBan) updates) =>
+      super.copyWith((message) => updates(message as GroupBan)) as GroupBan;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use GroupBan() / GroupBan.new instead')
+  static GroupBan create() => GroupBan._();
+  static $pb.GeneratedMessage $_createMessage() => GroupBan._();
+  @$core.override
+  GroupBan createEmptyInstance() => GroupBan._();
+  @$core.pragma('dart2js:noInline')
+  static GroupBan getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<GroupBan>(GroupBan.$_createMessage);
+  static GroupBan? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get userId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set userId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasUserId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearUserId() => $_clearField(1);
+
+  /// Empty for every device of the account.
+  @$pb.TagNumber(2)
+  $core.String get deviceId => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set deviceId($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasDeviceId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearDeviceId() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get bannedByUserId => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set bannedByUserId($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasBannedByUserId() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearBannedByUserId() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $1.Timestamp get bannedAt => $_getN(3);
+  @$pb.TagNumber(4)
+  set bannedAt($1.Timestamp value) => $_setField(4, value);
+  @$pb.TagNumber(4)
+  $core.bool hasBannedAt() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearBannedAt() => $_clearField(4);
+  @$pb.TagNumber(4)
+  $1.Timestamp ensureBannedAt() => $_ensure(3);
+}
+
+/// Bans a device, or an account, from a channel's group.
+class BanFromGroupRequest extends $pb.GeneratedMessage {
+  factory BanFromGroupRequest({
+    $core.String? channelId,
+    $core.String? userId,
+    $core.String? deviceId,
+  }) {
+    final result = BanFromGroupRequest._();
+    if (channelId != null) result.channelId = channelId;
+    if (userId != null) result.userId = userId;
+    if (deviceId != null) result.deviceId = deviceId;
+    return result;
+  }
+
+  BanFromGroupRequest._();
+
+  factory BanFromGroupRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BanFromGroupRequest()..mergeFromBuffer(data, registry);
+  factory BanFromGroupRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BanFromGroupRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'BanFromGroupRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: BanFromGroupRequest.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'channelId')
+    ..aOS(2, _omitFieldNames ? '' : 'userId')
+    ..aOS(3, _omitFieldNames ? '' : 'deviceId')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BanFromGroupRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BanFromGroupRequest copyWith(void Function(BanFromGroupRequest) updates) =>
+      super.copyWith((message) => updates(message as BanFromGroupRequest))
+          as BanFromGroupRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core
+      .Deprecated('Use BanFromGroupRequest() / BanFromGroupRequest.new instead')
+  static BanFromGroupRequest create() => BanFromGroupRequest._();
+  static $pb.GeneratedMessage $_createMessage() => BanFromGroupRequest._();
+  @$core.override
+  BanFromGroupRequest createEmptyInstance() => BanFromGroupRequest._();
+  @$core.pragma('dart2js:noInline')
+  static BanFromGroupRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<BanFromGroupRequest>(
+          BanFromGroupRequest.$_createMessage);
+  static BanFromGroupRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get channelId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set channelId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasChannelId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearChannelId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get userId => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set userId($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasUserId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearUserId() => $_clearField(2);
+
+  /// Empty for every device of the account.
+  @$pb.TagNumber(3)
+  $core.String get deviceId => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set deviceId($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasDeviceId() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearDeviceId() => $_clearField(3);
+}
+
+/// Whether anything changed (false when the ban was already there).
+class BanFromGroupResponse extends $pb.GeneratedMessage {
+  factory BanFromGroupResponse({
+    $core.bool? changed,
+  }) {
+    final result = BanFromGroupResponse._();
+    if (changed != null) result.changed = changed;
+    return result;
+  }
+
+  BanFromGroupResponse._();
+
+  factory BanFromGroupResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BanFromGroupResponse()..mergeFromBuffer(data, registry);
+  factory BanFromGroupResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BanFromGroupResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'BanFromGroupResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: BanFromGroupResponse.$_createMessage)
+    ..aOB(1, _omitFieldNames ? '' : 'changed')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BanFromGroupResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BanFromGroupResponse copyWith(void Function(BanFromGroupResponse) updates) =>
+      super.copyWith((message) => updates(message as BanFromGroupResponse))
+          as BanFromGroupResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use BanFromGroupResponse() / BanFromGroupResponse.new instead')
+  static BanFromGroupResponse create() => BanFromGroupResponse._();
+  static $pb.GeneratedMessage $_createMessage() => BanFromGroupResponse._();
+  @$core.override
+  BanFromGroupResponse createEmptyInstance() => BanFromGroupResponse._();
+  @$core.pragma('dart2js:noInline')
+  static BanFromGroupResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<BanFromGroupResponse>(
+          BanFromGroupResponse.$_createMessage);
+  static BanFromGroupResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.bool get changed => $_getBF(0);
+  @$pb.TagNumber(1)
+  set changed($core.bool value) => $_setBool(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasChanged() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearChanged() => $_clearField(1);
+}
+
+/// Lifts a ban.
+class UnbanFromGroupRequest extends $pb.GeneratedMessage {
+  factory UnbanFromGroupRequest({
+    $core.String? channelId,
+    $core.String? userId,
+    $core.String? deviceId,
+  }) {
+    final result = UnbanFromGroupRequest._();
+    if (channelId != null) result.channelId = channelId;
+    if (userId != null) result.userId = userId;
+    if (deviceId != null) result.deviceId = deviceId;
+    return result;
+  }
+
+  UnbanFromGroupRequest._();
+
+  factory UnbanFromGroupRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UnbanFromGroupRequest()..mergeFromBuffer(data, registry);
+  factory UnbanFromGroupRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UnbanFromGroupRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'UnbanFromGroupRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: UnbanFromGroupRequest.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'channelId')
+    ..aOS(2, _omitFieldNames ? '' : 'userId')
+    ..aOS(3, _omitFieldNames ? '' : 'deviceId')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UnbanFromGroupRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UnbanFromGroupRequest copyWith(
+          void Function(UnbanFromGroupRequest) updates) =>
+      super.copyWith((message) => updates(message as UnbanFromGroupRequest))
+          as UnbanFromGroupRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use UnbanFromGroupRequest() / UnbanFromGroupRequest.new instead')
+  static UnbanFromGroupRequest create() => UnbanFromGroupRequest._();
+  static $pb.GeneratedMessage $_createMessage() => UnbanFromGroupRequest._();
+  @$core.override
+  UnbanFromGroupRequest createEmptyInstance() => UnbanFromGroupRequest._();
+  @$core.pragma('dart2js:noInline')
+  static UnbanFromGroupRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<UnbanFromGroupRequest>(
+          UnbanFromGroupRequest.$_createMessage);
+  static UnbanFromGroupRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get channelId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set channelId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasChannelId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearChannelId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get userId => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set userId($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasUserId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearUserId() => $_clearField(2);
+
+  /// Empty for the ban on every device of the account.
+  @$pb.TagNumber(3)
+  $core.String get deviceId => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set deviceId($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasDeviceId() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearDeviceId() => $_clearField(3);
+}
+
+/// Whether anything changed (false when there was no such ban).
+class UnbanFromGroupResponse extends $pb.GeneratedMessage {
+  factory UnbanFromGroupResponse({
+    $core.bool? changed,
+  }) {
+    final result = UnbanFromGroupResponse._();
+    if (changed != null) result.changed = changed;
+    return result;
+  }
+
+  UnbanFromGroupResponse._();
+
+  factory UnbanFromGroupResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UnbanFromGroupResponse()..mergeFromBuffer(data, registry);
+  factory UnbanFromGroupResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UnbanFromGroupResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'UnbanFromGroupResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: UnbanFromGroupResponse.$_createMessage)
+    ..aOB(1, _omitFieldNames ? '' : 'changed')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UnbanFromGroupResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UnbanFromGroupResponse copyWith(
+          void Function(UnbanFromGroupResponse) updates) =>
+      super.copyWith((message) => updates(message as UnbanFromGroupResponse))
+          as UnbanFromGroupResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use UnbanFromGroupResponse() / UnbanFromGroupResponse.new instead')
+  static UnbanFromGroupResponse create() => UnbanFromGroupResponse._();
+  static $pb.GeneratedMessage $_createMessage() => UnbanFromGroupResponse._();
+  @$core.override
+  UnbanFromGroupResponse createEmptyInstance() => UnbanFromGroupResponse._();
+  @$core.pragma('dart2js:noInline')
+  static UnbanFromGroupResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<UnbanFromGroupResponse>(
+          UnbanFromGroupResponse.$_createMessage);
+  static UnbanFromGroupResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.bool get changed => $_getBF(0);
+  @$pb.TagNumber(1)
+  set changed($core.bool value) => $_setBool(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasChanged() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearChanged() => $_clearField(1);
+}
+
+/// Asks for a channel group's bans.
+class ListGroupBansRequest extends $pb.GeneratedMessage {
+  factory ListGroupBansRequest({
+    $core.String? channelId,
+  }) {
+    final result = ListGroupBansRequest._();
+    if (channelId != null) result.channelId = channelId;
+    return result;
+  }
+
+  ListGroupBansRequest._();
+
+  factory ListGroupBansRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ListGroupBansRequest()..mergeFromBuffer(data, registry);
+  factory ListGroupBansRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ListGroupBansRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ListGroupBansRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: ListGroupBansRequest.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'channelId')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ListGroupBansRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ListGroupBansRequest copyWith(void Function(ListGroupBansRequest) updates) =>
+      super.copyWith((message) => updates(message as ListGroupBansRequest))
+          as ListGroupBansRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use ListGroupBansRequest() / ListGroupBansRequest.new instead')
+  static ListGroupBansRequest create() => ListGroupBansRequest._();
+  static $pb.GeneratedMessage $_createMessage() => ListGroupBansRequest._();
+  @$core.override
+  ListGroupBansRequest createEmptyInstance() => ListGroupBansRequest._();
+  @$core.pragma('dart2js:noInline')
+  static ListGroupBansRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ListGroupBansRequest>(
+          ListGroupBansRequest.$_createMessage);
+  static ListGroupBansRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get channelId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set channelId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasChannelId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearChannelId() => $_clearField(1);
+}
+
+/// The bans.
+class ListGroupBansResponse extends $pb.GeneratedMessage {
+  factory ListGroupBansResponse({
+    $core.Iterable<GroupBan>? bans,
+  }) {
+    final result = ListGroupBansResponse._();
+    if (bans != null) result.bans.addAll(bans);
+    return result;
+  }
+
+  ListGroupBansResponse._();
+
+  factory ListGroupBansResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ListGroupBansResponse()..mergeFromBuffer(data, registry);
+  factory ListGroupBansResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ListGroupBansResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ListGroupBansResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: ListGroupBansResponse.$_createMessage)
+    ..pPM<GroupBan>(1, _omitFieldNames ? '' : 'bans',
+        subBuilder: GroupBan.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ListGroupBansResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ListGroupBansResponse copyWith(
+          void Function(ListGroupBansResponse) updates) =>
+      super.copyWith((message) => updates(message as ListGroupBansResponse))
+          as ListGroupBansResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use ListGroupBansResponse() / ListGroupBansResponse.new instead')
+  static ListGroupBansResponse create() => ListGroupBansResponse._();
+  static $pb.GeneratedMessage $_createMessage() => ListGroupBansResponse._();
+  @$core.override
+  ListGroupBansResponse createEmptyInstance() => ListGroupBansResponse._();
+  @$core.pragma('dart2js:noInline')
+  static ListGroupBansResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ListGroupBansResponse>(
+          ListGroupBansResponse.$_createMessage);
+  static ListGroupBansResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $pb.PbList<GroupBan> get bans => $_getList(0);
 }
 
 const $core.bool _omitFieldNames =

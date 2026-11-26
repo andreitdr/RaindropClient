@@ -296,6 +296,7 @@ class IdentitySettingsSection extends ConsumerWidget {
         await IdentityCrypto.approvePairing(
           offer: offer,
           commitment: code.commitment,
+          codeSecret: code.codeSecret,
           payload: payload.toBytes(),
         ),
       );

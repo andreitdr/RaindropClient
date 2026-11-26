@@ -23,7 +23,8 @@ Messages are end-to-end encrypted (server side: [Messages](../../RaindropServer/
 is set up, and then messages stay plaintext as before.
 
 - **Opening a channel** joins its MLS group before the first page is decoded (`ensureJoined`). A device
-  that cannot join still sees the timeline, with placeholders.
+  that cannot join still sees the timeline, with placeholders. Rejoining after a resync keeps the
+  cached history, and a message id seen again is served from the cache.
 - **Sending:**
   1. The text goes into a `MessagePayload` (`core/crypto/message_payload.dart`: version byte `0x02`,
      then protobuf `raindrop.v1.MessagePayload` with type, body, client message id, send time and files;
@@ -39,15 +40,29 @@ is set up, and then messages stay plaintext as before.
   - `encrypted`: decrypted, or read from the local cache (the only copy once the epoch keys are gone)
   - `undecryptable`: sent before this device joined, or from a newer client. The pane shows a lock
     and "Encrypted before this device joined".
+  - `awaitingIdentity`: the sender's identity key changed, so the core holds the message until the
+    person accepts the new key. The pane shows "Waiting for you to confirm <name>'s new key", with
+    `IdentityChangeBanner` above the messages (the dialog compares the safety numbers). Accepting
+    reads the channel again, so the held messages appear.
   - `plaintext`: posted before the server required encryption. The pane shows an open-lock marker
     whose tooltip says the server owner can read it.
 
 `ChannelGroups` also runs everything else about the group:
 - catching up on commits (`e2ee.handshake`) and picking up Welcomes (`e2ee.welcome`, and after every
-  reconnect)
+  reconnect); a pass that makes no progress throws `group_stalled`, and a commit claiming to be ours
+  that is not (`resyncRequired`) resets the group and rejoins, keeping the cache
 - keeping 20–50 key packages on the server (`e2ee.keypackages.low`)
 - reconciling against the roster on `e2ee.group.reconcile`, after a random delay of up to 2 s so
   members do not all race
+- recovering a group nobody can follow: a commit or group info that cannot be processed is reported
+  to the server, which starts a new generation of the channel's group (`e2ee.group.reset`); the
+  device creates or joins it and follows newer generations, keeping its history
+- holding a changed identity's messages and raising them again after a restart
+  (`announcePendingIdentityChanges`, `acceptChangedIdentity`)
+
+A commit that fails with a network error (a timeout, a dropped connection) stays pending, because the
+server may have taken it; the next successful sync settles it. Only a definitive refusal
+(`epoch_conflict`, missing permissions) discards it at once.
 
 **Reporting.** Every message this client sends carries an attestation inside its encrypted payload:
 the device's Ed25519 signature over the channel, client message id, time, type and body
@@ -141,8 +156,8 @@ view to show. The `message.deleted` event that follows carries the same tombston
 
 - **your own message: always** — no permission is consulted, so a member whose roles grant almost
   nothing can still take back what they said;
-- **somebody else's: only with `manage_messages`** in the channel (`Channel.canManageMessages`; a channel's
-  creator has it implicitly).
+- **somebody else's: only with `manage_messages`** in the channel (`Channel.canManageMessages`; having created
+  the channel does not count).
 
 Never on a message that is already a tombstone, or one that has not reached the server (still sending, or
 failed — those are discarded, not deleted). The server checks all of it again regardless.

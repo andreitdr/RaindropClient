@@ -5,6 +5,8 @@ import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/widgets/adaptive.dart';
 import '../controllers/device_setup_controller.dart';
+import '../controllers/identity_changes.dart';
+import 'identity_change_dialog.dart';
 
 /// The Encryption section of Settings for one server: this device and the
 /// account's other devices there. Pairing a device, the recovery words and
@@ -71,6 +73,9 @@ class _ReadyBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final devices = ref.watch(ownDevicesProvider(serverId));
+    final changed =
+        ref.watch(pendingIdentityChangesProvider(serverId)).valueOrNull ??
+        const <PendingIdentityChange>[];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -114,6 +119,13 @@ class _ReadyBody extends ConsumerWidget {
               ),
           ],
         ),
+        // Keys somebody presented that this device has not decided on: until
+        // the person does, their messages stay hidden.
+        if (changed.isNotEmpty) ...[
+          const Divider(height: 1),
+          for (final change in changed)
+            PendingIdentityChangeTile(serverId: serverId, change: change),
+        ],
       ],
     );
   }

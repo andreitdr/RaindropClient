@@ -181,22 +181,32 @@ class MlsCryptoEngine implements CryptoEngine {
       _guard(() => _session.signMessageAttestationV2(canonical: canonical));
 
   @override
-  Future<({Uint8List offer, Uint8List commitment})> beginDeviceLink({
-    required String userId,
-    required String deviceId,
-  }) => _guard(() async {
-    final link = await _session.beginDeviceLink(
-      userId: userId,
-      deviceId: deviceId,
-    );
-    return (offer: link.offer, commitment: link.commitment);
-  });
+  Future<({Uint8List offer, Uint8List commitment, Uint8List codeSecret})>
+  beginDeviceLink({required String userId, required String deviceId}) =>
+      _guard(() async {
+        final link = await _session.beginDeviceLink(
+          userId: userId,
+          deviceId: deviceId,
+        );
+        return (
+          offer: link.offer,
+          commitment: link.commitment,
+          codeSecret: link.codeSecret,
+        );
+      });
 
   @override
-  Future<Uint8List> approveDeviceLink(Uint8List offer, Uint8List commitment) =>
-      _guard(
-        () => _session.approveDeviceLink(offer: offer, commitment: commitment),
-      );
+  Future<Uint8List> approveDeviceLink(
+    Uint8List offer,
+    Uint8List commitment,
+    Uint8List codeSecret,
+  ) => _guard(
+    () => _session.approveDeviceLink(
+      offer: offer,
+      commitment: commitment,
+      codeSecret: codeSecret,
+    ),
+  );
 
   @override
   Future<DeviceKeys> completeDeviceLink(Uint8List approval) => _guard(
@@ -223,6 +233,21 @@ class MlsCryptoEngine implements CryptoEngine {
           identityKey: identityKey,
         ),
       );
+
+  @override
+  Future<List<PendingIdentityChange>> pendingIdentityChanges() => _guard(
+    () async => [
+      for (final change in await _session.pendingIdentityChanges())
+        PendingIdentityChange(
+          userId: change.userId,
+          pinnedKey: change.pinnedKey,
+          presentedKey: change.presentedKey,
+          heldMessages: change.heldMessages,
+          heldGroupIds: change.heldGroupIds,
+          leftGroupIds: change.leftGroupIds,
+        ),
+    ],
+  );
 
   @override
   Future<void> markVerified(String userId, Uint8List identityKey) => _guard(
@@ -288,9 +313,13 @@ class MlsCryptoEngine implements CryptoEngine {
 
   @override
   Future<({Uint8List groupId, GroupCommit commit})> joinByExternalCommit(
+    Uint8List expectedGroupId,
     Uint8List groupInfo,
   ) => _guard(() async {
-    final join = await _session.joinByExternalCommit(groupInfo: groupInfo);
+    final join = await _session.joinByExternalCommit(
+      expectedGroupId: expectedGroupId,
+      groupInfo: groupInfo,
+    );
     return (groupId: join.groupId, commit: _commit(join.pending));
   });
 
@@ -306,6 +335,10 @@ class MlsCryptoEngine implements CryptoEngine {
   @override
   Future<void> discardPendingCommit(Uint8List groupId) =>
       _guard(() => _session.discardPendingCommit(groupId: groupId));
+
+  @override
+  Future<void> resetGroup(Uint8List groupId) =>
+      _guard(() => _session.resetGroup(groupId: groupId));
 
   @override
   Future<void> deleteGroup(Uint8List groupId) =>
@@ -459,10 +492,14 @@ Future<T> guardCrypto<T>(Future<T> Function() call) async {
           rust.CryptoFailureKind.verification => CryptoErrorKind.verification,
           rust.CryptoFailureKind.notFound => CryptoErrorKind.notFound,
           rust.CryptoFailureKind.malformed => CryptoErrorKind.malformed,
+          rust.CryptoFailureKind.resyncRequired =>
+            CryptoErrorKind.resyncRequired,
           rust.CryptoFailureKind.other => CryptoErrorKind.other,
         },
         e.message,
         userId: e.userId,
+        pinnedKey: e.pinnedKey,
+        presentedKey: e.presentedKey,
       );
     }
   }

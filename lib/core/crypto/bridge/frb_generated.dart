@@ -72,7 +72,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 470252653;
+  int get rustContentHash => -997038367;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -101,6 +101,7 @@ abstract class RustLibApi extends BaseApi {
     required CryptoSession that,
     required List<int> offer,
     required List<int> commitment,
+    required List<int> codeSecret,
   });
 
   Future<LinkOffer> crateApiSessionCryptoSessionBeginDeviceLink({
@@ -213,6 +214,7 @@ abstract class RustLibApi extends BaseApi {
 
   Future<ExternalJoin> crateApiSessionCryptoSessionJoinByExternalCommit({
     required CryptoSession that,
+    required List<int> expectedGroupId,
     required List<int> groupInfo,
   });
 
@@ -240,6 +242,11 @@ abstract class RustLibApi extends BaseApi {
   Future<CryptoSession> crateApiSessionCryptoSessionOpen({
     required String path,
     required List<int> key,
+  });
+
+  Future<List<PendingIdentityChange>>
+  crateApiSessionCryptoSessionPendingIdentityChanges({
+    required CryptoSession that,
   });
 
   Future<PinnedIdentity?> crateApiSessionCryptoSessionPinnedIdentity({
@@ -271,6 +278,11 @@ abstract class RustLibApi extends BaseApi {
     required CryptoSession that,
     required List<int> groupId,
     required List<int> leafIndices,
+  });
+
+  Future<void> crateApiSessionCryptoSessionResetGroup({
+    required CryptoSession that,
+    required List<int> groupId,
   });
 
   Future<DeviceIdentity>
@@ -327,6 +339,7 @@ abstract class RustLibApi extends BaseApi {
   Future<Uint8List> crateApiIdentityApprovePairing({
     required List<int> offer,
     required List<int> commitment,
+    required List<int> codeSecret,
     required List<int> payload,
   });
 
@@ -345,6 +358,7 @@ abstract class RustLibApi extends BaseApi {
     required List<int> approval,
     required List<int> offer,
     required List<int> exchangeSecret,
+    required List<int> codeSecret,
   });
 
   Future<Uint8List> crateApiAttachmentDecryptAttachmentBytes({
@@ -563,6 +577,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required CryptoSession that,
     required List<int> offer,
     required List<int> commitment,
+    required List<int> codeSecret,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -574,6 +589,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
           sse_encode_list_prim_u_8_loose(offer, serializer);
           sse_encode_list_prim_u_8_loose(commitment, serializer);
+          sse_encode_list_prim_u_8_loose(codeSecret, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -586,7 +602,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_crypto_failure,
         ),
         constMeta: kCrateApiSessionCryptoSessionApproveDeviceLinkConstMeta,
-        argValues: [that, offer, commitment],
+        argValues: [that, offer, commitment, codeSecret],
         apiImpl: this,
       ),
     );
@@ -595,7 +611,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiSessionCryptoSessionApproveDeviceLinkConstMeta =>
       const TaskConstMeta(
         debugName: "CryptoSession_approve_device_link",
-        argNames: ["that", "offer", "commitment"],
+        argNames: ["that", "offer", "commitment", "codeSecret"],
       );
 
   @override
@@ -1353,6 +1369,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @override
   Future<ExternalJoin> crateApiSessionCryptoSessionJoinByExternalCommit({
     required CryptoSession that,
+    required List<int> expectedGroupId,
     required List<int> groupInfo,
   }) {
     return handler.executeNormal(
@@ -1363,6 +1380,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
+          sse_encode_list_prim_u_8_loose(expectedGroupId, serializer);
           sse_encode_list_prim_u_8_loose(groupInfo, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
@@ -1376,7 +1394,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_crypto_failure,
         ),
         constMeta: kCrateApiSessionCryptoSessionJoinByExternalCommitConstMeta,
-        argValues: [that, groupInfo],
+        argValues: [that, expectedGroupId, groupInfo],
         apiImpl: this,
       ),
     );
@@ -1386,7 +1404,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   get kCrateApiSessionCryptoSessionJoinByExternalCommitConstMeta =>
       const TaskConstMeta(
         debugName: "CryptoSession_join_by_external_commit",
-        argNames: ["that", "groupInfo"],
+        argNames: ["that", "expectedGroupId", "groupInfo"],
       );
 
   @override
@@ -1580,6 +1598,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<List<PendingIdentityChange>>
+  crateApiSessionCryptoSessionPendingIdentityChanges({
+    required CryptoSession that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCryptoSession(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 29,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_pending_identity_change,
+          decodeErrorData: sse_decode_crypto_failure,
+        ),
+        constMeta: kCrateApiSessionCryptoSessionPendingIdentityChangesConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kCrateApiSessionCryptoSessionPendingIdentityChangesConstMeta =>
+      const TaskConstMeta(
+        debugName: "CryptoSession_pending_identity_changes",
+        argNames: ["that"],
+      );
+
+  @override
   Future<PinnedIdentity?> crateApiSessionCryptoSessionPinnedIdentity({
     required CryptoSession that,
     required String userId,
@@ -1596,7 +1652,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 30,
             port: port_,
           );
         },
@@ -1634,7 +1690,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 31,
             port: port_,
           );
         },
@@ -1676,7 +1732,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 32,
             port: port_,
           );
         },
@@ -1720,7 +1776,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 33,
             port: port_,
           );
         },
@@ -1760,7 +1816,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 34,
             port: port_,
           );
         },
@@ -1779,6 +1835,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "CryptoSession_remove_members",
         argNames: ["that", "groupId", "leafIndices"],
+      );
+
+  @override
+  Future<void> crateApiSessionCryptoSessionResetGroup({
+    required CryptoSession that,
+    required List<int> groupId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCryptoSession(
+            that,
+            serializer,
+          );
+          sse_encode_list_prim_u_8_loose(groupId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 35,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_crypto_failure,
+        ),
+        constMeta: kCrateApiSessionCryptoSessionResetGroupConstMeta,
+        argValues: [that, groupId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSessionCryptoSessionResetGroupConstMeta =>
+      const TaskConstMeta(
+        debugName: "CryptoSession_reset_group",
+        argNames: ["that", "groupId"],
       );
 
   @override
@@ -1803,7 +1897,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 36,
             port: port_,
           );
         },
@@ -1848,7 +1942,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 37,
             port: port_,
           );
         },
@@ -1888,7 +1982,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 38,
             port: port_,
           );
         },
@@ -1926,7 +2020,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 39,
             port: port_,
           );
         },
@@ -1966,7 +2060,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 40,
             port: port_,
           );
         },
@@ -2006,7 +2100,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 39,
+            funcId: 41,
             port: port_,
           );
         },
@@ -2044,7 +2138,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 40,
+            funcId: 42,
             port: port_,
           );
         },
@@ -2083,7 +2177,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 41,
+            funcId: 43,
             port: port_,
           );
         },
@@ -2123,7 +2217,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 42,
+            funcId: 44,
             port: port_,
           );
         },
@@ -2149,6 +2243,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Future<Uint8List> crateApiIdentityApprovePairing({
     required List<int> offer,
     required List<int> commitment,
+    required List<int> codeSecret,
     required List<int> payload,
   }) {
     return handler.executeNormal(
@@ -2157,11 +2252,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_list_prim_u_8_loose(offer, serializer);
           sse_encode_list_prim_u_8_loose(commitment, serializer);
+          sse_encode_list_prim_u_8_loose(codeSecret, serializer);
           sse_encode_list_prim_u_8_loose(payload, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 43,
+            funcId: 45,
             port: port_,
           );
         },
@@ -2170,7 +2266,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_crypto_failure,
         ),
         constMeta: kCrateApiIdentityApprovePairingConstMeta,
-        argValues: [offer, commitment, payload],
+        argValues: [offer, commitment, codeSecret, payload],
         apiImpl: this,
       ),
     );
@@ -2179,7 +2275,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiIdentityApprovePairingConstMeta =>
       const TaskConstMeta(
         debugName: "approve_pairing",
-        argNames: ["offer", "commitment", "payload"],
+        argNames: ["offer", "commitment", "codeSecret", "payload"],
       );
 
   @override
@@ -2191,7 +2287,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_u_64(plaintextLength, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 44)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 46)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_u_64,
@@ -2217,7 +2313,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_list_prim_u_8_loose(blob, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 45)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 47)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_bool,
@@ -2250,7 +2346,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 46,
+            funcId: 48,
             port: port_,
           );
         },
@@ -2276,6 +2372,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required List<int> approval,
     required List<int> offer,
     required List<int> exchangeSecret,
+    required List<int> codeSecret,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -2284,10 +2381,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_list_prim_u_8_loose(approval, serializer);
           sse_encode_list_prim_u_8_loose(offer, serializer);
           sse_encode_list_prim_u_8_loose(exchangeSecret, serializer);
+          sse_encode_list_prim_u_8_loose(codeSecret, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 47,
+            funcId: 49,
             port: port_,
           );
         },
@@ -2296,7 +2394,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_crypto_failure,
         ),
         constMeta: kCrateApiIdentityCompletePairingConstMeta,
-        argValues: [approval, offer, exchangeSecret],
+        argValues: [approval, offer, exchangeSecret, codeSecret],
         apiImpl: this,
       ),
     );
@@ -2305,7 +2403,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiIdentityCompletePairingConstMeta =>
       const TaskConstMeta(
         debugName: "complete_pairing",
-        argNames: ["approval", "offer", "exchangeSecret"],
+        argNames: ["approval", "offer", "exchangeSecret", "codeSecret"],
       );
 
   @override
@@ -2324,7 +2422,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 48,
+            funcId: 50,
             port: port_,
           );
         },
@@ -2363,7 +2461,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 49,
+            funcId: 51,
             port: port_,
           );
         },
@@ -2398,7 +2496,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 50,
+            funcId: 52,
             port: port_,
           );
         },
@@ -2431,7 +2529,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 51,
+            funcId: 53,
             port: port_,
           );
         },
@@ -2466,7 +2564,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 52,
+            funcId: 54,
             port: port_,
           );
         },
@@ -2496,7 +2594,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 53,
+            funcId: 55,
             port: port_,
           );
         },
@@ -2523,7 +2621,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 54,
+            funcId: 56,
             port: port_,
           );
         },
@@ -2550,7 +2648,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 55,
+            funcId: 57,
             port: port_,
           );
         },
@@ -2584,7 +2682,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 56,
+            funcId: 58,
             port: port_,
           );
         },
@@ -2620,7 +2718,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 57,
+            funcId: 59,
             port: port_,
           );
         },
@@ -2654,7 +2752,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 58,
+            funcId: 60,
             port: port_,
           );
         },
@@ -2689,7 +2787,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 59,
+            funcId: 61,
             port: port_,
           );
         },
@@ -2724,7 +2822,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 60,
+            funcId: 62,
             port: port_,
           );
         },
@@ -2757,7 +2855,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 61,
+            funcId: 63,
             port: port_,
           );
         },
@@ -2793,7 +2891,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_list_prim_u_8_loose(keyA, serializer);
           sse_encode_String(userB, serializer);
           sse_encode_list_prim_u_8_loose(keyB, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 62)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 64)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -2828,7 +2926,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 63,
+            funcId: 65,
             port: port_,
           );
         },
@@ -2864,7 +2962,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 64,
+            funcId: 66,
             port: port_,
           );
         },
@@ -2898,7 +2996,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 65,
+            funcId: 67,
             port: port_,
           );
         },
@@ -2925,7 +3023,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 66)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 68)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_video_effects_capabilities,
@@ -2956,7 +3054,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 67,
+            funcId: 69,
             port: port_,
           );
         },
@@ -2987,7 +3085,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 68,
+            funcId: 70,
             port: port_,
           );
         },
@@ -3014,7 +3112,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 69)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 71)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_usize,
@@ -3047,7 +3145,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 70,
+            funcId: 72,
             port: port_,
           );
         },
@@ -3080,7 +3178,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 71,
+            funcId: 73,
             port: port_,
           );
         },
@@ -3115,7 +3213,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 72,
+            funcId: 74,
             port: port_,
           );
         },
@@ -3240,12 +3338,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   CryptoFailure dco_decode_crypto_failure(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 3)
-      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
     return CryptoFailure(
       kind: dco_decode_crypto_failure_kind(arr[0]),
       message: dco_decode_String(arr[1]),
       userId: dco_decode_opt_String(arr[2]),
+      pinnedKey: dco_decode_opt_list_prim_u_8_strict(arr[3]),
+      presentedKey: dco_decode_opt_list_prim_u_8_strict(arr[4]),
     );
   }
 
@@ -3329,11 +3429,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   LinkOffer dco_decode_link_offer(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 2)
-      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
     return LinkOffer(
       offer: dco_decode_list_prim_u_8_strict(arr[0]),
       commitment: dco_decode_list_prim_u_8_strict(arr[1]),
+      codeSecret: dco_decode_list_prim_u_8_strict(arr[2]),
     );
   }
 
@@ -3353,6 +3454,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_list_prim_u_8_strict).toList();
+  }
+
+  @protected
+  List<PendingIdentityChange> dco_decode_list_pending_identity_change(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>)
+        .map(dco_decode_pending_identity_change)
+        .toList();
   }
 
   @protected
@@ -3443,12 +3554,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   PairingOffer dco_decode_pairing_offer(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 3)
-      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
     return PairingOffer(
       offer: dco_decode_list_prim_u_8_strict(arr[0]),
       commitment: dco_decode_list_prim_u_8_strict(arr[1]),
-      exchangeSecret: dco_decode_list_prim_u_8_strict(arr[2]),
+      codeSecret: dco_decode_list_prim_u_8_strict(arr[2]),
+      exchangeSecret: dco_decode_list_prim_u_8_strict(arr[3]),
     );
   }
 
@@ -3474,6 +3586,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       commit: dco_decode_list_prim_u_8_strict(arr[0]),
       welcome: dco_decode_opt_list_prim_u_8_strict(arr[1]),
       epochAfter: dco_decode_i_64(arr[2]),
+    );
+  }
+
+  @protected
+  PendingIdentityChange dco_decode_pending_identity_change(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return PendingIdentityChange(
+      userId: dco_decode_String(arr[0]),
+      pinnedKey: dco_decode_opt_list_prim_u_8_strict(arr[1]),
+      presentedKey: dco_decode_list_prim_u_8_strict(arr[2]),
+      heldMessages: dco_decode_u_32(arr[3]),
+      heldGroupIds: dco_decode_list_list_prim_u_8_strict(arr[4]),
+      leftGroupIds: dco_decode_list_list_prim_u_8_strict(arr[5]),
     );
   }
 
@@ -3761,10 +3889,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_kind = sse_decode_crypto_failure_kind(deserializer);
     var var_message = sse_decode_String(deserializer);
     var var_userId = sse_decode_opt_String(deserializer);
+    var var_pinnedKey = sse_decode_opt_list_prim_u_8_strict(deserializer);
+    var var_presentedKey = sse_decode_opt_list_prim_u_8_strict(deserializer);
     return CryptoFailure(
       kind: var_kind,
       message: var_message,
       userId: var_userId,
+      pinnedKey: var_pinnedKey,
+      presentedKey: var_presentedKey,
     );
   }
 
@@ -3846,7 +3978,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_offer = sse_decode_list_prim_u_8_strict(deserializer);
     var var_commitment = sse_decode_list_prim_u_8_strict(deserializer);
-    return LinkOffer(offer: var_offer, commitment: var_commitment);
+    var var_codeSecret = sse_decode_list_prim_u_8_strict(deserializer);
+    return LinkOffer(
+      offer: var_offer,
+      commitment: var_commitment,
+      codeSecret: var_codeSecret,
+    );
   }
 
   @protected
@@ -3885,6 +4022,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var ans_ = <Uint8List>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_list_prim_u_8_strict(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<PendingIdentityChange> sse_decode_list_pending_identity_change(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PendingIdentityChange>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_pending_identity_change(deserializer));
     }
     return ans_;
   }
@@ -4029,10 +4180,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_offer = sse_decode_list_prim_u_8_strict(deserializer);
     var var_commitment = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_codeSecret = sse_decode_list_prim_u_8_strict(deserializer);
     var var_exchangeSecret = sse_decode_list_prim_u_8_strict(deserializer);
     return PairingOffer(
       offer: var_offer,
       commitment: var_commitment,
+      codeSecret: var_codeSecret,
       exchangeSecret: var_exchangeSecret,
     );
   }
@@ -4055,6 +4208,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       commit: var_commit,
       welcome: var_welcome,
       epochAfter: var_epochAfter,
+    );
+  }
+
+  @protected
+  PendingIdentityChange sse_decode_pending_identity_change(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_userId = sse_decode_String(deserializer);
+    var var_pinnedKey = sse_decode_opt_list_prim_u_8_strict(deserializer);
+    var var_presentedKey = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_heldMessages = sse_decode_u_32(deserializer);
+    var var_heldGroupIds = sse_decode_list_list_prim_u_8_strict(deserializer);
+    var var_leftGroupIds = sse_decode_list_list_prim_u_8_strict(deserializer);
+    return PendingIdentityChange(
+      userId: var_userId,
+      pinnedKey: var_pinnedKey,
+      presentedKey: var_presentedKey,
+      heldMessages: var_heldMessages,
+      heldGroupIds: var_heldGroupIds,
+      leftGroupIds: var_leftGroupIds,
     );
   }
 
@@ -4349,6 +4523,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_crypto_failure_kind(self.kind, serializer);
     sse_encode_String(self.message, serializer);
     sse_encode_opt_String(self.userId, serializer);
+    sse_encode_opt_list_prim_u_8_strict(self.pinnedKey, serializer);
+    sse_encode_opt_list_prim_u_8_strict(self.presentedKey, serializer);
   }
 
   @protected
@@ -4421,6 +4597,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(self.offer, serializer);
     sse_encode_list_prim_u_8_strict(self.commitment, serializer);
+    sse_encode_list_prim_u_8_strict(self.codeSecret, serializer);
   }
 
   @protected
@@ -4456,6 +4633,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_list_prim_u_8_strict(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_pending_identity_change(
+    List<PendingIdentityChange> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_pending_identity_change(item, serializer);
     }
   }
 
@@ -4615,6 +4804,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(self.offer, serializer);
     sse_encode_list_prim_u_8_strict(self.commitment, serializer);
+    sse_encode_list_prim_u_8_strict(self.codeSecret, serializer);
     sse_encode_list_prim_u_8_strict(self.exchangeSecret, serializer);
   }
 
@@ -4634,6 +4824,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_list_prim_u_8_strict(self.commit, serializer);
     sse_encode_opt_list_prim_u_8_strict(self.welcome, serializer);
     sse_encode_i_64(self.epochAfter, serializer);
+  }
+
+  @protected
+  void sse_encode_pending_identity_change(
+    PendingIdentityChange self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.userId, serializer);
+    sse_encode_opt_list_prim_u_8_strict(self.pinnedKey, serializer);
+    sse_encode_list_prim_u_8_strict(self.presentedKey, serializer);
+    sse_encode_u_32(self.heldMessages, serializer);
+    sse_encode_list_list_prim_u_8_strict(self.heldGroupIds, serializer);
+    sse_encode_list_list_prim_u_8_strict(self.leftGroupIds, serializer);
   }
 
   @protected
@@ -4797,6 +5001,10 @@ class CryptoSessionImpl extends RustOpaque implements CryptoSession {
   );
 
   /// The user looked at the new safety number and accepts `user_id`'s changed identity key.
+  /// Messages held because they came under that key move into the message cache, so
+  /// `cached_messages` and `receive_message` return them from now on. The record of the groups
+  /// this device left because of that key is cleared too: read `pending_identity_changes` first
+  /// to know which to join again.
   Future<void> acceptChangedIdentity({
     required String userId,
     required List<int> identityKey,
@@ -4815,14 +5023,17 @@ class CryptoSessionImpl extends RustOpaque implements CryptoSession {
     keyPackages: keyPackages,
   );
 
-  /// Existing device: checks the offer against the link code's commitment and approves it.
+  /// Existing device: checks the offer against the link code's commitment and approves it, sealed
+  /// to the link code's secret.
   Future<Uint8List> approveDeviceLink({
     required List<int> offer,
     required List<int> commitment,
+    required List<int> codeSecret,
   }) => RustLib.instance.api.crateApiSessionCryptoSessionApproveDeviceLink(
     that: this,
     offer: offer,
     commitment: commitment,
+    codeSecret: codeSecret,
   );
 
   /// New device: makes its key and a link offer for an existing device to approve.
@@ -4894,6 +5105,7 @@ class CryptoSessionImpl extends RustOpaque implements CryptoSession {
         deviceId: deviceId,
       );
 
+  /// Forgets a group entirely, cached and held messages included.
   Future<void> deleteGroup({required List<int> groupId}) => RustLib.instance.api
       .crateApiSessionCryptoSessionDeleteGroup(that: this, groupId: groupId);
 
@@ -4969,11 +5181,14 @@ class CryptoSessionImpl extends RustOpaque implements CryptoSession {
       .api
       .crateApiSessionCryptoSessionImportPins(that: this, pins: pins);
 
-  Future<ExternalJoin> joinByExternalCommit({required List<int> groupInfo}) =>
-      RustLib.instance.api.crateApiSessionCryptoSessionJoinByExternalCommit(
-        that: this,
-        groupInfo: groupInfo,
-      );
+  Future<ExternalJoin> joinByExternalCommit({
+    required List<int> expectedGroupId,
+    required List<int> groupInfo,
+  }) => RustLib.instance.api.crateApiSessionCryptoSessionJoinByExternalCommit(
+    that: this,
+    expectedGroupId: expectedGroupId,
+    groupInfo: groupInfo,
+  );
 
   Future<Uint8List> joinFromWelcome({required List<int> welcome}) =>
       RustLib.instance.api.crateApiSessionCryptoSessionJoinFromWelcome(
@@ -5000,6 +5215,14 @@ class CryptoSessionImpl extends RustOpaque implements CryptoSession {
         that: this,
         groupId: groupId,
       );
+
+  /// Every changed identity key waiting for the user's decision, from the encrypted store (so
+  /// the same after a restart): per user and presented key, the pinned key, the held messages and
+  /// the groups left because of it.
+  Future<List<PendingIdentityChange>> pendingIdentityChanges() => RustLib
+      .instance
+      .api
+      .crateApiSessionCryptoSessionPendingIdentityChanges(that: this);
 
   Future<PinnedIdentity?> pinnedIdentity({required String userId}) => RustLib
       .instance
@@ -5043,6 +5266,10 @@ class CryptoSessionImpl extends RustOpaque implements CryptoSession {
     groupId: groupId,
     leafIndices: leafIndices,
   );
+
+  /// Drops the MLS state for a group about to be rejoined, keeping its cached and held messages.
+  Future<void> resetGroup({required List<int> groupId}) => RustLib.instance.api
+      .crateApiSessionCryptoSessionResetGroup(that: this, groupId: groupId);
 
   Future<DeviceIdentity> restoreIdentityWithPassphrase({
     required List<int> blob,

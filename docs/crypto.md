@@ -33,10 +33,15 @@ and the C# server.
 - **`CryptoEngine`** (`crypto_engine.dart`) is the interface the app codes against. Like
   `VoiceEngine`, nothing above `core/crypto/` names a Rust or MLS type. Errors arrive as
   `CryptoException` with a `CryptoErrorKind`:
-  - `identityChanged` is a trust decision for the user. It carries `userId` and is never resolved
-    silently.
+  - `identityChanged` is a trust decision for the user. It carries `userId`, the `pinnedKey` this
+    device trusted and the `presentedKey` they showed, and is never resolved silently. See
+    [Identity and trust](#identity-and-trust).
   - `storeLocked` means a missing or wrong store key.
   - `backupLocked` means wrong recovery words or a wrong passphrase.
+  - `resyncRequired` means the server delivered a commit claiming to be this device's own that it
+    does not hold. Its copy of the group can no longer follow the server's: `resetGroup` and rejoin.
+  - `verification` also covers a link or pairing approval the relay sealed itself, and a standalone
+    MLS proposal (refused, not stored).
 - **`MlsCryptoEngine`** (`mls_crypto_engine.dart`) implements it over the bridge and turns the
   bridge's flat structs into sealed classes (`GroupEvent` and its subclasses).
 - **`CryptoStores`** (`crypto_store.dart`) opens one engine per server:
@@ -52,8 +57,22 @@ and the C# server.
   format, each under its own key, streaming from path to path. It is separate from `CryptoEngine`
   because a file's key is its own rather than the session's. `signMessageAttestationV2` on the engine
   signs a message that carries files. See [Attachments](attachments.md).
-- **`groupIdForChannel(channelId)`**: every channel has one MLS group, whose id is the channel UUID
-  as 16 big-endian bytes, the same as the server's `Guid.ToByteArray(bigEndian: true)`.
+- **`groupIdForChannel(channelId, [generation])`**: every channel has one MLS group at a time, whose
+  id is the channel UUID as 16 big-endian bytes, the same as the server's
+  `Guid.ToByteArray(bigEndian: true)`. Generation 0 keeps that id; a replaced group (see
+  [Recovering a group](#recovering-a-group)) adds the generation as 8 big-endian bytes, 24 in all.
+  `channelIdForGroup` reads it back for either length.
+- **`joinByExternalCommit(expectedGroupId, groupInfo)`** refuses a group info for another group and a
+  group this device already holds. The join is merged when it returns (`epochAfter` is the epoch
+  already reached); if a member fails validation nothing is left behind.
+- **`resetGroup` and `deleteGroup`.** `resetGroup` drops the MLS state and any pending commit but keeps
+  the cached and held messages, the only copy of their plaintext. It is the path for a resync, a
+  rejoin and a failed join; a message id seen again after the rejoin is served from the cache.
+  `deleteGroup` also deletes that history, and only a group that is gone for this device (removed from
+  it, or the channel deleted) takes it.
+- **`pendingIdentityChanges()`** lists each `PendingIdentityChange` (user, `pinnedKey`,
+  `presentedKey`, held message count, groups held and left) from the encrypted store, so it is
+  complete after a restart.
 
 The engine never touches the network. It turns intentions into bytes to deliver, and delivered bytes
 into plaintext or group changes.
@@ -64,10 +83,17 @@ A change to a group (adding or removing devices, rotating keys) produces a `Grou
 
 1. Deliver `commit` to the group and `welcome` to the devices it adds.
 2. When the server accepts it, call `mergePendingCommit`.
-3. If the server answers that another commit won the epoch, call `discardPendingCommit`, process the
-   winning commit, and retry if the change is still needed.
+3. If the server answers that another commit won the epoch (or refuses it for permissions), call
+   `discardPendingCommit`, process the winning commit, and retry if the change is still needed.
+4. If the submit fails in a way that does not say whether the server took it (a timeout, a dropped
+   connection), keep the commit pending and settle it by syncing: what the server echoes merges, and
+   if it has nothing past this device's epoch the commit is discarded. An external join that fails
+   this way is checked against the bytes in the server's log.
 
-The server echoing back your own commit also merges it, so either path works.
+The server echoing back your own commit also merges it, so either path works. The echo is matched by
+the SHA-256 of the commit's bytes (so the server must relay them unchanged): an "own" commit that is
+not the one still pending throws `resyncRequired`. Standalone MLS proposals are refused, and this
+device's own commits clear the proposal store first.
 
 ### Why there is a message cache
 
@@ -84,6 +110,14 @@ device cannot decrypt its own ciphertext.
 - **Pinning.** Every member of every group is checked: the certificate must verify, and the identity
   key must match the one pinned for that user. A user seen for the first time is pinned there and then
   (trust on first use). A user whose key changed is refused with `identityChanged`.
+- **A changed identity key.** Their messages are held (`rd_held_messages`) until the key is accepted,
+  and a commit of theirs is refused, which leaves the group; the core records both persistently.
+  `ChannelGroups.decryptOrHeld` tells a held message from an undecryptable one,
+  `announcePendingIdentityChanges` raises the pending ones again after a restart, and
+  `acceptChangedIdentity(userId, presentedKey)` pins the key, releases the held messages and rejoins
+  the channels the change took this device out of. The UI is `identity_changes.dart`
+  (`pendingIdentityChangesProvider`), `IdentityChangeBanner` above the chat and, for each key, the
+  dialog (below).
 - **Safety numbers.** `safetyNumber` gives the 60 digits two users compare.
 - **Backup.** `sealBackupWithRecoveryKey` (24 words) or `sealBackupWithPassphrase` (Argon2id) seal
   the identity key and pins for the server to store. It cannot read them.
@@ -124,17 +158,24 @@ with it, because the server forgets session bindings when sessions end. The serv
   future — the `whenComplete` future itself — and `whenComplete` waits on a returned future, so it
   would wait on itself forever. That was the endless encryption spinner in v2.0.1: setup finished
   every step and then never reported back.
-- **Linking.** The new device shows `DeviceLinkCode` (`RDL1-<link id>-<commitment>`) as text and as a
+- **Linking.** The new device shows `DeviceLinkCode` (`RDL2-<link id>-<commitment>-<code secret>`) as text and as a
   QR code (`qr_flutter`). The user enters or scans it under Settings → Encryption → *Link a new device*
   on a device that has keys. Scanning (`mobile_scanner`, `link_code_scanner.dart`) is offered where
   `canScanCodes` says the camera can do it: iOS, Android and macOS, each with a camera permission
   string. The device refuses an offer that does not match the code, which is what stops a server
-  substituting keys, however the code was entered.
+  substituting keys, however the code was entered. The 16-byte code secret travels only in the code,
+  never to the server, and is the salt that seals the approval (approval version 2), so the new
+  device refuses (`verification`) an approval the relay sealed itself. v1 codes are refused.
 - **Server settings → Encryption** (`EncryptionSettingsSection`, for that server — see [Settings](settings.md#serversettingsscreen)):
   - this device and the identity fingerprint
   - the account's devices, each removable
   - *Link a new device*
   - *New recovery key*
+  - the changed keys waiting for a decision, each a `PendingIdentityChangeTile` that opens the dialog
+- **The identity-change dialog** (`identity_change_dialog.dart`) shows the safety number for the key
+  trusted until now beside the one for the new key, and flags the key the server lists for the user
+  when it disagrees with the one presented. "Accept new key" calls `acceptChangedIdentity`;
+  "Not now" leaves the change pending.
 - **Forgetting a server** closes its engine (`cryptoEngineProvider`) before deleting the store, because
   Windows will not delete an open file. `MlsCryptoEngine.dispose` is idempotent for that reason.
 
@@ -142,11 +183,26 @@ with it, because the server forgets session bindings when sessions end. The serv
 `DeliveryService` (every key, certificate and MLS message as protobuf `bytes`), reached as
 `ServerSession.e2eeApi`. Besides identities it covers the delivery service:
 - groups: `createGroup`, `groupState`, `submitCommit` (throws `epoch_conflict` when another commit won),
-  `putGroupInfo`, `syncGroup`, `roster`
+  `putGroupInfo`, `syncGroup(..., generation:)`, `roster`
+- generations: `groupGeneration`, `resetGroup`, `groupResets` and, for channel managers,
+  `banFromGroup` / `unbanFromGroup` / `groupBans`. The event `e2ee.group.reset` and the capability
+  `e2ee.group-reset.v1` go with them.
 - key packages: `uploadKeyPackages`, `keyPackageCount`, `claimKeyPackages`
 - Welcomes: `welcomes`, `ackWelcomes`
 
 The engine's key packages are `MLSMessage`-wrapped, which the server requires.
+
+### Recovering a group
+
+The server cannot read a commit, so it can hold one no member can process. `ChannelGroups` handles
+that in steps: a device that cannot process a logged commit or a group info resets its copy
+(keeping its cache) and tries once to rejoin from the published group info; if that fails too it
+reports the commit or group info (`resetGroup`), and the server starts a new **generation** of the
+channel's group, with a new group id, that the reporter creates and the others follow (Welcome or
+external commit, every member validated as usual). Generations are only followed forwards, the server
+resets once per generation, and `delete_channels` acts as channel manager. `_catchUp` throws
+`group_stalled` for a pass that moves nothing. Servers without `e2ee.group-reset.v1` stay in
+generation 0. See [Messages & chat](messages-chat.md#end-to-end-encryption).
 
 ## Building
 
@@ -187,10 +243,15 @@ data-carrying enums, so there is still no `build_runner` step.
   - certificates and safety numbers
   - backup sealing
   - multi-device scenarios: add, external join, removal, commit races, restart, restore from backup,
-    an impostor refused
-- **Dart** (`test/core/crypto/mls_crypto_engine_test.dart`): runs the facade against the real library.
-  Build it first with `cargo build -p raindrop_crypto_ffi` in `RaindropCrypto/`; without it, the test
-  skips itself.
+    an impostor refused, a changed key held, a commit from one refused, a standalone proposal refused
+- **Dart** (`test/core/crypto/mls_crypto_engine_test.dart`): runs the facade against the real library
+  (including the v2 link code secret, `resetGroup` versus `deleteGroup`, `joinByExternalCommit`'s
+  checks and pending identity changes). Build it first with `cargo build -p raindrop_crypto_ffi` in
+  `RaindropCrypto/`; without it, the test skips itself.
+- **`ChannelGroups`** (`test/features/security/channel_groups_test.dart`,
+  `channel_group_generations_test.dart`) and the dialog
+  (`identity_change_dialog_test.dart`): recovery, settling, generations and the safety-number dialog
+  against fakes.
 - **Dart, the camera effects' C ABI** (`test/core/video/camera_effects_test.dart`): the same library,
   but it calls the per-frame function *by address*, with padded strides in real native memory, the
   way a capture pipeline does. It is the one place the C signature the platform code copies is
@@ -220,6 +281,8 @@ data-carrying enums, so there is still no `build_runner` step.
   ```bash
   RAINDROP_TEST_SERVER=localhost:5097 flutter test test/integration
   ```
+- **Group reset against a live server** (`test/integration/e2ee_group_reset_test.dart`): a group
+  nobody can follow replaced by a new generation, and the others following it.
 - **Delivery against a live server** (`test/integration/e2ee_delivery_test.dart`). It covers:
   - group creation, and a duplicate refused
   - roster, key packages uploaded and claimed

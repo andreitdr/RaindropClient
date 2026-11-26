@@ -8,7 +8,7 @@ import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `malformed`, `session`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`, `from`, `from`, `from`
 
 /// The 60-digit safety number two users compare. Symmetric in its arguments.
 String safetyNumber({
@@ -30,6 +30,10 @@ bool backupNeedsPassphrase({required List<int> blob}) =>
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<CryptoSession>>
 abstract class CryptoSession implements RustOpaqueInterface {
   /// The user looked at the new safety number and accepts `user_id`'s changed identity key.
+  /// Messages held because they came under that key move into the message cache, so
+  /// `cached_messages` and `receive_message` return them from now on. The record of the groups
+  /// this device left because of that key is cleared too: read `pending_identity_changes` first
+  /// to know which to join again.
   Future<void> acceptChangedIdentity({
     required String userId,
     required List<int> identityKey,
@@ -40,10 +44,12 @@ abstract class CryptoSession implements RustOpaqueInterface {
     required List<Uint8List> keyPackages,
   });
 
-  /// Existing device: checks the offer against the link code's commitment and approves it.
+  /// Existing device: checks the offer against the link code's commitment and approves it, sealed
+  /// to the link code's secret.
   Future<Uint8List> approveDeviceLink({
     required List<int> offer,
     required List<int> commitment,
+    required List<int> codeSecret,
   });
 
   /// New device: makes its key and a link offer for an existing device to approve.
@@ -85,6 +91,7 @@ abstract class CryptoSession implements RustOpaqueInterface {
     required String deviceId,
   });
 
+  /// Forgets a group entirely, cached and held messages included.
   Future<void> deleteGroup({required List<int> groupId});
 
   Future<DeviceIdentity?> device();
@@ -125,7 +132,10 @@ abstract class CryptoSession implements RustOpaqueInterface {
   /// Takes pins from the vault; a user this device has already pinned is left as it is.
   Future<void> importPins({required List<PinnedIdentity> pins});
 
-  Future<ExternalJoin> joinByExternalCommit({required List<int> groupInfo});
+  Future<ExternalJoin> joinByExternalCommit({
+    required List<int> expectedGroupId,
+    required List<int> groupInfo,
+  });
 
   Future<Uint8List> joinFromWelcome({required List<int> welcome});
 
@@ -146,6 +156,11 @@ abstract class CryptoSession implements RustOpaqueInterface {
     path: path,
     key: key,
   );
+
+  /// Every changed identity key waiting for the user's decision, from the encrypted store (so
+  /// the same after a restart): per user and presented key, the pinned key, the held messages and
+  /// the groups left because of it.
+  Future<List<PendingIdentityChange>> pendingIdentityChanges();
 
   Future<PinnedIdentity?> pinnedIdentity({required String userId});
 
@@ -168,6 +183,9 @@ abstract class CryptoSession implements RustOpaqueInterface {
     required List<int> groupId,
     required List<int> leafIndices,
   });
+
+  /// Drops the MLS state for a group about to be rejoined, keeping its cached and held messages.
+  Future<void> resetGroup({required List<int> groupId});
 
   Future<DeviceIdentity> restoreIdentityWithPassphrase({
     required List<int> blob,
@@ -256,10 +274,28 @@ class CryptoFailure implements FrbException {
   /// For [`CryptoFailureKind::IdentityChanged`]: whose key changed.
   final String? userId;
 
-  const CryptoFailure({required this.kind, required this.message, this.userId});
+  /// For [`CryptoFailureKind::IdentityChanged`]: the key this device has pinned for them, if any.
+  final Uint8List? pinnedKey;
+
+  /// For [`CryptoFailureKind::IdentityChanged`]: the key they presented, which
+  /// `accept_changed_identity` takes to accept the change.
+  final Uint8List? presentedKey;
+
+  const CryptoFailure({
+    required this.kind,
+    required this.message,
+    this.userId,
+    this.pinnedKey,
+    this.presentedKey,
+  });
 
   @override
-  int get hashCode => kind.hashCode ^ message.hashCode ^ userId.hashCode;
+  int get hashCode =>
+      kind.hashCode ^
+      message.hashCode ^
+      userId.hashCode ^
+      pinnedKey.hashCode ^
+      presentedKey.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -268,7 +304,9 @@ class CryptoFailure implements FrbException {
           runtimeType == other.runtimeType &&
           kind == other.kind &&
           message == other.message &&
-          userId == other.userId;
+          userId == other.userId &&
+          pinnedKey == other.pinnedKey &&
+          presentedKey == other.presentedKey;
 }
 
 /// What kind of failure a [`CryptoFailure`] is. Dart shows different things for each: a changed
@@ -286,6 +324,10 @@ enum CryptoFailureKind {
   verification,
   notFound,
   malformed,
+
+  /// The server delivered a commit claiming to be this device's own that it does not hold: the
+  /// local group has fallen off the server's. Delete the group and rejoin it.
+  resyncRequired,
   other,
 }
 
@@ -366,15 +408,22 @@ class GroupMember {
           deviceId == other.deviceId;
 }
 
-/// A new device's link offer (upload it) and the commitment to put in the link code.
+/// A new device's link offer (upload it), and the commitment and code secret to put in the link code.
+/// The code secret is never uploaded.
 class LinkOffer {
   final Uint8List offer;
   final Uint8List commitment;
+  final Uint8List codeSecret;
 
-  const LinkOffer({required this.offer, required this.commitment});
+  const LinkOffer({
+    required this.offer,
+    required this.commitment,
+    required this.codeSecret,
+  });
 
   @override
-  int get hashCode => offer.hashCode ^ commitment.hashCode;
+  int get hashCode =>
+      offer.hashCode ^ commitment.hashCode ^ codeSecret.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -382,7 +431,8 @@ class LinkOffer {
       other is LinkOffer &&
           runtimeType == other.runtimeType &&
           offer == other.offer &&
-          commitment == other.commitment;
+          commitment == other.commitment &&
+          codeSecret == other.codeSecret;
 }
 
 class PendingCommit {
@@ -407,6 +457,57 @@ class PendingCommit {
           commit == other.commit &&
           welcome == other.welcome &&
           epochAfter == other.epochAfter;
+}
+
+/// A changed identity key waiting for the user's decision: what the confirmation screen needs, and
+/// what survives a restart. See `CryptoSession::pending_identity_changes`.
+class PendingIdentityChange {
+  final String userId;
+
+  /// The key this device has pinned for the user; `None` if it has none.
+  final Uint8List? pinnedKey;
+
+  /// The key they presented: pass it to `accept_changed_identity` to accept the change.
+  final Uint8List presentedKey;
+
+  /// How many of their messages are held under `presented_key`.
+  final int heldMessages;
+
+  /// The groups those held messages are in.
+  final List<Uint8List> heldGroupIds;
+
+  /// The groups this device is out of because of this change, to join again once it is accepted.
+  final List<Uint8List> leftGroupIds;
+
+  const PendingIdentityChange({
+    required this.userId,
+    this.pinnedKey,
+    required this.presentedKey,
+    required this.heldMessages,
+    required this.heldGroupIds,
+    required this.leftGroupIds,
+  });
+
+  @override
+  int get hashCode =>
+      userId.hashCode ^
+      pinnedKey.hashCode ^
+      presentedKey.hashCode ^
+      heldMessages.hashCode ^
+      heldGroupIds.hashCode ^
+      leftGroupIds.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PendingIdentityChange &&
+          runtimeType == other.runtimeType &&
+          userId == other.userId &&
+          pinnedKey == other.pinnedKey &&
+          presentedKey == other.presentedKey &&
+          heldMessages == other.heldMessages &&
+          heldGroupIds == other.heldGroupIds &&
+          leftGroupIds == other.leftGroupIds;
 }
 
 class PinnedIdentity {

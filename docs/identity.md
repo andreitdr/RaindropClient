@@ -108,16 +108,18 @@ Neither device needs a camera: the code can be typed.
 
 **New device** — [`PairNewDeviceScreen`](../lib/features/identity/screens/pair_new_device_screen.dart):
 the person enters one server they already use; the device makes a pairing offer, leaves it there
-(`DeviceService.StartPairing`, anonymous) and shows `RDP1-<pairing id>-<commitment>` as text and a QR
-code, polling `TakePairingApproval`.
+(`DeviceService.StartPairing`, anonymous) and shows `RDP2-<pairing id>-<commitment>-<code secret>` as text and a QR
+code, polling `TakePairingApproval`. The 16-byte code secret (base32) travels only in the code, never to
+the server; v1 codes are refused.
 
 **Existing device** — Settings → Identity & devices → Pair a device: the code is typed or scanned
 (`scanCode`, where `canScanCodes`); the offer is looked for on each server this device is signed in to;
 `readPairingOffer` checks it against the code's commitment (a relay that swapped the offer is refused
 here); the person confirms the new device's name and unlocks; a `PairingPayload` — root, recovery seed,
-authenticator secret, vault — is sealed to the offer and posted (`ApprovePairing`).
+authenticator secret, vault — is sealed to the offer and the code secret and posted (`ApprovePairing`).
 
-The new device opens it, adopts the identity, and `adoptServers` adds every server in the vault.
+The new device opens it, adopts the identity, and `adoptServers` adds every server in the vault. It
+refuses (`verification`) an approval the relay sealed itself, which cannot know the code secret.
 
 ## Recovery words
 

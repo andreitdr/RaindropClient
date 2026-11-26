@@ -57,16 +57,23 @@ void main() {
       final code = PairingCode(
         pairingId: 'ABCDEFGH23',
         commitment: Uint8List.fromList(List.generate(16, (i) => i * 7)),
+        codeSecret: Uint8List.fromList(List.generate(16, (i) => 200 - i)),
       );
       final typed = ' ${code.toString().toLowerCase().replaceAll('-', ' - ')}\n';
       final parsed = PairingCode.tryParse(typed.replaceAll(' - ', '-'))!;
       expect(parsed.pairingId, code.pairingId);
       expect(parsed.commitment, code.commitment);
+      expect(parsed.codeSecret, code.codeSecret);
     });
 
     test('anything else is not one', () {
-      expect(PairingCode.tryParse('RDL1-ABC-AAAA'), isNull);
-      expect(PairingCode.tryParse('RDP1-ABC-AAAA'), isNull);
+      final a = 'A' * 26;
+      expect(PairingCode.tryParse('RDL2-ABC-$a-$a'), isNull);
+      expect(PairingCode.tryParse('RDP2-ABC-AAAA-$a'), isNull);
+      expect(PairingCode.tryParse('RDP2-ABC-$a-AAAA'), isNull);
+      // A code without a code secret, as the first version was, is refused.
+      expect(PairingCode.tryParse('RDP2-ABC-$a'), isNull);
+      expect(PairingCode.tryParse('RDP1-ABC-$a'), isNull);
       expect(PairingCode.tryParse('hello'), isNull);
     });
   });

@@ -5,31 +5,46 @@ import '../../../core/storage/identity_store.dart';
 import '../models/vault.dart';
 
 /// What a new device shows for one of the person's paired devices to scan or
-/// type: the relay's id for the pairing, and a commitment to the offer the
-/// new device made, so a relay that swapped in an offer of its own is caught.
+/// type: the relay's id for the pairing, a commitment to the offer the new
+/// device made, so a relay that swapped in an offer of its own is caught, and
+/// a code secret the approval is sealed to, so a relay that sealed a payload
+/// of its own is caught too. The code secret never goes to the relay.
 ///
-/// Written `RDP1-<pairing id>-<commitment in base32>`; parsing forgives case,
-/// spaces and line breaks, because half the time it is typed by hand.
+/// Written `RDP2-<pairing id>-<commitment in base32>-<code secret in base32>`;
+/// parsing forgives case, spaces and line breaks, because half the time it is
+/// typed by hand.
 class PairingCode {
-  const PairingCode({required this.pairingId, required this.commitment});
+  const PairingCode({
+    required this.pairingId,
+    required this.commitment,
+    required this.codeSecret,
+  });
 
   final String pairingId;
   final Uint8List commitment;
+  final Uint8List codeSecret;
 
-  static const _prefix = 'RDP1';
+  static const _prefix = 'RDP2';
   static const _alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
   @override
-  String toString() => '$_prefix-$pairingId-${_base32(commitment)}';
+  String toString() =>
+      '$_prefix-$pairingId-${_base32(commitment)}-${_base32(codeSecret)}';
 
   static PairingCode? tryParse(String text) {
     final parts = text.toUpperCase().replaceAll(RegExp(r'\s'), '').split('-');
-    if (parts.length != 3 || parts[0] != _prefix || parts[1].isEmpty) {
+    if (parts.length != 4 || parts[0] != _prefix || parts[1].isEmpty) {
       return null;
     }
     final commitment = _unbase32(parts[2]);
     if (commitment == null || commitment.length != 16) return null;
-    return PairingCode(pairingId: parts[1], commitment: commitment);
+    final codeSecret = _unbase32(parts[3]);
+    if (codeSecret == null || codeSecret.length != 16) return null;
+    return PairingCode(
+      pairingId: parts[1],
+      commitment: commitment,
+      codeSecret: codeSecret,
+    );
   }
 
   static String _base32(Uint8List bytes) {

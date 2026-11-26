@@ -87,7 +87,11 @@ that is down or signed out too.
 - **Encryption** — [`EncryptionSettingsSection`](../lib/features/security/widgets/encryption_settings_section.dart)
   for that server: says so when the server offers no end-to-end encryption, when this device is not
   set up there yet, or when it cannot be read; otherwise this device and the account's other devices
-  there. See [Crypto](crypto.md).
+  there, and a row for each changed identity key waiting for the person's decision (opens the
+  safety-number dialog). See [Crypto](crypto.md).
+- **Members → Roles** — opens [`RolesScreen`](roles.md) for that server. Shown only when the server's
+  permission catalogue can be read, so a signed-out server or one without role management does not offer
+  it. See [Roles](roles.md).
 - **Leave this server** — *Leave server* (`showLeaveServerDialog`) and *Remove from this device*
   (`confirmRemoveServer`). Once the server is gone from `serversControllerProvider` — from here or
   anywhere else — the page closes itself.

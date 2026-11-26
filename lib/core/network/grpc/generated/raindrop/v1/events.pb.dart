@@ -290,6 +290,7 @@ enum ServerEvent_Event {
   groupReconcile,
   keyPackagesLow,
   recoveryChanged,
+  groupReset,
   plugin,
   notSet
 }
@@ -322,6 +323,7 @@ class ServerEvent extends $pb.GeneratedMessage {
     GroupReconcileEvent? groupReconcile,
     KeyPackagesLowEvent? keyPackagesLow,
     RecoveryChangedEvent? recoveryChanged,
+    GroupResetEvent? groupReset,
     PluginEvent? plugin,
   }) {
     final result = ServerEvent._();
@@ -350,6 +352,7 @@ class ServerEvent extends $pb.GeneratedMessage {
     if (groupReconcile != null) result.groupReconcile = groupReconcile;
     if (keyPackagesLow != null) result.keyPackagesLow = keyPackagesLow;
     if (recoveryChanged != null) result.recoveryChanged = recoveryChanged;
+    if (groupReset != null) result.groupReset = groupReset;
     if (plugin != null) result.plugin = plugin;
     return result;
   }
@@ -390,6 +393,7 @@ class ServerEvent extends $pb.GeneratedMessage {
     23: ServerEvent_Event.groupReconcile,
     24: ServerEvent_Event.keyPackagesLow,
     25: ServerEvent_Event.recoveryChanged,
+    26: ServerEvent_Event.groupReset,
     100: ServerEvent_Event.plugin,
     0: ServerEvent_Event.notSet
   };
@@ -423,6 +427,7 @@ class ServerEvent extends $pb.GeneratedMessage {
       23,
       24,
       25,
+      26,
       100
     ])
     ..aOM<ReadyEvent>(1, _omitFieldNames ? '' : 'ready',
@@ -475,6 +480,8 @@ class ServerEvent extends $pb.GeneratedMessage {
         subBuilder: KeyPackagesLowEvent.$_createMessage)
     ..aOM<RecoveryChangedEvent>(25, _omitFieldNames ? '' : 'recoveryChanged',
         subBuilder: RecoveryChangedEvent.$_createMessage)
+    ..aOM<GroupResetEvent>(26, _omitFieldNames ? '' : 'groupReset',
+        subBuilder: GroupResetEvent.$_createMessage)
     ..aOM<PluginEvent>(100, _omitFieldNames ? '' : 'plugin',
         subBuilder: PluginEvent.$_createMessage)
     ..hasRequiredFields = false;
@@ -526,6 +533,7 @@ class ServerEvent extends $pb.GeneratedMessage {
   @$pb.TagNumber(23)
   @$pb.TagNumber(24)
   @$pb.TagNumber(25)
+  @$pb.TagNumber(26)
   @$pb.TagNumber(100)
   ServerEvent_Event whichEvent() => _ServerEvent_EventByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(1)
@@ -553,6 +561,7 @@ class ServerEvent extends $pb.GeneratedMessage {
   @$pb.TagNumber(23)
   @$pb.TagNumber(24)
   @$pb.TagNumber(25)
+  @$pb.TagNumber(26)
   @$pb.TagNumber(100)
   void clearEvent() => $_clearField($_whichOneof(0));
 
@@ -844,17 +853,29 @@ class ServerEvent extends $pb.GeneratedMessage {
   @$pb.TagNumber(25)
   RecoveryChangedEvent ensureRecoveryChanged() => $_ensure(24);
 
+  /// A channel's group started a new generation: leave the old one and join this one.
+  @$pb.TagNumber(26)
+  GroupResetEvent get groupReset => $_getN(25);
+  @$pb.TagNumber(26)
+  set groupReset(GroupResetEvent value) => $_setField(26, value);
+  @$pb.TagNumber(26)
+  $core.bool hasGroupReset() => $_has(25);
+  @$pb.TagNumber(26)
+  void clearGroupReset() => $_clearField(26);
+  @$pb.TagNumber(26)
+  GroupResetEvent ensureGroupReset() => $_ensure(25);
+
   /// An event a server plugin publishes. Built-in events never use it.
   @$pb.TagNumber(100)
-  PluginEvent get plugin => $_getN(25);
+  PluginEvent get plugin => $_getN(26);
   @$pb.TagNumber(100)
   set plugin(PluginEvent value) => $_setField(100, value);
   @$pb.TagNumber(100)
-  $core.bool hasPlugin() => $_has(25);
+  $core.bool hasPlugin() => $_has(26);
   @$pb.TagNumber(100)
   void clearPlugin() => $_clearField(100);
   @$pb.TagNumber(100)
-  PluginEvent ensurePlugin() => $_ensure(25);
+  PluginEvent ensurePlugin() => $_ensure(26);
 }
 
 /// The stream is open. Sent first, and again after a Resubscribe; a client re-reads after it.
@@ -1720,6 +1741,76 @@ class GroupReconcileEvent extends $pb.GeneratedMessage {
   $core.bool hasChannelId() => $_has(0);
   @$pb.TagNumber(1)
   void clearChannelId() => $_clearField(1);
+}
+
+/// A channel's group was reset to a new generation.
+class GroupResetEvent extends $pb.GeneratedMessage {
+  factory GroupResetEvent({
+    $core.String? channelId,
+    $fixnum.Int64? generation,
+  }) {
+    final result = GroupResetEvent._();
+    if (channelId != null) result.channelId = channelId;
+    if (generation != null) result.generation = generation;
+    return result;
+  }
+
+  GroupResetEvent._();
+
+  factory GroupResetEvent.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GroupResetEvent()..mergeFromBuffer(data, registry);
+  factory GroupResetEvent.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GroupResetEvent()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GroupResetEvent',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'raindrop.v1'),
+      createEmptyInstance: GroupResetEvent.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'channelId')
+    ..aInt64(2, _omitFieldNames ? '' : 'generation')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GroupResetEvent clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GroupResetEvent copyWith(void Function(GroupResetEvent) updates) =>
+      super.copyWith((message) => updates(message as GroupResetEvent))
+          as GroupResetEvent;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use GroupResetEvent() / GroupResetEvent.new instead')
+  static GroupResetEvent create() => GroupResetEvent._();
+  static $pb.GeneratedMessage $_createMessage() => GroupResetEvent._();
+  @$core.override
+  GroupResetEvent createEmptyInstance() => GroupResetEvent._();
+  @$core.pragma('dart2js:noInline')
+  static GroupResetEvent getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<GroupResetEvent>(
+          GroupResetEvent.$_createMessage);
+  static GroupResetEvent? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get channelId => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set channelId($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasChannelId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearChannelId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $fixnum.Int64 get generation => $_getI64(1);
+  @$pb.TagNumber(2)
+  set generation($fixnum.Int64 value) => $_setInt64(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasGeneration() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearGeneration() => $_clearField(2);
 }
 
 /// A device is running out of key packages.

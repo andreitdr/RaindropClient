@@ -154,7 +154,11 @@ void main() {
         deviceId: phoneDeviceId,
       );
       final linkId = await api.startLink(phone.token, offer.offer);
-      final code = DeviceLinkCode(linkId: linkId, commitment: offer.commitment);
+      final code = DeviceLinkCode(
+        linkId: linkId,
+        commitment: offer.commitment,
+        codeSecret: offer.codeSecret,
+      );
       expect(await api.takeLinkApproval(phone.token, linkId), isNull);
 
       final parsed = DeviceLinkCode.tryParse(code.toString().toLowerCase())!;
@@ -162,6 +166,7 @@ void main() {
       final approval = await laptop.engine.approveDeviceLink(
         fetched,
         parsed.commitment,
+        parsed.codeSecret,
       );
       await api.approveLink(alice.token, parsed.linkId, approval);
 

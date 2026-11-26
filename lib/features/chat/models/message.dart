@@ -27,6 +27,12 @@ enum MessageSecurity {
   /// is from a newer client.
   undecryptable,
 
+  /// End-to-end encrypted and read by this device, but its sender's identity
+  /// key is no longer the one this device pinned for them, so the core keeps
+  /// it aside until the person confirms the new key. Not an error: it shows
+  /// the moment they accept.
+  awaitingIdentity,
+
   /// Posted before the server required end-to-end encryption. The server
   /// could read it.
   plaintext,
