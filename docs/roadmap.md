@@ -28,7 +28,7 @@ the **app**; the other two projects keep their own, and a gap here is often a ga
 | Live updates | `EventStream` over the server's bidirectional gRPC stream with heartbeats and resubscribe on resume, `LiveSync` merging by id, reconnect with backoff and fallback polling | [Live updates](live-updates.md) |
 | Layout | A user-arranged main view: pane order, widths, buttons in slots, hiding, saved to a local layout file, edited in a layout editor | [Layout](layout.md) |
 | Theming | Two built-in themes, custom themes from asset/JSON definitions, a theme editor | [Theming](theming.md) |
-| Settings | Theme, layout, voice & video (including camera and effects), the Background section (the desktops only so far), encryption (devices, linking, new recovery key), connected servers | [Settings](settings.md) |
+| Settings | Theme, layout, voice & video (including camera and effects), the Background section (the desktops and iOS so far), encryption (devices, linking, new recovery key), connected servers | [Settings](settings.md) |
 | Network | gRPC over one pinned connection per server (`RaindropChannel`), code generated from RaindropProto, per-service API wrappers | [Network layer](network-layer.md) |
 | Storage | `AppPrefs` for preferences, `SecureStore` for tokens and store keys, the encrypted crypto store per server | [Storage](storage.md) |
 | CI | Build on Linux/macOS/Windows and `flutter analyze` + `flutter test` on every push to `main`; desktop installers on a version tag | [CI & releases](ci-and-releases.md) |
@@ -36,10 +36,10 @@ the **app**; the other two projects keep their own, and a gap here is often a ga
 ## Not implemented yet
 
 ### Background and live calls (in progress)
-The shared foundation, macOS, Windows and Linux are done: the call session describes the whole call and
-carries its controls back, a rejoin keeps the session, a Mac shows the call in the notch or the menu bar,
-Windows in its notification-area icon and Linux in its tray, and each stays running with the window
-closed. Still to do, each on its own platform:
+The shared foundation, macOS, Windows, Linux and iOS are done: the call session describes the whole call
+and carries its controls back, a rejoin keeps the session, a Mac shows the call in the notch or the menu
+bar, Windows in its notification-area icon, Linux in its tray and an iPhone or iPad as a Live Activity,
+and each desktop stays running with the window closed. Still to do, each on its own platform:
 
 - **macOS, to verify:** none of it has been tried on a real Mac with a real call yet: hover and clicks
   on the island, close-to-hide, App Nap behaviour and external displays.
@@ -50,7 +50,12 @@ closed. Still to do, each on its own platform:
   one-off "still running" notice the first time the window is closed.
 - **Linux, follow-up:** a resident freedesktop notification with Mute and Leave, for desktops with no
   tray.
-- **iOS:** a Live Activity (Dynamic Island, Lock Screen).
+- **iOS, to verify:** the Live Activity has been built and its Lock Screen view rendered off-screen, but
+  never seen on a device or simulator with a real call: starting, updating and ending it, the iOS 17
+  buttons, the Dynamic Island, swiping the app away, and whether updates made while the app is in the
+  background are throttled. Known limits: buttons need iOS 17, an activity lasts at most 8 hours, and
+  there is no CallKit green pill. Its extension needs its own App ID (and a profile in a release
+  pipeline that signs explicitly).
 - **Android:** a CallStyle notification and Live Updates, and the Kotlin side sending `action`.
 - **macOS 27.3:** Live Activities.
 

@@ -5,9 +5,10 @@
 /// platforms ask for opposite things, so neither the call controller nor the
 /// voice engine says any of it out loud:
 ///
-/// * **iOS** needs nothing at runtime. The `audio` background mode in
-///   `ios/Runner/Info.plist` plus the `playAndRecord` audio session LiveKit
-///   already sets is the whole arrangement, so this is inert there.
+/// * **iOS** needs nothing at runtime to keep it: the `audio` background
+///   mode in `ios/Runner/Info.plist` plus the `playAndRecord` audio session
+///   LiveKit already sets is the whole arrangement. Its host shows the call
+///   as a Live Activity ([IosCallSessionHost]).
 /// * **Android** needs a foreground service of type `microphone`, with a
 ///   notification, for as long as the call lasts — see
 ///   `android/app/src/main/kotlin/.../CallForegroundService.kt`.
@@ -218,8 +219,8 @@ abstract class CallSessionHost {
   bool get showsCallOutsideApp;
 }
 
-/// The host for platforms that keep a backgrounded app running on their own
-/// (desktop), or that need only static configuration to do it (iOS).
+/// A host that does nothing: for tests, and for any platform without a host
+/// of its own (none of the ones this app targets).
 class InactiveCallSessionHost implements CallSessionHost {
   const InactiveCallSessionHost();
 
@@ -373,10 +374,34 @@ class DesktopCallSessionHost extends ChannelCallSessionHost {
   Future<bool> setScreenCapture(bool capturing) async => true;
 }
 
+/// An iPhone's or iPad's Live Activity — the Dynamic Island, and the Lock
+/// Screen on every iPhone — over the channel `ios/Runner/CallActivity.swift`
+/// answers.
+///
+/// Keeping the call alive needs nothing at runtime (the `audio` background
+/// mode does it), so this is only about showing it. iOS starts a Live Activity
+/// only for an app in the foreground; joining always is, and a rejoin keeps
+/// the session it already has, so the call never needs a new one from the
+/// background.
+class IosCallSessionHost extends ChannelCallSessionHost {
+  const IosCallSessionHost();
+
+  /// The person may do without it: Settings offers the choice, and the
+  /// description carries it ([CallSessionDescription.showOutsideApp]).
+  @override
+  bool get showsCallOutsideApp => true;
+
+  /// The broadcast extension asks the system itself; there is nothing for
+  /// the app to arrange first.
+  @override
+  Future<bool> setScreenCapture(bool capturing) async => true;
+}
+
 /// The host for the platform this build is running on. Swappable in tests and
 /// by anything that wants a call announced differently.
 CallSessionHost createCallSessionHost() => switch (currentPlatform) {
   RaindropPlatform.android => const AndroidCallSessionHost(),
+  RaindropPlatform.ios => const IosCallSessionHost(),
   RaindropPlatform.macos ||
   RaindropPlatform.windows ||
   RaindropPlatform.linux => const DesktopCallSessionHost(),

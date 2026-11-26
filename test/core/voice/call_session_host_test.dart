@@ -341,14 +341,49 @@ void main() {
     });
   });
 
+  group('IosCallSessionHost', () {
+    const host = IosCallSessionHost();
+
+    test('sends the call over the same channel as the others', () async {
+      await host.begin(
+        const CallSessionDescription(
+          title: 'In General',
+          body: 'A server',
+          showOutsideApp: false,
+        ),
+      );
+      await host.end();
+
+      expect(activity.methods, ['begin', 'end']);
+      // The Live Activity is the person's to turn off, so the choice travels
+      // with the call for the platform to honour.
+      expect((activity.calls.first.arguments as Map)['showOutsideApp'], false);
+    });
+
+    test('offers the Live Activity as something to turn off', () {
+      expect(host.showsCallOutsideApp, isTrue);
+    });
+
+    // The broadcast extension asks the system itself.
+    test('lets a capture go ahead without asking the platform', () async {
+      expect(await host.setScreenCapture(true), isTrue);
+      expect(activity.calls, isEmpty);
+    });
+  });
+
   group('createCallSessionHost', () {
-    // Android has to be told about a call to keep it alive, and a desktop to
-    // show it; iOS needs only its static configuration, for now.
+    // Every platform has a host now: Android keeps the call alive and shows
+    // it, iOS shows it as a Live Activity, and the desktops show it.
     tearDown(() => debugDefaultTargetPlatformOverride = null);
 
     test('keeps Android calls alive through the platform', () {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       expect(createCallSessionHost(), isA<AndroidCallSessionHost>());
+    });
+
+    test('shows an iPhone or iPad call as a Live Activity', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      expect(createCallSessionHost(), isA<IosCallSessionHost>());
     });
 
     test('shows the call on every desktop', () {
@@ -364,11 +399,6 @@ void main() {
           reason: '$platform',
         );
       }
-    });
-
-    test('is inactive on iOS', () {
-      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-      expect(createCallSessionHost(), isA<InactiveCallSessionHost>());
     });
   });
 }

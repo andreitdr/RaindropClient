@@ -65,17 +65,19 @@ Voice & video, reading and writing `backgroundSettingsProvider` (`BackgroundSett
 
 - **Keep running when closed** (desktops; titled per platform by `keepRunningSettingTitle` — menu bar,
   notification area or tray): closing the window hides it instead of quitting.
-- **Show calls outside the app** (phones; `showCallSettingTitle`): the call on the Lock Screen, the
-  Dynamic Island, the status bar.
+- **Show calls outside the app** (phones; `showCallSettingTitle`, "Show calls as a Live Activity" on
+  iOS): the call on the Lock Screen, the Dynamic Island, the status bar.
 
 Each row appears only where it can be honoured — the first where `AppResidency.available`, the second
 where `CallSessionHost.showsCallOutsideApp` — and the whole section, heading included, is not drawn
-where neither is. **Today that is the three desktops**, with the one switch, titled "Keep running in the menu
+where neither is. **Today that is the three desktops and iOS.** An iPhone or iPad has the one switch,
+**Show calls as a Live Activity** (Apple's own name: the Lock Screen on every iPhone, the Dynamic Island
+on those with one). The desktops have the other, titled "Keep running in the menu
 bar" on a Mac, "…in the notification area" on Windows and "…in the tray" on Linux. Its on-state subtitle
 is `keepRunningSettingDetail`: the same on Mac and Windows apart from where to quit from, and on Linux
 it adds that a desktop with no tray minimises the window instead while you are in a call. The call
-setting is not offered anywhere yet (a desktop always shows its call), and the phones still draw no
-Background section until their per-platform work lands. See
+setting is not offered on a desktop (it always shows its call) or on Android yet, which still draws no
+Background section until its per-platform work lands. See
 [Background and live calls](background-and-live-calls.md).
 
 ### Identity & devices

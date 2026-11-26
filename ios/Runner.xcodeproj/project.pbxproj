@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0568D25E793B41C1981B03C5 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D43ECB42C66708FEAA9F6105 /* Pods_RunnerTests.framework */; };
+		0EBBC3E432A8FF9060E315CF /* CallActivityIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABC2C2EFBB2DB5A8038E433A /* CallActivityIntents.swift */; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		1F7103F983D3DE76D19B9945 /* RaindropBroadcast.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 677CFAAB53252F29589FD3E3 /* RaindropBroadcast.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
@@ -17,10 +18,18 @@
 		76571DB6B25CB61C64A7A510 /* SampleHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 348C79F595D636FF4F6D7C90 /* SampleHandler.swift */; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
+		85BAFF75567863E95155D47E /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 556A88ED7FC5192179FCA31B /* Foundation.framework */; };
+		91E67393B38E1AF091F828DC /* CallActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C170EBCC874010BC0C55999 /* CallActivity.swift */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
 		A1C0FFEE2E00000100000002 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = A1C0FFEE2E00000100000001 /* AppIcon.icon */; };
+		C5847D914E0CF9573541F25B /* CallActivityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEB212D4D5CA0631A770C018 /* CallActivityViews.swift */; };
+		C8B523ACDC11482030B095F8 /* CallActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316172B34D42485A3422FF2E /* CallActivityAttributes.swift */; };
+		D4AEC596C0C8CF6C0FD6999E /* RaindropLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A3D74B13DFB437965C6A25F9 /* RaindropLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		DDE774EA290667873EC50D4F /* CallActivityIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABC2C2EFBB2DB5A8038E433A /* CallActivityIntents.swift */; };
+		EB1852567919C1F87418A642 /* RaindropLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85200A14C198C5746DC9D267 /* RaindropLiveActivity.swift */; };
+		F9C3838D4F5AEF3294EBCAC2 /* CallActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316172B34D42485A3422FF2E /* CallActivityAttributes.swift */; };
 		FEBCB4D023CE413B12E48F80 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 78C41FB758AE890285B15159 /* Pods_Runner.framework */; };
 /* End PBXBuildFile section */
 
@@ -39,6 +48,13 @@
 			remoteGlobalIDString = 18E6A342756FD867A855A955;
 			remoteInfo = RaindropBroadcast;
 		};
+		9B5D087CC501954EC42242D3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 83FA2A48D028C3C7F7E76302;
+			remoteInfo = RaindropLiveActivity;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -49,6 +65,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				1F7103F983D3DE76D19B9945 /* RaindropBroadcast.appex in Embed Foundation Extensions */,
+				D4AEC596C0C8CF6C0FD6999E /* RaindropLiveActivity.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -67,24 +84,29 @@
 
 /* Begin PBXFileReference section */
 		0104E7C1CC363D43DE99964B /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
+		09284F118AB9E8A1377A12E7 /* LiveActivity.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = LiveActivity.xcconfig; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
+		316172B34D42485A3422FF2E /* CallActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CallActivityAttributes.swift; sourceTree = "<group>"; };
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		348C79F595D636FF4F6D7C90 /* SampleHandler.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SampleHandler.swift; sourceTree = "<group>"; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
+		4C170EBCC874010BC0C55999 /* CallActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CallActivity.swift; sourceTree = "<group>"; };
 		4F2B27E46166709F8A3F0174 /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		554927F9B685F9803F9C36F8 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		556A88ED7FC5192179FCA31B /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		60EB117A389C6E2F05221AFC /* RaindropBroadcast.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = RaindropBroadcast.entitlements; sourceTree = "<group>"; };
 		677CFAAB53252F29589FD3E3 /* RaindropBroadcast.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RaindropBroadcast.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		6CBA71E0F12CA8A95B793F97 /* Runner.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = Runner.entitlements; sourceTree = "<group>"; };
+		7028BF3AFF367B62101D52FC /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		78C41FB758AE890285B15159 /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		78E0A7A72DC9AD7400C4905E /* FlutterGeneratedPluginSwiftPackage */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = FlutterGeneratedPluginSwiftPackage; path = Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
+		85200A14C198C5746DC9D267 /* RaindropLiveActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RaindropLiveActivity.swift; sourceTree = "<group>"; };
 		8F434B47A4DCA85DEFCB9789 /* Pods-RunnerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.debug.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.debug.xcconfig"; sourceTree = "<group>"; };
 		8FA13F0AD9463D0D094DCCB3 /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
@@ -95,10 +117,13 @@
 		97C147001CF9000F007C117D /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A1C0FFEE2E00000100000001 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		A3D74B13DFB437965C6A25F9 /* RaindropLiveActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RaindropLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A9B94C46E95D5983C5863747 /* Broadcast.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = Broadcast.xcconfig; sourceTree = "<group>"; };
+		ABC2C2EFBB2DB5A8038E433A /* CallActivityIntents.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CallActivityIntents.swift; sourceTree = "<group>"; };
 		BD5F4F12703D2F6C819FC928 /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
 		C5C1F922B7031E075FFFD07B /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		D43ECB42C66708FEAA9F6105 /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		DEB212D4D5CA0631A770C018 /* CallActivityViews.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CallActivityViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -115,6 +140,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				0568D25E793B41C1981B03C5 /* Pods_RunnerTests.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		58D644032ED00A114D156293 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				85BAFF75567863E95155D47E /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -182,6 +215,7 @@
 				F554953A93391E22445CFA44 /* Pods */,
 				86CD6EC19A0C04F699988B1D /* Frameworks */,
 				6546A6C7CB398343BDDD5CAE /* RaindropBroadcast */,
+				C6DBE1757DAD53D2D9AC37A2 /* RaindropLiveActivity */,
 			);
 			sourceTree = "<group>";
 		};
@@ -191,6 +225,7 @@
 				97C146EE1CF9000F007C117D /* Runner.app */,
 				331C8081294A63A400263BE5 /* RunnerTests.xctest */,
 				677CFAAB53252F29589FD3E3 /* RaindropBroadcast.appex */,
+				A3D74B13DFB437965C6A25F9 /* RaindropLiveActivity.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -209,6 +244,7 @@
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 				6CBA71E0F12CA8A95B793F97 /* Runner.entitlements */,
+				4C170EBCC874010BC0C55999 /* CallActivity.swift */,
 			);
 			path = Runner;
 			sourceTree = "<group>";
@@ -219,6 +255,20 @@
 				556A88ED7FC5192179FCA31B /* Foundation.framework */,
 			);
 			name = iOS;
+			sourceTree = "<group>";
+		};
+		C6DBE1757DAD53D2D9AC37A2 /* RaindropLiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				316172B34D42485A3422FF2E /* CallActivityAttributes.swift */,
+				ABC2C2EFBB2DB5A8038E433A /* CallActivityIntents.swift */,
+				DEB212D4D5CA0631A770C018 /* CallActivityViews.swift */,
+				85200A14C198C5746DC9D267 /* RaindropLiveActivity.swift */,
+				7028BF3AFF367B62101D52FC /* Info.plist */,
+				09284F118AB9E8A1377A12E7 /* LiveActivity.xcconfig */,
+			);
+			name = RaindropLiveActivity;
+			path = RaindropLiveActivity;
 			sourceTree = "<group>";
 		};
 		F554953A93391E22445CFA44 /* Pods */ = {
@@ -274,6 +324,23 @@
 			productReference = 331C8081294A63A400263BE5 /* RunnerTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		83FA2A48D028C3C7F7E76302 /* RaindropLiveActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A7184A1ECB77E9695E52194F /* Build configuration list for PBXNativeTarget "RaindropLiveActivity" */;
+			buildPhases = (
+				E09E6C1E7C75502B591AA113 /* Sources */,
+				58D644032ED00A114D156293 /* Frameworks */,
+				60A5486459635B7A0F347051 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RaindropLiveActivity;
+			productName = RaindropLiveActivity;
+			productReference = A3D74B13DFB437965C6A25F9 /* RaindropLiveActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		97C146ED1CF9000F007C117D /* Runner */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 97C147051CF9000F007C117D /* Build configuration list for PBXNativeTarget "Runner" */;
@@ -292,6 +359,7 @@
 			);
 			dependencies = (
 				F678F90D7911FF27E2B60AE1 /* PBXTargetDependency */,
+				2DF9B1EC8C551F48435E6BD9 /* PBXTargetDependency */,
 			);
 			name = Runner;
 			packageProductDependencies = (
@@ -340,12 +408,20 @@
 				97C146ED1CF9000F007C117D /* Runner */,
 				331C8080294A63A400263BE5 /* RunnerTests */,
 				18E6A342756FD867A855A955 /* RaindropBroadcast */,
+				83FA2A48D028C3C7F7E76302 /* RaindropLiveActivity */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		331C807F294A63A400263BE5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		60A5486459635B7A0F347051 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -492,12 +568,32 @@
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
+				C8B523ACDC11482030B095F8 /* CallActivityAttributes.swift in Sources */,
+				0EBBC3E432A8FF9060E315CF /* CallActivityIntents.swift in Sources */,
+				91E67393B38E1AF091F828DC /* CallActivity.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E09E6C1E7C75502B591AA113 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F9C3838D4F5AEF3294EBCAC2 /* CallActivityAttributes.swift in Sources */,
+				DDE774EA290667873EC50D4F /* CallActivityIntents.swift in Sources */,
+				C5847D914E0CF9573541F25B /* CallActivityViews.swift in Sources */,
+				EB1852567919C1F87418A642 /* RaindropLiveActivity.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		2DF9B1EC8C551F48435E6BD9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = RaindropLiveActivity;
+			target = 83FA2A48D028C3C7F7E76302 /* RaindropLiveActivity */;
+			targetProxy = 9B5D087CC501954EC42242D3 /* PBXContainerItemProxy */;
+		};
 		331C8086294A63A400263BE5 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 97C146ED1CF9000F007C117D /* Runner */;
@@ -558,6 +654,32 @@
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
+		};
+		1B58C1CA64C912BD14C8351C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 09284F118AB9E8A1377A12E7 /* LiveActivity.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = C25KY2B8VW;
+				ENABLE_BITCODE = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = RaindropLiveActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.raindrop.raindropClient.RaindropLiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
 		};
 		249021D3217E4FDB00AE95B9 /* Profile */ = {
 			isa = XCBuildConfiguration;
@@ -626,6 +748,13 @@
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-weak_framework",
+					ActivityKit,
+					"-weak_framework",
+					AppIntents,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.raindrop.raindropClient;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -714,6 +843,33 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
+		};
+		6D282A6F301BB0BA9B99691C /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 09284F118AB9E8A1377A12E7 /* LiveActivity.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = C25KY2B8VW;
+				ENABLE_BITCODE = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = RaindropLiveActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.raindrop.raindropClient.RaindropLiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
 		};
 		97C147031CF9000F007C117D /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -843,6 +999,13 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-weak_framework",
+					ActivityKit,
+					"-weak_framework",
+					AppIntents,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.raindrop.raindropClient;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
@@ -867,6 +1030,13 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-weak_framework",
+					ActivityKit,
+					"-weak_framework",
+					AppIntents,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.raindrop.raindropClient;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
@@ -874,6 +1044,33 @@
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
+		};
+		EBC1CB84091A5DB3BBAE1E21 /* Profile */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 09284F118AB9E8A1377A12E7 /* LiveActivity.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = C25KY2B8VW;
+				ENABLE_BITCODE = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = RaindropLiveActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.raindrop.raindropClient.RaindropLiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Profile;
 		};
 		F84AF2D042BD58E6B9A4CF5D /* Profile */ = {
 			isa = XCBuildConfiguration;
@@ -942,6 +1139,16 @@
 				97C147061CF9000F007C117D /* Debug */,
 				97C147071CF9000F007C117D /* Release */,
 				249021D4217E4FDB00AE95B9 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A7184A1ECB77E9695E52194F /* Build configuration list for PBXNativeTarget "RaindropLiveActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6D282A6F301BB0BA9B99691C /* Release */,
+				1B58C1CA64C912BD14C8351C /* Debug */,
+				EBC1CB84091A5DB3BBAE1E21 /* Profile */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

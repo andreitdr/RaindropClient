@@ -24,14 +24,15 @@ it out loud — both go through [`CallSessionHost`](../lib/core/voice/call_sessi
 
 | | What it takes | Where |
 |---|---|---|
-| **iOS** | The `audio` background mode, plus an active `playAndRecord` audio session — which LiveKit holds for the length of the call. Nothing at runtime. | `ios/Runner/Info.plist` |
+| **iOS** | The `audio` background mode, plus an active `playAndRecord` audio session — which LiveKit holds for the length of the call. Nothing at runtime to keep it running; at runtime the host only *shows* the call, as a Live Activity (`IosCallSessionHost`). | `ios/Runner/Info.plist`, `ios/Runner/CallActivity.swift`, `ios/RaindropLiveActivity/` |
 | **Android** | A foreground service of type `microphone`, with a notification, for as long as the call lasts. | `android/app/src/main/kotlin/…/CallForegroundService.kt` |
 | **Desktop** | Nothing. Windows are not suspended for being in the background. | — |
 
 `CallSessionHost` is the seam between those. `VoiceCallController` begins a session once the media
 connection is actually up — so a join that failed never leaves a notification behind — and ends it in
-`_teardown`, however the call ended. Platforms with nothing to do get `InactiveCallSessionHost`, so
-there is no branch at the call site. The host is behind `callSessionHostProvider`, which is what to
+`_teardown`, however the call ended. Every platform now has a real host (`AndroidCallSessionHost`,
+`IosCallSessionHost`, `DesktopCallSessionHost`); `InactiveCallSessionHost` is left for tests and any
+platform not listed, so there is no branch at the call site. The host is behind `callSessionHostProvider`, which is what to
 override to announce a call differently.
 
 ### Showing the call, and the controls coming back
@@ -57,14 +58,29 @@ it again only when it really changed.
 The way back is `CallSessionHost.actions`, a stream of `CallSessionAction` (`toggleMute`,
 `toggleDeafen`, `leave`) for the controls pressed on the surface outside the app. The controller applies
 each as the call bar's button would, so a mute pressed while the microphone has failed retries it. The
-channel hosts (`ChannelCallSessionHost`, which Android's and macOS's extend) relay the channel method
-`action`, whose argument is the action's name; a name this build does not know is ignored. **The Kotlin
-side does not send it yet**; macOS does.
+channel hosts (`ChannelCallSessionHost`, which Android's, iOS's and the desktops' extend) relay the
+channel method `action`, whose argument is the action's name; a name this build does not know is
+ignored. **The Kotlin side does not send it yet**; the desktops and iOS do.
 
 `CallSessionHost.showsCallOutsideApp` says whether the host shows the call somewhere the person may do
-without, which is what puts the setting in [Settings](settings.md#background). It is false on every
-host today (macOS always shows its call, so it is not offered there either): on Android the ongoing notification is the price of the call running at all, so it is not
-offered as something to turn off yet.
+without, which is what puts the setting in [Settings](settings.md#background). It is true on iOS only,
+where the call is a Live Activity and the setting reads **Show calls as a Live Activity**. It is false on
+the desktops, which always show their call, and on Android, where the ongoing notification is the price
+of the call running at all, so it is not offered as something to turn off yet.
+
+### The iOS Live Activity
+
+On an iPhone or iPad the call is shown as a Live Activity: the Lock Screen on every iPhone, the Dynamic
+Island on those that have one. `IosCallSessionHost` sends the description to `ios/Runner/CallActivity.swift`,
+which starts, updates and ends the activity (local only, `pushType: nil`, so no push server is involved)
+and relays the Mute, Deafen and Leave buttons back as `action`; `ios/RaindropLiveActivity/` draws it. What
+a person sees, how it is built and what it cannot do are in
+[Background and live calls](background-and-live-calls.md#on-an-iphone-or-ipad). In short: iOS starts an
+activity only for an app in the foreground (met, because joining is in the foreground and a rejoin keeps
+the session open); updates made while the app is backgrounded may be throttled, though the timer is
+drawn by the system and is not affected; an activity lasts at most 8 hours; the buttons need iOS 17; and
+swiping the app away ends the call and its activity. **Not yet seen with a real call on a device or
+simulator.**
 
 Two rules the Android side follows, both because the call's real state lives in Dart:
 
@@ -183,6 +199,15 @@ which compiles and embeds the extension without any of that.
 **It does not run in the Simulator.** ReplayKit broadcasts need a real device, so this is one part of
 the app that can only be tried on one.
 
+**A second extension.** `ios/RaindropLiveActivity` is a widget extension (`com.apple.widgetkit-extension`)
+for the call's [Live Activity](background-and-live-calls.md#on-an-iphone-or-ipad), added by
+`tool/ios/add_live_activity_extension.rb` and embedded in the same *Embed Foundation Extensions* phase.
+It is `com.raindrop.raindropClient.RaindropLiveActivity`, under the same team, and needs its own App ID
+on the developer account — but no App Group or other capability. Automatic signing registers it; a
+release pipeline with explicit profiles needs a profile for it too, so three in all. Its deployment
+target is 16.2 while the app stays at 15.0 (Runner weak-links ActivityKit and AppIntents), and CI's
+`--no-codesign` builds compile and embed it like the other.
+
 ## Building
 
 Both build locally (an Android emulator or device, and an iPhone — see [On a physical iPhone](#on-a-physical-iphone)),
@@ -276,7 +301,12 @@ one, not to recite the API.
   message metadata passing through Google or Apple, which is at odds with a server whose whole point
   is that it is yours — or a socket the OS will not let an app keep. See
   [the roadmap](roadmap.md).
-- **No CallKit or ConnectionService**: a call is started from inside the app, and never rings.
+- **No CallKit or ConnectionService**: a call is started from inside the app, and never rings. On an
+  iPhone that also means no green call pill in the status bar; the system shows its own microphone
+  indicator.
+- **Android shows no promoted call yet** (CallStyle, Live Updates, the Now Bar): only the ongoing
+  notification. An iPhone's call is a Live Activity, but its buttons need iOS 17 and it has not yet been
+  seen with a real call. See [Background and live calls](background-and-live-calls.md).
 - **Sixty frames a second from an iPhone or iPad's screen**, and **the sound of a shared screen** on
   either system. See [Voice](voice.md#on-a-phone).
 - **Push-to-talk** is missing on every platform, not only here.

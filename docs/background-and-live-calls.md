@@ -4,11 +4,12 @@ Two wishes with one design: **show the ongoing call outside the app**, and **kee
 background**. A person in a call who switches to another app, locks the phone or closes the window
 should still see the call, know whether they are muted, and be able to mute or hang up from there.
 
-This is built in phases. **Phase 1, the shared foundation, phase 2, macOS, and phase 3, Windows and
-Linux, are done; the phones are not.** So today the three desktops show the call outside the app and stay
-running with their window closed, and no phone draws the call. Everything marked *not built yet* below is
-a plan, not behaviour. **Windows and Linux have been compiled in part but never built or run**; see their
-sections.
+This is built in phases. **Phase 1, the shared foundation, phase 2, macOS, phase 3, Windows and Linux,
+and phase 4, the iPhone and iPad Live Activity, are done; Android is not.** So today the three desktops
+show the call outside the app and stay running with their window closed, an iPhone or iPad shows it as a
+Live Activity, and no Android phone draws it beyond its ongoing notification. Everything marked *not
+built yet* below is a plan, not behaviour. **Windows and Linux have been compiled in part but never built
+or run, and the Live Activity has never been seen with a real call**; see their sections.
 
 ## On a Mac
 
@@ -188,6 +189,113 @@ tray_manager 0.8, the line compatible with this Flutter (3.47), depends on `nati
 whose Dart build hook compiles a roughly 360-file C++ library for every target the app builds, Android
 and iOS included. So the tray is written in the runners, like the Mac's, and no Dart package was added.
 
+## On an iPhone or iPad
+
+### What a person sees
+
+- **The call is a Live Activity** while it lasts, on the Lock Screen and, on an iPhone with a Dynamic
+  Island, in the island. On the Lock Screen (and in Notification Center and StandBy) it is a banner with
+  the microphone (green, or red when nobody can hear you), the call's title and server, the
+  participant count and screen-share and lock icons, the call's timer (a reconnect symbol while
+  reconnecting), and Mute, Deafen and Leave buttons. In the island it is
+  compact (the microphone on the left, the timer on the right, held to a narrow width) or, when
+  pressed, expanded with the same things; minimal (another app's activity has the island too) it is the
+  microphone alone. Tapping it opens Raindrop.
+- **Leaving it running is the point.** The call keeps going with the app off screen because of the
+  `audio` background mode, as before; the activity is only how it shows. Muting, deafening or leaving
+  from it does what the call bar's buttons do.
+- **Swiping the app away ends the call** and its activity, as quitting does elsewhere.
+- **It can be turned off.** **Show calls as a Live Activity** in [Device settings](settings.md#background)
+  (on by default; Apple's own name, which covers the Lock Screen on every iPhone and the island on those
+  with one). Turning off Live Activities for Raindrop, or for every app, in the system's Settings does
+  the same: the call goes on without one.
+- **While the app is locked** the activity says only "In a voice call" and names nothing else.
+
+Limits worth knowing, which are Apple's:
+
+- **Buttons need iOS 17.** On iOS 16.2 to 16.x the activity is shown but has no buttons, and a tap opens
+  the app.
+- **An iPhone without a Dynamic Island** shows the Lock Screen, Notification Center and StandBy
+  presentation. Nothing can be drawn in the notch itself.
+- **A Live Activity lasts at most 8 hours active**, then ends, and may stay on the Lock Screen for up to
+  4 more.
+- **Updates sent while the app is in the background may be throttled** by iOS. An unconfirmed developer
+  report says local updates stop after about 30 seconds even with background audio. The timer is not
+  affected, because the system draws it from `connectedAt`, but a mute or a change in who is in the call
+  made while the app is off screen may show late.
+- **CallKit is still not used**, so there is no green call pill in the status bar; the system shows its
+  own microphone indicator.
+
+**Not yet seen on a device or simulator with a real call.** What has been checked is that
+`flutter build ios --simulator --debug` is clean (Runner and the extension both treat Swift warnings as
+errors), that the extension is embedded in `Runner.app/PlugIns`, that the app's AppIntents metadata
+contains the three intents, that ActivityKit and AppIntents are weak-linked, and that the Lock Screen view
+renders correctly off-screen (normal, muted, locked). Starting, updating and ending the activity, the
+buttons, the island, and swiping the app away are untested.
+
+### How it is built
+
+Dart side: `IosCallSessionHost` (in `call_session_host.dart`) extends `ChannelCallSessionHost`.
+`showsCallOutsideApp` is true, which is what puts the setting in Settings on iOS, and `setScreenCapture`
+answers true without asking (the broadcast extension asks the system itself). `createCallSessionHost`
+returns it on iOS, so every platform now has a real host; `InactiveCallSessionHost` is left for tests and
+any platform not listed. `showCallSettingTitle` (in `platform_info.dart`) is "Show calls as a Live
+Activity" on iOS.
+
+Native side, in `ios/Runner/`:
+
+- `CallActivity.swift`: a `@MainActor` singleton over `raindrop/call_session`. `begin` and `update`
+  start or update the activity, but only when `showOutsideApp` is set and
+  `ActivityAuthorizationInfo().areActivitiesEnabled`; with `showOutsideApp` off an update ends it. It is
+  requested with `pushType: nil`, so no APNs or push server is involved. `end` ends it immediately.
+  Updates are chained, each waiting for the one before, so a quick mute and unmute cannot arrive out of
+  order. Activities left over from a run that was killed are ended when it attaches at launch.
+  `endAllBeforeExit()` ends every call activity on termination, waiting at most a second. Everything
+  here is guarded by iOS 16.2.
+- `AppDelegate.swift`: attaches `CallActivity` from `didInitializeImplicitFlutterEngine`, through a
+  plugin registrar's messenger, and calls `endAllBeforeExit` from `applicationWillTerminate`. Swiping
+  the app away is Dart's existing `onDetach` to `leaveNow`, so the call and its activity both end.
+  `applicationWillTerminate` is not guaranteed when the app is killed from the background, which is why
+  the leftovers are also ended on the next launch.
+- `Info.plist`: `NSSupportsLiveActivities` is YES.
+
+`ios/RaindropLiveActivity/` is a widget extension target (`com.apple.widgetkit-extension`), embedded in
+the app:
+
+- `CallActivityAttributes.swift` (compiled into both targets): the `ContentState`, which mirrors the Dart
+  description (less `showOutsideApp`). Nothing ticks; the timer is `Text(timerInterval:)` from
+  `connectedAt`, so the activity is updated only when the call changes.
+- `CallActivityIntents.swift` (both targets): `CallActivityRelay` and three iOS 17 `LiveActivityIntent`s,
+  mute, deafen and leave. An intent runs in the app's process whichever process drew its button, so the
+  app sets the relay and sends `action` to Dart; in the extension it is never reached.
+- `CallActivityViews.swift`: plain SwiftUI views of the state (the microphone, the timer, the summary,
+  the controls, the Lock Screen view). They use no ActivityKit, which is what let them be rendered
+  off-screen for checking.
+- `RaindropLiveActivity.swift`: the `WidgetBundle` and the `ActivityConfiguration`: the Lock Screen
+  banner, the island's expanded regions, the compact microphone and timer (the timer held to 44pt, since
+  a running timer otherwise takes as much room as its longest reading), and the minimal microphone.
+- `LiveActivity.xcconfig`: only Flutter's generated variables, for the two version numbers, plus
+  `Flutter/Warnings.xcconfig`. Deliberately not the Pods settings, which would link every plugin into the
+  extension.
+
+The extension's deployment target is 16.2; the app stays at 15.0. So Runner weak-links ActivityKit and
+AppIntents (`OTHER_LDFLAGS` keeps `$(inherited)`) and still launches on iOS 15.
+`tool/ios/add_live_activity_extension.rb` added the target to `Runner.xcodeproj` (the shared files in both
+targets, the extension in the existing *Embed Foundation Extensions* phase, before *Thin Binary*). It is
+the record of what it needed; run it again if the project is regenerated.
+
+iOS starts an activity only for an app in the foreground. That is met because joining happens in the
+foreground and a rejoin keeps the session open (see below), so a dropped call never needs a new one
+from the background. An activity that goes away without the app ending it — the person swiped it off
+the Lock Screen, or iOS ended it after its 8 hours — stays away until the next call
+(`CallActivity.dismissed`): bringing it back on the next mute would overrule the person, and from the
+background iOS would refuse anyway.
+
+**Signing.** The extension is `com.raindrop.raindropClient.RaindropLiveActivity`, under the same team. It
+needs its own App ID on the developer account; no App Group or other capability is needed. Automatic
+signing registers it; a release pipeline with explicit profiles needs a profile for it. CI builds
+`--no-codesign`. See [Android and iOS](mobile.md#the-ios-extension).
+
 ## What exists on every platform
 
 ### The call, described
@@ -216,7 +324,7 @@ app lock, the background settings, the call's roster and the channel list, and a
 found by name; a name the build does not know is ignored. The controller applies each as the call bar's
 matching button does, so mute while the microphone has failed retries it. The channel hosts
 (`ChannelCallSessionHost`) relay a channel method `action` whose argument is the action's name. The
-desktop runners send it; the Kotlin side does not yet.
+desktop runners and iOS (`CallActivity.swift`) send it; the Kotlin side does not yet.
 
 ### A rejoin keeps the session
 
@@ -250,25 +358,25 @@ default) is persisted in `AppPrefs` under `settings.background` by `backgroundSe
 at startup and on every change, and opens `/settings` on the icon's command only while the app is
 unlocked. `BackgroundSettingsSection` ([Settings](settings.md#background)) shows each row only where
 the residency is `available` or the host `showsCallOutsideApp`, and the whole section nowhere else.
-Today only the residency is available, on the three desktops, so the section shows there and nowhere
-else.
-`CallSessionHost.showsCallOutsideApp` is false even on the desktops, where the call always shows, and on
-Android: its ongoing notification is the price of the call running, so it is not offered as something to
-turn off until there is a promoted version to turn off.
+Today the residency is available on the three desktops and the host shows its call outside the app on
+iOS, so the section shows on those four and nowhere else (on iOS it has the one row, **Show calls as a
+Live Activity**).
+`CallSessionHost.showsCallOutsideApp` is true on iOS only. It is false on the desktops, where the call
+always shows, and on Android: its ongoing notification is the price of the call running, so it is not
+offered as something to turn off until there is a promoted version to turn off.
 
 Tests: `test/core/voice/call_session_host_test.dart` (the `DesktopCallSessionHost` group, and
-`createCallSessionHost` on all three desktops),
+the `IosCallSessionHost` group, and `createCallSessionHost` on iOS and all three desktops),
 `test/core/platform/app_residency_test.dart` (`DesktopAppResidency`, and `createAppResidency` per
 platform), `test/features/voice/call_description_test.dart` and
 `test/features/settings/background_settings_test.dart`.
 
 ## The plan per platform (not built yet)
 
-The desktops are built (see above); the rest is still to do.
+The desktops and iOS are built (see above); the rest is still to do.
 
 | Platform | Showing the call | Staying running |
 |---|---|---|
-| **iOS** | A Live Activity: the Dynamic Island and the Lock Screen | Already covered by the `audio` background mode |
 | **Android** | A CallStyle notification and Live Updates (the status bar chip, the Now Bar) on top of the existing foreground service; the Kotlin side sending `action` | Already covered by the foreground service |
 | **macOS 27.3** | Live Activities | — |
 

@@ -39,7 +39,7 @@ compilation error or a warning: `release.yml` runs this workflow first and packa
 |---|---|
 | Dart | `flutter analyze --fatal-infos --fatal-warnings` in the Linux job (infos — lints, deprecations — fail too) |
 | Rust (the crypto core and camera effects) | `RaindropCrypto`'s `[workspace.lints.rust] warnings = "deny"`, which holds inside cargokit's build for all five targets |
-| Swift, iOS (Runner, RaindropBroadcast) | `SWIFT_TREAT_WARNINGS_AS_ERRORS` in [`ios/Flutter/Warnings.xcconfig`](../ios/Flutter/Warnings.xcconfig), included by `Debug`/`Release.xcconfig` and `Broadcast.xcconfig` |
+| Swift, iOS (Runner, RaindropBroadcast, RaindropLiveActivity) | `SWIFT_TREAT_WARNINGS_AS_ERRORS` in [`ios/Flutter/Warnings.xcconfig`](../ios/Flutter/Warnings.xcconfig), included by `Debug`/`Release.xcconfig`, `Broadcast.xcconfig` and `LiveActivity.xcconfig` |
 | Swift, macOS (Runner) | the same in [`macos/Runner/Configs/Warnings.xcconfig`](../macos/Runner/Configs/Warnings.xcconfig) |
 | Objective-C, camera-effects plugin | `.treatAllWarnings(as: .error)` in both `Package.swift` files (tools 6.2, hence the newest stable Xcode on the Apple runners) |
 | Kotlin / Java, Android app | `allWarningsAsErrors` and `-Xlint:all -Werror` in `android/app/build.gradle.kts` |

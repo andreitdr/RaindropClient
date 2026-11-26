@@ -214,9 +214,11 @@ String get keepRunningSettingDetail => switch (currentPlatform) {
 };
 
 /// What Device settings calls showing a call outside the app — named for
-/// where this phone shows it.
+/// where this phone shows it. On iOS that is Apple's own name for it, which
+/// covers the Lock Screen on every iPhone and the Dynamic Island on those
+/// that have one.
 String get showCallSettingTitle => switch (currentPlatform) {
-  RaindropPlatform.ios => 'Show calls in the Dynamic Island',
+  RaindropPlatform.ios => 'Show calls as a Live Activity',
   RaindropPlatform.android => 'Show calls in the status bar',
   _ => 'Show calls outside the app',
 };

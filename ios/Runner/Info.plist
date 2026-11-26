@@ -8,6 +8,10 @@
 	     only to an app that declares it here and keeps an active audio session,
 	     which LiveKit does (playAndRecord) for as long as the call lasts. Without
 	     this the call is cut the moment the app is backgrounded. -->
+	<!-- A call shows as a Live Activity: the Dynamic Island, and the Lock
+	     Screen on every iPhone (RaindropLiveActivity, Runner/CallActivity.swift). -->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
