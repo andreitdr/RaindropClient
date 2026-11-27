@@ -277,7 +277,7 @@ the app:
   banner, the island's expanded regions, the compact microphone and timer (the timer held to 44pt, since
   a running timer otherwise takes as much room as its longest reading), and the minimal microphone.
 - `LiveActivity.xcconfig`: only Flutter's generated variables, for the two version numbers, plus
-  `Flutter/Warnings.xcconfig`. Deliberately not the Pods settings, which would link every plugin into the
+  `Flutter/Warnings.xcconfig`. Deliberately not Flutter's `Debug`/`Release.xcconfig`, which would link every plugin into the
   extension.
 
 The extension's deployment target is 16.2; the app stays at 15.0. So Runner weak-links ActivityKit and

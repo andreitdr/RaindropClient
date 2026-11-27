@@ -1,34 +1,16 @@
 name: raindrop_crypto_ffi
-description: "Builds and links the raindrop_crypto_ffi Rust library (RaindropCrypto/) into the app."
+description: "Builds the raindrop_crypto_ffi Rust library (RaindropCrypto/) and bundles it into the app, through a Dart build hook."
 version: 0.0.1
 publish_to: none
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
-  flutter: '>=3.3.0'
+  sdk: ^3.10.0
 
+# No Flutter plugin and no native project of its own: `hook/build.dart` runs cargo during
+# `flutter build` / `flutter run` / `flutter test` on every platform, and Flutter bundles the library
+# it reports. That is what lets iOS and macOS build without CocoaPods.
 dependencies:
-  flutter:
-    sdk: flutter
-  plugin_platform_interface: ^2.0.2
-
-dev_dependencies:
-  ffi: ^2.0.2
-  ffigen: ^20.1.1
-  flutter_test:
-    sdk: flutter
-  flutter_lints: ^2.0.0
-
-flutter:
-  plugin:
-    platforms:
-      android:
-        ffiPlugin: true
-      ios:
-        ffiPlugin: true
-      linux:
-        ffiPlugin: true
-      macos:
-        ffiPlugin: true
-      windows:
-        ffiPlugin: true
+  code_assets: ^2.2.0
+  # Same version as the flutter_rust_bridge package, the Rust crate and the codegen.
+  flutter_rust_bridge_hooks: 2.13.0
+  hooks: ^2.2.0

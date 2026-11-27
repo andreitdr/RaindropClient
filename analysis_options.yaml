@@ -8,7 +8,8 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
-    # Vendored build glue (cargokit) with its own dependencies.
+    # Patched copies of third-party plugins (each with a PATCHED.md), and our own
+    # packages, which have their own pubspecs and are analysed from their folders.
     - native/**
     # Generated from RaindropProto by tool/gen_protos.sh; never edited by hand.
     - lib/core/network/grpc/generated/**

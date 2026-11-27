@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   connectivity_plus
   desktop_drop
+  fc_native_video_thumbnail
   file_selector_windows
   flutter_secure_storage_windows
   flutter_webrtc
@@ -16,7 +17,6 @@ list(APPEND FLUTTER_PLUGIN_LIST
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
   jni
-  raindrop_crypto_ffi
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)

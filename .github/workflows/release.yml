@@ -94,7 +94,6 @@ jobs:
       - name: Android build dependencies
         if: matrix.name == 'android'
         run: |
-          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
           (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
       - name: Make room for the Android build
         if: matrix.name == 'android'
@@ -164,30 +163,31 @@ jobs:
 
       # Git Bash (the shell used by these steps) puts Git's own cut-down, Cygwin-built perl ahead of
       # Strawberry Perl on PATH, and OpenSSL's Configure fails with it (missing Locale::Maketext::Simple).
-      # Point the OpenSSL build at Strawberry Perl explicitly, and put it first on PATH for the build.
+      # Put Strawberry Perl first on PATH for the build: PATH is what reaches the Rust build hook, which
+      # sees only a short list of variables (so OPENSSL_SRC_PERL would not).
       - name: Use Strawberry Perl for OpenSSL
         if: startsWith(matrix.name, 'windows')
         run: |
           # The architecture folder is x64, or arm64 on the ARM64 runner.
           perl_exe="$(ls -d /c/hostedtoolcache/windows/strawberry-perl/*/*/perl/bin/perl.exe | sort | tail -n 1)"
           [ -n "$perl_exe" ] || { echo "Strawberry Perl not found" >&2; exit 1; }
-          echo "OPENSSL_SRC_PERL=$(cygpath -m "$perl_exe")" >> "$GITHUB_ENV"
           echo "STRAWBERRY_PERL_BIN=$(dirname "$perl_exe")" >> "$GITHUB_ENV"
 
-      # OpenSSL's build tree is deep. cargokit.cmake already builds Rust in a short folder on Windows
-      # (%LOCALAPPDATA%\rdcargo by default). The runner keeps the even shorter C:/ck it was first
-      # proven with.
-      - name: Shorten cargokit build path
-        if: startsWith(matrix.name, 'windows')
-        run: echo "RAINDROP_CARGO_BUILD_DIR=C:/ck" >> "$GITHUB_ENV"
+      # The app's build hook (native/raindrop_crypto_builder/hook/build.dart) builds the Rust core
+      # with the exact toolchain and targets pinned in RaindropCrypto's
+      # crates/raindrop_crypto_ffi/rust-toolchain.toml, and rustup installs those only when asked.
+      # (On Windows the hook also builds in the short %LOCALAPPDATA%\rdcargo, for OpenSSL's deep tree.)
+      - name: Rust toolchain for the app
+        working-directory: RaindropCrypto/crates/raindrop_crypto_ffi
+        run: rustup toolchain install
 
       # tract-linalg (under raindrop_video) assembles its ARM64 kernels with clang, which MSVC alone
-      # lacks; the image has Visual Studio's. OpenSSL builds without assembly here: NASM is an x86
-      # assembler, so it is not installed, and OPENSSL_RUST_USE_NASM=0 makes that explicit.
+      # lacks; the image has Visual Studio's, put on PATH here. OpenSSL builds without assembly: NASM is
+      # an x86 assembler, so it is not installed, and the build hook sets OPENSSL_RUST_USE_NASM=0 itself
+      # (build hooks see only a short list of variables, PATH among them, so it cannot come from here).
       - name: Clang and OpenSSL settings (Windows ARM64)
         if: matrix.name == 'windows-arm64'
         run: |
-          echo "OPENSSL_RUST_USE_NASM=0" >> "$GITHUB_ENV"
           if command -v clang > /dev/null; then clang --version; exit 0; fi
           vs="$("/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products '*' \
             -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath | tr -d '\r')"
@@ -212,9 +212,9 @@ jobs:
           flutter build ${{ matrix.target }} --release --build-name "$VERSION" \
             --build-number "$((year * 10000 + month * 100 + patch))"
 
-      # macOS builds already carry libmpv (media_kit_libs_macos_video), and Windows plays through
-      # Media Foundation instead (lib/core/media/). Linux uses the system's libmpv, so it is copied
-      # in here, then wrapped as AppImage + .deb + .rpm.
+      # macOS and Windows play through the system's own player (lib/core/media/), so they need no
+      # libmpv. Linux plays through media_kit with the system's libmpv, so it is copied in here, then
+      # wrapped as AppImage + .deb + .rpm.
       - name: Package (linux)
         if: matrix.name == 'linux'
         run: |

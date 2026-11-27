@@ -21,7 +21,7 @@ client uses. For the Rust core itself — every module, the byte formats, what's
 |---|---|
 | [`../../RaindropCrypto/crates/raindrop_crypto`](../../RaindropCrypto/crates/raindrop_crypto) | The Rust core: MLS groups, identity keys and device certificates, key backup, the encrypted store. No Flutter here. |
 | [`../../RaindropCrypto/crates/raindrop_crypto_ffi`](../../RaindropCrypto/crates/raindrop_crypto_ffi) | The flutter_rust_bridge API (`src/api/`), plus the generated `frb_generated.rs` |
-| [`native/raindrop_crypto_builder`](../native/raindrop_crypto_builder) | Build glue (cargokit) that compiles the Rust crate during `flutter build` and links it in. No Rust here. |
+| [`native/raindrop_crypto_builder`](../native/raindrop_crypto_builder) | A plain Dart package whose build hook (`hook/build.dart`) compiles the Rust crate during `flutter build` / `run` / `test` and reports the library for Flutter to bundle. No Rust here. |
 | [`lib/core/crypto/bridge/`](../lib/core/crypto/bridge) | Generated Dart bindings. Never edit by hand, and the only importers are `core/crypto/` and `core/video/camera_effects_engine.dart`. |
 | [`lib/core/crypto/`](../lib/core/crypto) | The Dart facade: `CryptoEngine`, `MlsCryptoEngine` and `CryptoStores` |
 
@@ -208,17 +208,40 @@ generation 0. See [Messages & chat](messages-chat.md#end-to-end-encryption).
 
 Needed on the machine (see [`CLAUDE.md`](../CLAUDE.md#commands)):
 
-- A Rust toolchain via `rustup`, on `PATH`. Homebrew's `rustup` is keg-only:
+- `rustup`, on `PATH`. Homebrew's `rustup` is keg-only:
   `export PATH=/opt/homebrew/opt/rustup/bin:$PATH`.
-- **CocoaPods**, for iOS and macOS. cargokit only supports CocoaPods, so this one plugin builds
-  through the existing Podfiles while the others keep using Swift Package Manager.
+- The pinned Rust toolchain. `RaindropCrypto/crates/raindrop_crypto_ffi/rust-toolchain.toml` pins an
+  exact channel (1.99.1, which `native_toolchain_rust` requires) and every target the client ships
+  (Apple silicon macOS, iOS device and simulator, the three Android ABIs, x86_64 and aarch64 Linux and
+  Windows msvc). Run `rustup toolchain install` inside that folder once; it installs the toolchain and
+  all the targets, so Android needs no `rustup target add`. Only builds started inside that folder see
+  the pin: RaindropCrypto's own CI and workspace-root `cargo` still use stable.
 
-With those in place, `flutter build` / `flutter run` compiles the Rust crate on its own, for every
-target including Android — cargokit cross-compiles with the installed NDK, so there is no separate
-step. The first build takes a few minutes, mostly SQLCipher and OpenMLS.
+There is no CocoaPods and no cargokit (archived, and without Swift Package Manager support); every
+iOS and macOS plugin is Swift Package Manager.
+
+With those in place, `flutter build` / `flutter run` / `flutter test` compiles the Rust crate on its
+own, for every target including Android, through the build hook in
+`native/raindrop_crypto_builder/hook/build.dart` (`flutter_rust_bridge_hooks` 2.13.0 over
+`native_toolchain_rust`; build hooks are stable since Flutter 3.38). Flutter bundles the library the
+hook reports, and flutter_rust_bridge's loader opens it by name: `raindrop_crypto_ffi.framework` on
+iOS and macOS, `libraindrop_crypto_ffi.so` on Android and Linux, `raindrop_crypto_ffi.dll` on Windows.
+The first build takes a few minutes, mostly SQLCipher and OpenMLS.
+
+Hooks run with a filtered environment (`PATH`, `HOME`, `LOCALAPPDATA`, `TEMP`, `ANDROID_HOME`,
+`LIBCLANG_PATH` and a few more), so the hook sets what the build needs itself:
+
+- **Windows:** `CARGO_TARGET_DIR=%LOCALAPPDATA%\rdcargo`, to keep OpenSSL's build tree under the
+  260-character path limit, and on ARM64 `OPENSSL_RUST_USE_NASM=0`. Strawberry Perl, NASM and, on
+  ARM64, clang reach the build only through `PATH`; `OPENSSL_SRC_PERL` does not.
+- **iOS and macOS:** the app's deployment target (`IPHONEOS_DEPLOYMENT_TARGET` /
+  `MACOSX_DEPLOYMENT_TARGET`, from Flutter's build config), since Rust would otherwise link for iOS 10,
+  leave SQLCipher's `___chkstk_darwin` undefined and make `ld` warn; and
+  `CARGO_PROFILE_RELEASE_DEBUG=line-tables-only`, since without line tables `dsymutil` warns "no debug
+  symbols". The hook refuses an x86_64 macOS build: the Mac app is Apple silicon only.
 
 **The same library also carries the camera effects.** `raindrop_crypto_ffi` depends on
-`raindrop_video`, so one cargokit builder, one codegen and one library serve both; the two share
+`raindrop_video`, so one build hook, one codegen and one library serve both; the two share
 nothing else, and `raindrop_video` holds no key material. That is why
 `core/video/camera_effects_engine.dart` imports the bridge, and why it is the only file outside
 `core/crypto/` allowed to. See [Voice → Camera effects](voice.md#camera-effects) and

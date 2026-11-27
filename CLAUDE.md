@@ -30,10 +30,14 @@ flutter build macos --debug
 ```
 
 The end-to-end encryption core is Rust, in `../RaindropCrypto` (kept out of this tree on purpose),
-compiled into the app by `native/raindrop_crypto_builder` (cargokit). Building needs `rustup` on
-`PATH` (Homebrew's is keg-only: `export PATH=/opt/homebrew/opt/rustup/bin:$PATH`), and CocoaPods for
-iOS/macOS, because cargokit only supports pods; this plugin uses the Podfile while the others use
-SPM. After changing `RaindropCrypto/crates/raindrop_crypto_ffi/src/api/`, regenerate the bindings
+compiled into the app by the build hook in `native/raindrop_crypto_builder/hook/build.dart`, a plain
+Dart package (`raindrop_crypto_ffi`, no Flutter plugin) that runs during `flutter build`, `run` and
+`test` on every platform (`flutter_rust_bridge_hooks` 2.13.0 over `native_toolchain_rust`). Building
+needs `rustup` on `PATH` (Homebrew's is keg-only: `export PATH=/opt/homebrew/opt/rustup/bin:$PATH`)
+and the toolchain pinned in `RaindropCrypto/crates/raindrop_crypto_ffi/rust-toolchain.toml`: run
+`rustup toolchain install` inside that folder once (it installs every target the client ships, so no
+`rustup target add`). There is no CocoaPods: iOS and macOS are Swift Package Manager only, with no
+Podfile or `Pods/`. After changing `RaindropCrypto/crates/raindrop_crypto_ffi/src/api/`, regenerate the bindings
 from this folder:
 
 ```bash
@@ -45,7 +49,7 @@ The Dart package, the Rust crate and the codegen must all be flutter_rust_bridge
 
 `native/raindrop_camera_effects` is the other local plugin: it puts the camera effects' native
 processor on a camera track flutter_webrtc is already capturing, through flutter_webrtc's own public
-API. Unlike the cargokit one it is SPM on Apple and a plain `com.android.library` on Android, and it
+API. Like every iOS/macOS plugin here it is SPM on Apple and a plain `com.android.library` on Android, and it
 builds no Rust of its own — the effects are in the same library the crypto core already ships. See
 `docs/voice.md#camera-effects` and its own README.
 
@@ -91,21 +95,21 @@ catalogue, and needs a server with a fresh database, since the first account to 
 
 The web toolchain is not set up on the reference dev machine (`flutter doctor` will show Chrome
 missing, and the web is not a target); macOS, iOS, Android, Windows and Linux build as-is. The macOS
-app is **Apple silicon only** (`macos/Runner/Configs/Architectures.xcconfig` and the Podfile's
-`post_install`): an x86_64 slice makes `ld` warn on tract-linalg's x86 kernels, see
+app is **Apple silicon only** (`macos/Runner/Configs/Architectures.xcconfig`, and the
+build hook refuses an x86_64 macOS build): an x86_64 slice makes `ld` warn on tract-linalg's x86 kernels, see
 `docs/ci-and-releases.md`.
 **Windows** needs more than the other desktops — Visual Studio's C++ workload, rustup's MSVC toolchain,
 Strawberry Perl and NASM (the vendored OpenSSL under SQLCipher), Developer Mode, and a short Rust build
-folder (`cargokit.cmake` uses `%LOCALAPPDATA%\rdcargo`, `RAINDROP_CARGO_BUILD_DIR` overrides it) to stay
+folder (the build hook sets `CARGO_TARGET_DIR=%LOCALAPPDATA%\rdcargo` itself) to stay
 under the 260-character path limit. The full list with links is `docs/building-on-windows.md` and the
 top of `windows/CMakeLists.txt`. The
-Android SDK and NDK are installed — cargokit cross-compiles the Rust core for Android itself, so a
+Android SDK and NDK are installed — the build hook cross-compiles the Rust core for Android itself, so a
 `flutter build apk` needs no extra step, but the first one is slow for the same reason the first
 desktop build is.
 **Android is still proven in CI as well as locally** — `.github/workflows/ci.yml` builds `android` and
 `ios` alongside the desktop targets, so a change to either platform's configuration is not verified
-until that runs. An Android build needs a Rust target per ABI
-(`rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`). See
+until that runs. The Rust targets for the Android ABIs come
+with `rustup toolchain install` in the crate folder. See
 `docs/mobile.md`, which also covers installing the iOS app on a physical iPhone (signing, wireless
 install, and declining Xcode's "Update to recommended settings").
 
@@ -117,7 +121,7 @@ and every one of those builds is clean. Each language in this repository is set 
 warnings: `flutter analyze --fatal-infos --fatal-warnings` for Dart (run it before pushing, not plain
 `flutter analyze`), `Warnings.xcconfig` under `ios/Flutter/` and `macos/Runner/Configs/` for Swift, `.treatAllWarnings(as: .error)` in the camera-effects `Package.swift` files,
 `allWarningsAsErrors` / `-Werror` in the Gradle files for Kotlin and Java, `/WX` / `-Werror` in the
-CMake files for C++, and RaindropCrypto's workspace lints for the Rust that cargokit builds. When you
+CMake files for C++, and RaindropCrypto's workspace lints for the Rust that the build hook builds. When you
 see a warning in this repository's code — a new file, a new plugin of ours, a toolchain bump — fix it
 in the same change; never silence it (`// ignore:`, `@Suppress`, `#pragma`, a removed flag) to get a
 build through. Warnings from third-party plugins are not ours to fix and do not fail the build. Code
@@ -413,8 +417,9 @@ under its own key by the Rust core (`AttachmentCipher`), streamed up (`Attachmen
 type, hash, a sender-made thumbnail — inside a `files` message, attested under v2. The composer's
 paperclip and desktop drag-and-drop check every file against the server's `GetAttachmentPolicy`
 first; it shows only with `attachments.v1`, `attach_files` in the channel, and encryption on this
-device. Received files preview inline (image, video and audio through `core/media/`'s `MediaPlayback`: media_kit,
-or Media Foundation on Windows, which sends videos without a thumbnail) only when the
+device. Received files preview inline (image, video and audio through `core/media/`'s `MediaPlayback`: the system player
+`video_player` on iOS, macOS and Windows (`SystemPlayback`), media_kit on Android and Linux; videos get
+a thumbnail on every platform) only when the
 server's `preview.extensions` lists them, `AttachmentPreviewRegistry` knows them (the plugin seam), and
 the extension the sender declared to the server matches the name in the message; everything else is a
 file card that saves, and nothing received is ever opened by the app. Decrypted files live in a temporary

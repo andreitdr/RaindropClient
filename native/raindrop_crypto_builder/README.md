@@ -1,12 +1,15 @@
-# raindrop_crypto_ffi (build glue)
+# raindrop_crypto_ffi (build hook)
 
-A Flutter FFI plugin with no code of its own. At build time it compiles the Rust crate
+A Dart package with no code of its own. Its [build hook](hook/build.dart) compiles the Rust crate
 [`RaindropCrypto/crates/raindrop_crypto_ffi`](../../../RaindropCrypto/crates/raindrop_crypto_ffi)
-through [cargokit](cargokit/README) and links the result into the app, on every platform the client
-targets (CocoaPods script phase on iOS/macOS, CMake on Linux/Windows, Gradle on Android).
+with cargo during every `flutter build`, `flutter run` and `flutter test`, on every platform the
+client targets, and Flutter bundles the library it produces. There is no Podfile, Gradle or CMake
+glue, which is what lets iOS and macOS build through Swift Package Manager alone.
 
-The Rust code lives in `RaindropCrypto/`, deliberately apart from the Dart and C# trees. The paths
-into it are in `ios/` and `macos/*.podspec`, `linux/` and `windows/CMakeLists.txt`, and
-`android/build.gradle`. Update them together if either folder moves.
+The hook is [`flutter_rust_bridge_hooks`](https://pub.dev/packages/flutter_rust_bridge_hooks)
+(over [`native_toolchain_rust`](https://pub.dev/packages/native_toolchain_rust)), the same 2.13.0 as
+the bridge. The Rust toolchain and the targets it can build are pinned in the crate's
+`rust-toolchain.toml`.
 
-Generated from the flutter_rust_bridge 2.13.0 template; see `RaindropClient/docs/crypto.md`.
+The Rust code lives in `RaindropCrypto/`, deliberately apart from the Dart and C# trees; the path
+into it is `_cratePath` in `hook/build.dart`. See `RaindropClient/docs/crypto.md`.

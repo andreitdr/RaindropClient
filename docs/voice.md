@@ -817,7 +817,7 @@ Speaking and "connected" colours reuse `AppSurfaces.onlineIndicator`, so no them
 | Windows, Linux | nothing. Sharing a window's sound needs Windows 11 |
 
 flutter_webrtc and livekit_client ship Swift Package Manager manifests, so the Apple builds stay on
-SPM with no Podfile. `native/raindrop_camera_effects` is an SPM package too, and depends on
+SPM, as is every iOS and macOS plugin in the app (there is no CocoaPods). `native/raindrop_camera_effects` is an SPM package too, and depends on
 flutter_webrtc's own `flutter-webrtc` and `WebRTC` products — the same cross-plugin dependency
 `livekit_client` already declares, which is what lets our Objective-C include flutter_webrtc's public
 headers without vendoring or forking anything. On Android it is a plain `com.android.library` with

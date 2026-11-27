@@ -370,9 +370,9 @@ class AttachmentTransfers {
     }
   }
 
-  /// A still from a few seconds into a video, grabbed by the media player
-  /// without showing it anywhere. None on Windows, whose player cannot grab
-  /// one: the video goes up without a thumbnail.
+  /// A still from a few seconds into a video, grabbed without showing it
+  /// anywhere (`grabVideoStill`). None when the platform could not decode
+  /// one: the video then goes up without a thumbnail.
   static Future<_Preview?> _videoPreview(String path) async {
     final still = await grabVideoStill(path);
     if (still == null) return null;

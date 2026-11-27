@@ -16,7 +16,7 @@ simply does not use it from its own Dart layer:
 |---|---|---|
 | Plugin instance | `+[FlutterWebRTCPlugin sharedSingleton]` (public header) | `public static FlutterWebRTCPlugin sharedSingleton` |
 | Track by id | `.localTracks`, a public property (`trackId → id<LocalTrack>`) | `public LocalTrack getLocalTrack(String trackId)` |
-| Frame hook | `-[LocalVideoTrack addProcessing:]` with the `ExternalVideoProcessingDelegate` protocol — both public pod headers | `LocalVideoTrack.addProcessor(ExternalVideoFrameProcessing)`, and every captured frame already flows through it |
+| Frame hook | `-[LocalVideoTrack addProcessing:]` with the `ExternalVideoProcessingDelegate` protocol — both public headers | `LocalVideoTrack.addProcessor(ExternalVideoFrameProcessing)`, and every captured frame already flows through it |
 
 So this plugin walks in the front door. **Nothing is forked and nothing is
 patched** — no `dependency_overrides`, no sha pin, no rebasing onto upstream.

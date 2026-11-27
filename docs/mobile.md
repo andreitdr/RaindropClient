@@ -206,7 +206,7 @@ is inert everywhere else.
   `group.com.raindrop.raindropClient`. Neither process can reach the shared folder unless both name it.
 - `Broadcast.xcconfig` — only Flutter's generated variables, for the two version numbers (an extension
   must carry the same version as its app). Deliberately *not* Flutter's `Debug`/`Release.xcconfig`,
-  which also pull in the CocoaPods settings and would link every plugin into a process with 50 MB to
+  which would link every plugin into a process with 50 MB to
   live in. It does include `Flutter/Warnings.xcconfig`, so the extension's code fails on warnings as
   Runner's does.
 
@@ -247,10 +247,12 @@ flutter build ipa
 ```
 
 Both compile the Rust crypto core ([`../RaindropCrypto`](../../RaindropCrypto/docs/README.md))
-through cargokit, so `rustup` has to be on `PATH` — and for Android, the target per ABI:
+through the build hook in `native/raindrop_crypto_builder`, so `rustup` has to be on `PATH` and the
+pinned toolchain installed. Run this once inside the crate folder; it also installs the targets
+(iOS device and simulator, and every Android ABI), so no `rustup target add` is needed:
 
 ```bash
-rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+cd ../RaindropCrypto/crates/raindrop_crypto_ffi && rustup toolchain install
 ```
 
 ### Android
@@ -272,11 +274,14 @@ rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-and
 ### iOS
 
 - **Deployment target 15.0**, which LiveKit requires.
-- The Rust plugin builds through **CocoaPods** (cargokit supports nothing else), while the other
-  plugins use Swift Package Manager. Both run; see the note in
-  [`CLAUDE.md`](../CLAUDE.md).
-- CI builds `--no-codesign`, which still compiles the Rust core for arm64 and links every pod — the
-  parts that actually break.
+- Every plugin is **Swift Package Manager**; there is no CocoaPods, Podfile or `Pods/`. The Rust core
+  is built by a Dart build hook, which passes Rust the app's deployment target (otherwise Rust links
+  for iOS 10 and SQLCipher's `___chkstk_darwin` is undefined).
+- Video and audio play through `video_player` (AVFoundation), and video thumbnails come from
+  `fc_native_video_thumbnail`, so the app bundles no libmpv or ffmpeg. See
+  [Attachments](attachments.md#platform-notes).
+- CI builds `--no-codesign`, which still compiles the Rust core for arm64 and links every plugin —
+  the parts that actually break.
 
 #### On a physical iPhone
 
@@ -301,8 +306,7 @@ rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-and
 - **Decline Xcode's "Update to recommended settings"** when it opens the project (or revert
   `ios/Runner.xcodeproj` if it was accepted). It replaces the targets' fixed `IPHONEOS_DEPLOYMENT_TARGET`
   values (15.0, and 16.2 for `RaindropLiveActivity`) with `$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)`,
-  which CocoaPods 1.17 cannot parse (`pod install` fails with "Malformed version number string
-  $(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)"), and moves `DEVELOPMENT_TEAM` to the project level.
+  and moves `DEVELOPMENT_TEAM` to the project level.
 
 ## Permissions
 

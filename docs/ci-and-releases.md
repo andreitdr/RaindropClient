@@ -38,7 +38,7 @@ compilation error or a warning: `release.yml` runs this workflow first and packa
 | Code | Where the rule is set |
 |---|---|
 | Dart | `flutter analyze --fatal-infos --fatal-warnings` in the Linux job (infos — lints, deprecations — fail too) |
-| Rust (the crypto core and camera effects) | `RaindropCrypto`'s `[workspace.lints.rust] warnings = "deny"`, which holds inside cargokit's build for all five targets |
+| Rust (the crypto core and camera effects) | `RaindropCrypto`'s `[workspace.lints.rust] warnings = "deny"`, which holds inside the build hook's cargo build for all five targets |
 | Swift, iOS (Runner, RaindropBroadcast, RaindropLiveActivity) | `SWIFT_TREAT_WARNINGS_AS_ERRORS` in [`ios/Flutter/Warnings.xcconfig`](../ios/Flutter/Warnings.xcconfig), included by `Debug`/`Release.xcconfig`, `Broadcast.xcconfig` and `LiveActivity.xcconfig` |
 | Swift, macOS (Runner) | the same in [`macos/Runner/Configs/Warnings.xcconfig`](../macos/Runner/Configs/Warnings.xcconfig) |
 | Objective-C, camera-effects plugin | `.treatAllWarnings(as: .error)` in both `Package.swift` files (tools 6.2, hence the newest stable Xcode on the Apple runners) |
@@ -46,7 +46,7 @@ compilation error or a warning: `release.yml` runs this workflow first and packa
 | Java, the two local plugins | `-Xlint:all -Werror` in their `android/build.gradle` |
 | C++, Windows and Linux runners | `/W4 /WX` and `-Wall -Werror` in `apply_standard_settings` (Flutter's template); this covers each runner's `raindrop_shell` too |
 
-Third-party plugins and pods build under their own settings and still print warnings (OpenGL ES
+Third-party plugins build under their own settings and still print warnings (OpenGL ES
 deprecations in `media_kit_video`, Java 8 targets, the Kotlin Gradle plugin deprecation); those are
 theirs to fix and do not fail the build. That is also why Runner does not set
 `GCC_TREAT_WARNINGS_AS_ERRORS`: clang would apply it while precompiling plugins' generated Swift
@@ -66,6 +66,11 @@ nothing in the repository had changed. To move CI forward, upgrade Flutter local
 `pipefail`, and `yes` fails with "Broken pipe" once `sdkmanager` stops reading, which on its own failed
 the job before anything was built.
 
+**The Rust toolchain is pinned for the app.** The build hook needs the exact toolchain and targets in
+RaindropCrypto's `crates/raindrop_crypto_ffi/rust-toolchain.toml`, so every job that builds or tests
+the client runs `rustup toolchain install` (step "Rust toolchain for the app") before it. Only builds
+started inside that folder see the pin; RaindropCrypto's own CI still uses stable.
+
 **Android needs room.** It builds the Rust core three times (one per ABI), each in release with fat
 LTO and one codegen unit, with OpenSSL and SQLCipher from source, next to the NDK and Gradle. On a
 stock runner the runner was shut down partway through the first ABI. So the job first deletes large
@@ -81,9 +86,10 @@ Three workarounds in the build. The first two are runner-only and undone with th
 - **Windows OpenSSL.** `rusqlite`'s bundled SQLCipher builds OpenSSL from source, which needs
   Strawberry Perl and NASM; Git Bash otherwise puts Git's cut-down Perl first on `PATH`, and
   OpenSSL's `Configure` fails on it.
-- **Windows path length.** OpenSSL's build tree under cargokit's default folder exceeds the
-  260-character limit. `cargokit.cmake` moves the Rust build to `%LOCALAPPDATA%\rdcargo` on every
-  Windows machine; CI sets `RAINDROP_CARGO_BUILD_DIR=C:/ck` to make it shorter still. See
+- **Windows path length.** OpenSSL's build tree under the default build folder exceeds the
+  260-character limit. The Rust build hook sets `CARGO_TARGET_DIR=%LOCALAPPDATA%\rdcargo` on every
+  Windows machine (hooks run with a filtered environment, so an override from outside would not reach
+  it). See
   [Building on Windows](building-on-windows.md#path-length).
 
 Integration tests are **not** run in CI: they need a live server with a fresh database. Run them
@@ -93,7 +99,7 @@ Two more gaps worth naming, both local-only on purpose:
 
 - The two tests that load the Rust library directly (`test/core/crypto/mls_crypto_engine_test.dart`
   and `test/core/video/camera_effects_test.dart`) look for it under
-  `../RaindropCrypto/target/debug/`, which a `flutter build` does not produce — cargokit builds into
+  `../RaindropCrypto/target/debug/`, which a `flutter build` does not produce — the build hook builds into
   its own tree. They skip themselves in CI and run after a `cargo build -p raindrop_crypto_ffi`.
 - **Android and iOS are compiled in CI but never run**, so the Android half of
   [`native/raindrop_camera_effects`](voice.md#camera-effects) — the JNI binding in particular, which
@@ -148,8 +154,7 @@ scheme (`v1.0.0` to `v2.2.1`, and `v0.2.2.2`) were deleted.
 - **No real code signing or notarisation.** macOS builds are ad-hoc signed, Windows unsigned.
 - **No Intel Mac build.** The macOS app is arm64 only: `ARCHS = arm64` in
   [`macos/Runner/Configs/Architectures.xcconfig`](../macos/Runner/Configs/Architectures.xcconfig), and
-  the Podfile's `post_install` sets the same on every pod, which is also what tells cargokit to build
-  the Rust core for arm64 alone. An x86_64 slice would link tract-linalg's x86 kernels (the camera
+  the Rust build hook refuses an x86_64 macOS build, so the Rust core is arm64 alone. An x86_64 slice would link tract-linalg's x86 kernels (the camera
   effects' inference), whose `.align 16` is 64 KiB on Mach-O, so `ld` warns while linking
   `raindrop_crypto_ffi` — and a warning fails the release.
 - **No integration tests**, for want of a server.

@@ -10,7 +10,8 @@
 # 3. The Flutter SDK (stable channel, with Dart 3.13.2 or newer), on PATH. Check with `flutter doctor`.
 #      https://docs.flutter.dev/get-started/install/windows/desktop
 # 4. Rust, through rustup, with the default MSVC toolchain (x86_64-pc-windows-msvc). The end-to-end
-#    encryption core in ../RaindropCrypto is Rust, compiled during the Flutter build by cargokit.
+#    encryption core in ../RaindropCrypto is Rust, compiled during the Flutter build by a Dart build hook
+#    (native/raindrop_crypto_builder/hook/build.dart).
 #      https://rustup.rs/
 # 5. Strawberry Perl, ahead of any other Perl on PATH. The crypto core's SQLCipher builds a vendored
 #    OpenSSL from source, and OpenSSL's Configure needs a full Perl (Git's cut-down one fails).
@@ -25,12 +26,11 @@
 # The repositories must sit side by side, because the crypto plugin builds ../RaindropCrypto:
 #   <any folder>\RaindropClient
 #   <any folder>\RaindropCrypto
-# The first build also downloads prebuilt WebRTC (flutter_webrtc) and libmpv (media_kit), so it needs
+# The first build also downloads prebuilt WebRTC (flutter_webrtc) and the pinned Rust toolchain, so it needs
 # internet access, and it takes several minutes while OpenSSL, SQLCipher and OpenMLS compile.
 #
 # Rust builds in %LOCALAPPDATA%\rdcargo rather than under build\, because OpenSSL's deep build tree
-# otherwise passes Windows' 260-character path limit. Set RAINDROP_CARGO_BUILD_DIR to use another
-# (short) folder. See native/raindrop_crypto_builder/cargokit/cmake/cargokit.cmake.
+# otherwise passes Windows' 260-character path limit. See native/raindrop_crypto_builder/hook/build.dart.
 #
 # To run the built app on another PC, that PC needs the Visual C++ Redistributable (x64), or the
 # runtime DLLs copied next to raindrop_client.exe, as the release workflow does.

@@ -34,8 +34,7 @@ Start with:
 
 ## Running it
 
-Needs the Flutter SDK, a Rust toolchain on `PATH` (for the crypto core) and, on macOS/iOS,
-CocoaPods — see [Crypto → Building](docs/crypto.md#building). **On Windows** the crypto core's
+Needs the Flutter SDK and `rustup` on `PATH` (for the crypto core); there is no CocoaPods — see [Crypto → Building](docs/crypto.md#building). **On Windows** the crypto core's
 OpenSSL also needs Visual Studio's C++ workload, Strawberry Perl, NASM and Developer Mode: see
 [Building on Windows](docs/building-on-windows.md) for the full list with download links.
 

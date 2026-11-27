@@ -1,0 +1,5 @@
+# Its own options, so it is not analysed under the app's (whose lint package this one does not depend on).
+analyzer:
+  language:
+    strict-casts: true
+    strict-raw-types: true

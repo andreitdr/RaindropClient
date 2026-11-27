@@ -36,11 +36,11 @@ ciphertext, and the rules it enforces (size, allowed and blocked extensions) are
    server committed: after a dropped connection or `upload_offset_mismatch`, ask `GetUploadStatus` and
    stream the rest from there (three tries). Then `CompleteUpload` with the ciphertext's SHA-256.
 4. **Thumbnail.** For an image (up to 64 MB, decoded with `image` in an isolate) or a video (a frame
-   grabbed headless by `grabVideoStill`, `core/media/`), a JPEG of at most 320 px, uploaded as its own
+   grabbed headless by `grabVideoStill`, `core/media/`: on iOS, macOS and Windows
+   `fc_native_video_thumbnail` takes it two seconds in, falling back to the first frame, because
+   Windows' shell thumbnail cannot seek; on Android and Linux media_kit's `grabStill`), a JPEG of at most 320 px, uploaded as its own
    `thumbnail` attachment. The descriptor also records the pixel size (so the timeline reserves the
-   space) and, for video, the duration. A preview that fails is skipped; the file still goes. **Windows
-   sends videos without one** (`canGrabVideoStills`): its player cannot grab a frame, so they show the
-   plain video card, with no duration, everywhere they are received.
+   space) and, for video, the duration. A preview that fails is skipped; the file still goes.
 5. **The message.** `MessagePayload.files(caption, descriptors)` is attested under **v2**
    (`signMessageAttestationV2`, which also signs each file's id and ciphertext hash, thumbnails after
    their files), encrypted in the channel's group, and posted to `send-encrypted` with `attachmentIds`
@@ -74,7 +74,7 @@ neither unavailable nor mismatched. Anything else is a `FileCard` (icon, name, s
 | Kind | Extensions (built in) | Behaviour |
 |---|---|---|
 | Image | png, jpg, jpeg, gif, webp, bmp | Loads by itself when at most `preview.autoLoadMaximumMegabytes`, otherwise shows the thumbnail with a "tap to load" size. Tap to view full screen (`InteractiveViewer`) |
-| Video | mp4, webm, mov, mkv, m4v | Thumbnail, play button, duration and size. Never plays by itself; the first tap fetches, decrypts and plays inline (`MediaPlayback.view()`: media_kit's `Video` with its controls, or on Windows the picture with tap-to-pause and a seek bar) |
+| Video | mp4, webm, mov, mkv, m4v | Thumbnail, play button, duration and size. Never plays by itself; the first tap fetches, decrypts and plays inline (`MediaPlayback.view()`: media_kit's `Video` with its controls, or, through the system player, the picture with tap-to-pause and a seek bar) |
 | Audio | mp3, m4a, ogg, oga, wav, flac, opus, aac | A compact player: play/pause, seek bar, position |
 
 `AttachmentPreviewRegistry.register(extensions, builder)` is the **client-side seam** for plugins,
@@ -114,12 +114,19 @@ that those are the files stored with the message.
 - **macOS**: `com.apple.security.files.user-selected.read-write` is in both entitlement files, for
   picking, dropping and saving.
 - **Playback** goes through `MediaPlayback` (`core/media/`), the only code that imports a player.
-  Everywhere but Windows it is **media_kit**: `initializeMedia()` in `main.dart` starts it, and libmpv
-  comes from the per-platform `media_kit_libs_android_video`, `_ios_video`, `_macos_video` and
-  `_linux` packages (Linux uses the system's libmpv). **Windows plays through Media Foundation**
-  (`video_player_win`, `playsMediaThroughMediaFoundation`), on x64 and ARM64 alike:
+  **iOS, macOS and Windows play through the system's own player**, `video_player`
+  (`playsMediaThroughSystemPlayer`): AVFoundation on Apple, and Media Foundation on Windows through
+  `video_player_win`, which registers itself as `video_player`'s Windows implementation, on x64 and
+  ARM64 alike. `SystemPlayback` (`system_playback.dart`) is that implementation, with tap-to-pause
+  and a seek bar. The macOS and iOS apps therefore bundle no libmpv or ffmpeg frameworks. **Android
+  and Linux use media_kit**: `initializeMedia()` in `main.dart` starts it, and libmpv comes from
+  `media_kit_libs_android_video` and `media_kit_libs_linux` (Linux uses the system's libmpv). No
+  `media_kit_libs_*` package exists for Apple or Windows:
   `media_kit_libs_windows_video` ships only x64 libmpv and ANGLE, which an ARM64 build cannot link, so
-  it is not a dependency at all and `media_kit_video` builds its empty Windows stub there. The
+  it is not a dependency at all and `media_kit_video` builds its empty Windows stub there. `media_kit_video`
+  is a patched copy (`native/media_kit_video`, without its CocoaPods-only iOS and macOS plugins),
+  and so is `native/fc_native_video_thumbnail` (without its Android and Linux plugins, and working
+  down to iOS 15 / macOS 12); both are `dependency_overrides` with a `PATCHED.md`. The
   umbrella `media_kit_libs_video` must not come back, since it pulls the Windows libraries in.
 - Pasting an image from the clipboard is not supported yet; pick or drop it.
 

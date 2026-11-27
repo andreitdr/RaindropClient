@@ -4,7 +4,7 @@ name: CI/CD
 # here; tag them with release.sh in the Raindrop root folder, which triggers release.yml.
 
 # REQUIRED SETUP: the app compiles the Rust crypto core from the sibling RaindropCrypto repo
-# (fixed ../../../../RaindropCrypto paths in native/raindrop_crypto_builder). If that repo is
+# (the fixed ../../../RaindropCrypto path in native/raindrop_crypto_builder/hook/build.dart). If that repo is
 # private, add a repository secret CRYPTO_REPO_TOKEN: a fine-grained personal access token with
 # read-only "Contents" access to andreitdr/RaindropCrypto. The default GITHUB_TOKEN cannot read
 # other repositories.
@@ -16,6 +16,13 @@ on:
   # By hand, on any branch (`gh workflow run ci.yml --ref <branch>`): proving a branch builds on
   # every platform before it reaches main, without a full run for every push to every branch.
   workflow_dispatch:
+    inputs:
+      crypto_ref:
+        description: >-
+          RaindropCrypto branch, tag or commit to build against (empty: its default branch).
+          For a change that spans both repositories, run with the same branch name in each.
+        required: false
+        default: ""
 
 # A newer push supersedes a run that is still going.
 concurrency:
@@ -63,6 +70,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ${{ env.CRYPTO_REPO }}
+          ref: ${{ inputs.crypto_ref }}
           token: ${{ secrets.CRYPTO_REPO_TOKEN || github.token }}
           path: RaindropCrypto
 
@@ -99,8 +107,6 @@ jobs:
       - name: Android build dependencies
         if: matrix.name == 'android'
         run: |
-          # One Rust target per ABI in android/app/build.gradle.kts's abiFilters.
-          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
           # Accepting the licences lets the Android Gradle Plugin fetch the NDK version
           # Flutter pins by itself, rather than this file having to name a version that
           # would then have to be kept in step with the SDK.
@@ -161,30 +167,31 @@ jobs:
 
       # Git Bash (the shell used by these steps) puts Git's own cut-down, Cygwin-built perl ahead of
       # Strawberry Perl on PATH, and OpenSSL's Configure fails with it (missing Locale::Maketext::Simple).
-      # Point the OpenSSL build at Strawberry Perl explicitly, and put it first on PATH for the build.
+      # Put Strawberry Perl first on PATH for the build: PATH is what reaches the Rust build hook, which
+      # sees only a short list of variables (so OPENSSL_SRC_PERL would not).
       - name: Use Strawberry Perl for OpenSSL
         if: startsWith(matrix.name, 'windows')
         run: |
           # The architecture folder is x64, or arm64 on the ARM64 runner.
           perl_exe="$(ls -d /c/hostedtoolcache/windows/strawberry-perl/*/*/perl/bin/perl.exe | sort | tail -n 1)"
           [ -n "$perl_exe" ] || { echo "Strawberry Perl not found" >&2; exit 1; }
-          echo "OPENSSL_SRC_PERL=$(cygpath -m "$perl_exe")" >> "$GITHUB_ENV"
           echo "STRAWBERRY_PERL_BIN=$(dirname "$perl_exe")" >> "$GITHUB_ENV"
 
-      # OpenSSL's build tree is deep. cargokit.cmake already builds Rust in a short folder on Windows
-      # (%LOCALAPPDATA%\rdcargo by default). The runner keeps the even shorter C:/ck it was first
-      # proven with.
-      - name: Shorten cargokit build path
-        if: startsWith(matrix.name, 'windows')
-        run: echo "RAINDROP_CARGO_BUILD_DIR=C:/ck" >> "$GITHUB_ENV"
+      # The app's build hook (native/raindrop_crypto_builder/hook/build.dart) builds the Rust core
+      # with the exact toolchain and targets pinned in RaindropCrypto's
+      # crates/raindrop_crypto_ffi/rust-toolchain.toml, and rustup installs those only when asked.
+      # (On Windows the hook also builds in the short %LOCALAPPDATA%\rdcargo, for OpenSSL's deep tree.)
+      - name: Rust toolchain for the app
+        working-directory: RaindropCrypto/crates/raindrop_crypto_ffi
+        run: rustup toolchain install
 
       # tract-linalg (under raindrop_video) assembles its ARM64 kernels with clang, which MSVC alone
-      # lacks; the image has Visual Studio's. OpenSSL builds without assembly here: NASM is an x86
-      # assembler, so it is not installed, and OPENSSL_RUST_USE_NASM=0 makes that explicit.
+      # lacks; the image has Visual Studio's, put on PATH here. OpenSSL builds without assembly: NASM is
+      # an x86 assembler, so it is not installed, and the build hook sets OPENSSL_RUST_USE_NASM=0 itself
+      # (build hooks see only a short list of variables, PATH among them, so it cannot come from here).
       - name: Clang and OpenSSL settings (Windows ARM64)
         if: matrix.name == 'windows-arm64'
         run: |
-          echo "OPENSSL_RUST_USE_NASM=0" >> "$GITHUB_ENV"
           if command -v clang > /dev/null; then clang --version; exit 0; fi
           vs="$("/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products '*' \
             -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath | tr -d '\r')"
@@ -229,7 +236,7 @@ jobs:
           kill "$monitor" 2>/dev/null || true
 
       # No signing identity on a runner, so this builds unsigned — which still compiles the
-      # Rust core for arm64 and links every pod, the parts that actually break.
+      # Rust core for arm64 and resolves and links every Swift package, the parts that actually break.
       - name: Compile (iOS)
         if: matrix.name == 'ios'
         run: flutter build ios --release --no-codesign
@@ -248,10 +255,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ${{ env.CRYPTO_REPO }}
+          ref: ${{ inputs.crypto_ref }}
           token: ${{ secrets.CRYPTO_REPO_TOKEN || github.token }}
           path: RaindropCrypto
 
       - uses: dtolnay/rust-toolchain@stable
+      # `flutter test` runs the Rust build hook too; see "Rust toolchain for the app" above.
+      - name: Rust toolchain for the app
+        working-directory: RaindropCrypto/crates/raindrop_crypto_ffi
+        run: rustup toolchain install
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
